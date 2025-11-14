@@ -9,6 +9,8 @@ export default function FileUpload() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [applyFormatting, setApplyFormatting] = useState(false);
+  const [addAddendum, setAddAddendum] = useState(false);
+  const [addendumLinks, setAddendumLinks] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -82,6 +84,9 @@ export default function FileUpload() {
               file: base64Data,
               filename: file.name,
               applyFormatting: applyFormatting,
+              addendumLinks: addAddendum && addendumLinks.trim() 
+                ? addendumLinks.split('\n').map(link => link.trim()).filter(link => link.length > 0)
+                : undefined,
             }),
           });
 
@@ -138,6 +143,8 @@ export default function FileUpload() {
 
           setSuccess(true);
           setFile(null);
+          setAddAddendum(false);
+          setAddendumLinks('');
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
           }
@@ -261,18 +268,59 @@ export default function FileUpload() {
           </div>
         )}
 
-        {/* Formatting Toggle */}
+        {/* Formatting Toggle and Addendum Options */}
         {file && (
-          <div className="mt-6 flex items-center justify-center gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={applyFormatting}
-                onChange={(e) => setApplyFormatting(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="text-gray-700">Apply Formatting</span>
-            </label>
+          <div className="mt-6 space-y-4">
+            {/* Formatting Toggle */}
+            <div className="flex items-center justify-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyFormatting}
+                  onChange={(e) => setApplyFormatting(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-gray-700">Apply Formatting</span>
+              </label>
+            </div>
+            
+            {/* Add Addendum Toggle */}
+            <div className="flex items-center justify-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addAddendum}
+                  onChange={(e) => {
+                    setAddAddendum(e.target.checked);
+                    if (!e.target.checked) {
+                      setAddendumLinks('');
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-gray-700">Add Addendum</span>
+              </label>
+            </div>
+            
+            {/* Addendum Links Textarea */}
+            {addAddendum && (
+              <div className="mt-4">
+                <label htmlFor="addendum-links" className="block text-sm font-medium text-gray-700 mb-2">
+                  Paste addendum links (one per line)
+                </label>
+                <textarea
+                  id="addendum-links"
+                  value={addendumLinks}
+                  onChange={(e) => setAddendumLinks(e.target.value)}
+                  placeholder="https://l1.prodbx.com/go/view/?35587.426.20251112100816&#10;https://l1.prodbx.com/go/view/?35279.426.20251020095021"
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Enter one link per line. Links will be processed in order.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

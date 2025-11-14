@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import path from 'path';
 import XLSXPopulate from 'xlsx-populate';
 import { OrderItem, Location } from './tableExtractor';
+import { AddendumData } from './addendumParser';
 import { formatLocationHeader, formatSubCategoryHeader, clearCellFormatting } from './cellFormatter';
 import { 
   formatSubCategoryHeaderXLSXPopulate, 
@@ -472,12 +473,18 @@ function clearBoldFromCell(cell: ExcelJS.Cell): void {
 
 /**
  * Generate Excel spreadsheet from order items, appending to template
- * @param items - Array of order items
+ * @param items - Array of order items from email parser
  * @param location - Location object with orderNo, streetAddress, city, state, zip
  * @param applyFormatting - Whether to apply formatting (default: false)
+ * @param addendumData - Array of addendum data (optional)
  * @returns Excel file buffer
  */
-export async function generateSpreadsheet(items: OrderItem[], location: Location, applyFormatting: boolean = false): Promise<Buffer> {
+export async function generateSpreadsheet(
+  items: OrderItem[], 
+  location: Location, 
+  applyFormatting: boolean = false,
+  addendumData: AddendumData[] = []
+): Promise<Buffer> {
   // Load template file
   const templatePath = path.join(process.cwd(), 'contract-parser', 'template.xlsx');
   const workbook = new ExcelJS.Workbook();
@@ -780,7 +787,293 @@ export async function generateSpreadsheet(items: OrderItem[], location: Location
   }
   
   console.log(`[First Pass] Total subcategories tracked: ${subcategoryCount} (rows: ${subcategoryRows.join(', ')})`);
-  console.log(`[First Pass] Current row after processing: ${currentRow}`);
+  console.log(`[First Pass] Current row after processing email items: ${currentRow}`);
+  
+  // STEP 1.5: Process addendum data if provided
+  // Addendums should be inserted AFTER email parser items with 2 blank rows separator
+  if (addendumData && addendumData.length > 0) {
+    console.log(`[First Pass] Processing ${addendumData.length} addendum(s)...`);
+    
+    // Find last row with data after email parser items
+    const lastEmailItemRow = currentRow - 1;
+    
+    // Insert 2 blank rows before addendums
+    const addendumStartRow = lastEmailItemRow + 3; // Skip 2 blank rows
+    currentRow = addendumStartRow;
+    
+    console.log(`[First Pass] Starting addendums at row ${currentRow} (after ${lastEmailItemRow}, skipped 2 blank rows)`);
+    
+    // Process each addendum
+    for (let addendumIndex = 0; addendumIndex < addendumData.length; addendumIndex++) {
+      const addendum = addendumData[addendumIndex];
+      console.log(`[First Pass] Processing addendum #${addendum.addendumNumber} (${addendumIndex + 1}/${addendumData.length})`);
+      
+      // Add "Addendum #: X" header row (format as subcategory)
+      const addendumHeaderRow = currentRow;
+      subcategoryCount++;
+      
+      // TRACK this row as a subcategory for formatting in second pass
+      subcategoryRows.push(addendumHeaderRow);
+      // Format: "Addendum #7 (35587)"
+      const addendumNum = addendum.addendumNumber;
+      const urlId = addendum.urlId || addendum.addendumNumber; // Fallback to addendumNumber if urlId not available
+      const headerText = `Addendum #${addendumNum} (${urlId})`;
+      console.log(`[First Pass] Tracked addendum header #${addendumIndex + 1} at row ${addendumHeaderRow}: "${headerText}"`);
+      
+      // Get cells for addendum header
+      const cellD = worksheet.getCell(addendumHeaderRow, 4);
+      const cellE = worksheet.getCell(addendumHeaderRow, 5);
+      const cellF = worksheet.getCell(addendumHeaderRow, 6);
+      const cellG = worksheet.getCell(addendumHeaderRow, 7);
+      const cellH = worksheet.getCell(addendumHeaderRow, 8);
+      
+      // Merge D:E FIRST (before setting value)
+      try {
+        const isMerged = worksheet.model.merges?.some((merge: any) => {
+          return merge.top <= addendumHeaderRow && merge.bottom >= addendumHeaderRow &&
+                 merge.left <= 4 && merge.right >= 5;
+        });
+        if (!isMerged) {
+          worksheet.mergeCells(addendumHeaderRow, 4, addendumHeaderRow, 5);
+        }
+      } catch (e) {
+        // Merge might already exist, ignore error
+      }
+      
+      // Set value: "Addendum #7 (35587)" format (reuse variables from above)
+      cellD.value = headerText;
+      
+      // Explicitly set F, G, H to empty/null for addendum header
+      cellF.value = null;
+      cellG.value = null;
+      cellH.value = null;
+      
+      // Clear values from columns I through BE (columns 9-57)
+      for (let col = 9; col <= 57; col++) {
+        try {
+          const cell = worksheet.getCell(addendumHeaderRow, col);
+          cell.value = null;
+        } catch (e) {
+          // Ignore errors for cells that don't exist
+        }
+      }
+      
+      // Clear ALL formatting from all cells (D through BE) in first pass
+      clearCellFormatting(cellD);
+      clearCellFormatting(cellE);
+      clearCellFormatting(cellF);
+      clearCellFormatting(cellG);
+      clearCellFormatting(cellH);
+      
+      // Also clear formatting from columns I through BE
+      for (let col = 9; col <= 57; col++) {
+        try {
+          const cell = worksheet.getCell(addendumHeaderRow, col);
+          clearCellFormatting(cell);
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+      
+      // Set basic alignment for column D (without formatting)
+      cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
+      
+      // Clear any shared formula reference
+      if ((cellD as any).sharedFormula) delete (cellD as any).sharedFormula;
+      
+      currentRow++; // Move to next row for addendum items
+      
+      // Process addendum items
+      for (const item of addendum.items) {
+        // SKIP main category headers for addendums (same as email parser)
+        if (item.type === 'maincategory') {
+          continue;
+        } else if (item.type === 'subcategory') {
+          // Sub-category header row - populate data ONLY (no formatting in first pass)
+          const row = currentRow;
+          subcategoryCount++;
+          
+          // TRACK this row as a subcategory for formatting in second pass
+          subcategoryRows.push(row);
+          console.log(`[First Pass] Tracked addendum subcategory at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
+          
+          // Clean the text to remove asterisks, special characters, and formatting
+          let cleanedText = (item.productService || '').toString();
+          cleanedText = cleanedText.replace(/\*\*/g, '').replace(/\*/g, '');
+          cleanedText = cleanedText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+          cleanedText = cleanedText.replace(/[\u202A-\u202E]/g, '');
+          cleanedText = cleanedText.replace(/[\u2060-\u206F]/g, '');
+          cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+          
+          // Get cells
+          const subCellD = worksheet.getCell(row, 4);
+          const subCellE = worksheet.getCell(row, 5);
+          const subCellF = worksheet.getCell(row, 6);
+          const subCellG = worksheet.getCell(row, 7);
+          const subCellH = worksheet.getCell(row, 8);
+          
+          // Merge D:E FIRST (before setting value)
+          try {
+            const isMerged = worksheet.model.merges?.some((merge: any) => {
+              return merge.top <= row && merge.bottom >= row &&
+                     merge.left <= 4 && merge.right >= 5;
+            });
+            if (!isMerged) {
+              worksheet.mergeCells(row, 4, row, 5);
+            }
+          } catch (e) {
+            // Merge might already exist, ignore error
+          }
+          
+          // Set value ONLY (no formatting in first pass)
+          subCellD.value = cleanedText;
+          
+          // Explicitly set F, G, H to empty/null for subcategories
+          subCellF.value = null;
+          subCellG.value = null;
+          subCellH.value = null;
+          
+          // Clear values from columns I through BE (columns 9-57)
+          for (let col = 9; col <= 57; col++) {
+            try {
+              const cell = worksheet.getCell(row, col);
+              cell.value = null;
+            } catch (e) {
+              // Ignore errors for cells that don't exist
+            }
+          }
+          
+          // Clear ALL formatting from all cells (D through BE) in first pass
+          clearCellFormatting(subCellD);
+          clearCellFormatting(subCellE);
+          clearCellFormatting(subCellF);
+          clearCellFormatting(subCellG);
+          clearCellFormatting(subCellH);
+          
+          // Also clear formatting from columns I through BE
+          for (let col = 9; col <= 57; col++) {
+            try {
+              const cell = worksheet.getCell(row, col);
+              clearCellFormatting(cell);
+            } catch (e) {
+              // Ignore errors
+            }
+          }
+          
+          // Set basic alignment for column D (without formatting)
+          subCellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
+          
+          // Clear any shared formula reference
+          if ((subCellD as any).sharedFormula) delete (subCellD as any).sharedFormula;
+          
+          currentRow++;
+        } else if (item.type === 'item') {
+          // Line item row - paste values with NO formatting
+          const row = currentRow;
+          
+          // Clean the text FIRST - remove asterisks, special characters, and formatting
+          let cleanedText = (item.productService || '').toString();
+          cleanedText = cleanedText.replace(/\*\*/g, '').replace(/\*/g, '');
+          cleanedText = cleanedText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+          cleanedText = cleanedText.replace(/[\u202A-\u202E]/g, '');
+          cleanedText = cleanedText.replace(/[\u2060-\u206F]/g, '');
+          cleanedText = cleanedText.replace(/[\uE000-\uF8FF]/g, '');
+          cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+          
+          // Get all cells for this row
+          const cellD = worksheet.getCell(row, 4);
+          const cellE = worksheet.getCell(row, 5);
+          const cellF = worksheet.getCell(row, 6);
+          const cellG = worksheet.getCell(row, 7);
+          const cellH = worksheet.getCell(row, 8);
+          
+          // CRITICAL: Line items should NEVER have formatting (no fill, no bold, no color)
+          // Clear formatting MULTIPLE times to ensure template formatting is completely removed
+          
+          // STEP 1: Clear formatting from ALL cells FIRST (before setting values)
+          clearCellFormatting(cellD);
+          clearCellFormatting(cellE);
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
+          
+          // STEP 2: Set values
+          // For addendums: Description in D-E, Qty in F, Extended in H, G is empty
+          cellD.value = cleanedText;
+          cellF.value = item.qty !== '' && item.qty !== null && item.qty !== undefined ? item.qty : 0;
+          cellG.value = null; // No rate for addendums - leave empty
+          cellH.value = item.amount !== '' && item.amount !== null && item.amount !== undefined ? item.amount : 0;
+          
+          // STEP 3: After setting values, clear formatting AGAIN
+          clearCellFormatting(cellD);
+          clearCellFormatting(cellE);
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
+          
+          // STEP 4: Merge D:E AFTER clearing formatting and setting values
+          try {
+            const isMerged = worksheet.model.merges?.some((merge: any) => {
+              return merge.top <= row && merge.bottom >= row &&
+                     merge.left <= 4 && merge.right >= 5;
+            });
+            if (!isMerged) {
+              worksheet.mergeCells(row, 4, row, 5);
+            }
+          } catch (e) {
+            // Merge might already exist, ignore error
+          }
+          
+          // STEP 5: After merge, clear formatting AGAIN (merge can copy formatting)
+          const mergedCell = worksheet.getCell(row, 4);
+          clearCellFormatting(mergedCell);
+          clearCellFormatting(cellE);
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
+          
+          // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
+          mergedCell.font = { size: 11, bold: false };
+          try {
+            (mergedCell as any).fill = null;
+            delete (mergedCell as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          cellF.font = { size: 11, bold: false };
+          try {
+            (cellF as any).fill = null;
+            delete (cellF as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          cellG.font = { size: 11, bold: false };
+          try {
+            (cellG as any).fill = null;
+            delete (cellG as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          cellH.font = { size: 11, bold: false };
+          try {
+            (cellH as any).fill = null;
+            delete (cellH as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          currentRow++;
+        }
+      }
+      
+      console.log(`[First Pass] Completed addendum #${addendum.addendumNumber}: ${addendum.items.length} items processed`);
+    }
+    
+    console.log(`[First Pass] All addendums processed. Final row: ${currentRow - 1}`);
+  }
   
   // Store the last data row for row deletion in third pass
   const lastDataRowAfterProcessing = currentRow - 1; // currentRow is the next row to write

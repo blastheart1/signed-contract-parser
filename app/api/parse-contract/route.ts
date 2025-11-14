@@ -3,6 +3,7 @@ import { parseEML } from '@/lib/emlParser';
 import { extractOrderItems, extractLocation } from '@/lib/tableExtractor';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
+import { fetchAndParseAddendums, validateAddendumUrl, AddendumData } from '@/lib/addendumParser';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +36,23 @@ export async function POST(request: NextRequest) {
       // Extract applyFormatting option (default: false)
       const applyFormatting = body.applyFormatting === true;
       
+      // Extract addendumLinks array (optional)
+      const addendumLinks: string[] = body.addendumLinks || [];
+      
+      // Validate addendum links if provided
+      if (addendumLinks.length > 0) {
+        const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link));
+        if (invalidLinks.length > 0) {
+          return NextResponse.json(
+            { 
+              error: 'Invalid addendum URL format',
+              message: `The following links are invalid: ${invalidLinks.join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
+            },
+            { status: 400 }
+          );
+        }
+      }
+      
       // Parse EML file
       const parsed = await parseEML(fileContent);
       
@@ -44,11 +62,42 @@ export async function POST(request: NextRequest) {
       // Debug: Log extracted location data
       console.log('[API] Extracted location:', JSON.stringify(location, null, 2));
       
-      // Extract order items
+      // Extract order items from email
       const items = extractOrderItems(parsed.html);
       
-      // Generate spreadsheet with applyFormatting option
-      const spreadsheetBuffer = await generateSpreadsheet(items, location, applyFormatting);
+      // Fetch and parse addendums if provided
+      let addendumData: AddendumData[] = [];
+      if (addendumLinks.length > 0) {
+        console.log(`[API] Processing ${addendumLinks.length} addendum link(s)...`);
+        // fetchAndParseAddendums handles errors gracefully - continues with other links if one fails
+        try {
+          addendumData = await fetchAndParseAddendums(addendumLinks);
+          console.log(`[API] Successfully processed ${addendumData.length} addendum(s) out of ${addendumLinks.length} link(s)`);
+          
+          // Log summary of addendum items
+          addendumData.forEach((addendum) => {
+            console.log(`[API] Addendum #${addendum.addendumNumber}: ${addendum.items.length} items`);
+          });
+          
+          // If no addendums were processed but links were provided, log warning
+          if (addendumData.length === 0) {
+            console.warn(`[API] Warning: All ${addendumLinks.length} addendum link(s) failed to process`);
+          }
+        } catch (error) {
+          // Only throw if ALL links failed and function throws error
+          console.error('[API] Error processing addendums:', error);
+          // Continue with email items even if addendums fail
+          // Log error but don't fail the entire request
+          if (error instanceof Error) {
+            console.error('[API] Addendum error details:', error.message);
+          }
+          // Set addendumData to empty array to continue with email items only
+          addendumData = [];
+        }
+      }
+      
+      // Generate spreadsheet with applyFormatting option and addendum data
+      const spreadsheetBuffer = await generateSpreadsheet(items, location, applyFormatting, addendumData);
       
       // Generate filename based on location data
       // Format: "{Client Initial Last Name} - #{DBX Customer ID} - {Address}.xlsx"
