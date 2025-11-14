@@ -7,6 +7,8 @@ export interface Location {
   city: string;
   state: string;
   zip: string;
+  clientName?: string;
+  dbxCustomerId?: string;
 }
 
 export interface OrderItem {
@@ -30,37 +32,65 @@ export function extractLocation(text: string): Location {
     streetAddress: '',
     city: '',
     state: '',
-    zip: ''
+    zip: '',
+    clientName: '',
+    dbxCustomerId: ''
   };
 
-  // Extract Order ID
-  const orderIdMatch = text.match(/Order\s+Id:([^\n]+)/i);
+  if (!text || text.trim().length === 0) {
+    console.warn('[ExtractLocation] Warning: Empty text provided');
+    return location;
+  }
+
+  // Normalize text: replace multiple spaces/newlines, handle quoted-printable remnants
+  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Extract Order ID (flexible pattern: "Order Id:" or "Order ID:" or "OrderId:")
+  const orderIdMatch = normalizedText.match(/Order\s*[Ii][Dd][:：]\s*([^\n\r]+)/i);
   if (orderIdMatch) {
     location.orderNo = orderIdMatch[1].trim();
   }
 
-  // Extract Street Address (before "City:")
-  const addressMatch = text.match(/Address:([^\n]+)/i);
+  // Extract DBX Customer ID (flexible pattern)
+  const dbxCustomerIdMatch = normalizedText.match(/DBX\s+Customer\s+[Ii][Dd][:：]\s*([^\n\r]+)/i);
+  if (dbxCustomerIdMatch) {
+    location.dbxCustomerId = dbxCustomerIdMatch[1].trim();
+  }
+
+  // Extract Client Name (flexible pattern: "Client:" or "Client :")
+  const clientMatch = normalizedText.match(/Client[:：]\s*([^\n\r]+)/i);
+  if (clientMatch) {
+    location.clientName = clientMatch[1].trim();
+  }
+
+  // Extract Street Address (flexible pattern: "Address:" or "Address :")
+  const addressMatch = normalizedText.match(/Address[:：]\s*([^\n\r]+)/i);
   if (addressMatch) {
     location.streetAddress = addressMatch[1].trim();
   }
 
   // Extract City
-  const cityMatch = text.match(/City:([^\n]+)/i);
+  const cityMatch = normalizedText.match(/City[:：]\s*([^\n\r]+)/i);
   if (cityMatch) {
     location.city = cityMatch[1].trim();
   }
 
   // Extract State
-  const stateMatch = text.match(/State:([^\n]+)/i);
+  const stateMatch = normalizedText.match(/State[:：]\s*([^\n\r]+)/i);
   if (stateMatch) {
     location.state = stateMatch[1].trim();
   }
 
   // Extract Zip
-  const zipMatch = text.match(/Zip:([^\n]+)/i);
+  const zipMatch = normalizedText.match(/Zip[:：]\s*([^\n\r]+)/i);
   if (zipMatch) {
     location.zip = zipMatch[1].trim();
+  }
+
+  // Debug: Log if key fields are missing
+  if (!location.clientName && !location.dbxCustomerId && !location.streetAddress) {
+    console.warn('[ExtractLocation] Warning: Could not extract client name, DBX Customer ID, or address from text');
+    console.warn('[ExtractLocation] Text sample (first 500 chars):', normalizedText.substring(0, 500));
   }
 
   return location;

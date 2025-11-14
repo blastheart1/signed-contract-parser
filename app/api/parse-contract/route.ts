@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseEML } from '@/lib/emlParser';
 import { extractOrderItems, extractLocation } from '@/lib/tableExtractor';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
+import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,22 +41,35 @@ export async function POST(request: NextRequest) {
       // Extract location
       const location = extractLocation(parsed.text);
       
+      // Debug: Log extracted location data
+      console.log('[API] Extracted location:', JSON.stringify(location, null, 2));
+      
       // Extract order items
       const items = extractOrderItems(parsed.html);
       
       // Generate spreadsheet with applyFormatting option
       const spreadsheetBuffer = await generateSpreadsheet(items, location, applyFormatting);
       
-      // Set headers for file download
-      const filename = `contract-${Date.now()}.xlsx`;
+      // Generate filename based on location data
+      // Format: "{Client Initial Last Name} - #{DBX Customer ID} - {Address}.xlsx"
+      const filename = generateSpreadsheetFilename(location);
+      
+      // Debug: Log generated filename
+      console.log('[API] Generated filename:', filename);
+      
+      // Encode filename for Content-Disposition header (RFC 5987)
+      // Use both filename (fallback) and filename* (UTF-8 encoded) for maximum browser compatibility
+      const encodedFilename = encodeURIComponent(filename);
+      const contentDisposition = `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`;
       
       // Return file as response (Buffer works directly with NextResponse in newer versions)
       return new NextResponse(spreadsheetBuffer as any, {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Disposition': contentDisposition,
           'Content-Length': spreadsheetBuffer.length.toString(),
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     } else {

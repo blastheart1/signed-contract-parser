@@ -100,11 +100,37 @@ export default function FileUpload() {
           // Get the blob from response (always treat as blob for Excel file)
           const blob = await response.blob();
           
+          // Extract filename from Content-Disposition header
+          let filename = `contract-${Date.now()}.xlsx`; // Fallback filename
+          const contentDisposition = response.headers.get('Content-Disposition');
+          if (contentDisposition) {
+            // Try to extract filename from Content-Disposition header
+            // Format: attachment; filename="filename.xlsx"; filename*=UTF-8''filename.xlsx
+            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (filenameMatch && filenameMatch[1]) {
+              // Remove quotes if present
+              let extractedFilename = filenameMatch[1].replace(/['"]/g, '');
+              // Handle RFC 5987 encoded filename (filename*=UTF-8''encoded)
+              const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/i);
+              if (filenameStarMatch && filenameStarMatch[1]) {
+                try {
+                  extractedFilename = decodeURIComponent(filenameStarMatch[1]);
+                } catch (e) {
+                  // If decoding fails, use the regular filename
+                  console.warn('Failed to decode filename from Content-Disposition header:', e);
+                }
+              }
+              if (extractedFilename) {
+                filename = extractedFilename;
+              }
+            }
+          }
+          
           // Create download link
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `contract-${Date.now()}.xlsx`;
+          a.download = filename;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);

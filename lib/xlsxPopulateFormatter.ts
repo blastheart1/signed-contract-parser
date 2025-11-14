@@ -1,4 +1,4 @@
-import XLSXPopulate from 'xlsx-populate';
+import XLSXPopulate, { Workbook, Sheet, Cell, Range } from 'xlsx-populate';
 
 /**
  * Convert column number to Excel column letter (1 = A, 2 = B, etc.)
@@ -26,7 +26,7 @@ function colToLetter(col: number): string {
  * @param endCol - End column number (1-indexed, 57 = BE)
  */
 export async function formatSubCategoryHeaderXLSXPopulate(
-  workbook: XLSXPopulate.Workbook,
+  workbook: Workbook,
   sheetName: string,
   row: number,
   startCol: number,
@@ -113,7 +113,7 @@ export async function formatSubCategoryHeaderXLSXPopulate(
  * @param endCol - End column number (1-indexed, 5 = E)
  */
 export async function formatLocationHeaderXLSXPopulate(
-  workbook: XLSXPopulate.Workbook,
+  workbook: Workbook,
   sheetName: string,
   row: number,
   startCol: number,
@@ -153,13 +153,67 @@ export async function formatLocationHeaderXLSXPopulate(
 }
 
 /**
+ * Format columns A and O with white fill color
+ * This applies white fill to entire columns A and O
+ * @param workbook - XLSX-Populate workbook
+ * @param sheetName - Sheet name
+ * @param startRow - Start row number (1-indexed, default 1)
+ * @param endRow - End row number (1-indexed, default 1000)
+ */
+export async function formatColumnsAAndOWhite(
+  workbook: Workbook,
+  sheetName: string,
+  startRow: number = 1,
+  endRow: number = 1000
+): Promise<void> {
+  const sheet = workbook.sheet(sheetName);
+  
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  try {
+    // Get the actual used range to determine the maximum row
+    // Use the endRow parameter or find the last row with data
+    const lastRow = endRow;
+    
+    // Format column A (column 1) with white fill
+    const colALetter = colToLetter(1); // Column A
+    const colARangeAddress = `${colALetter}${startRow}:${colALetter}${lastRow}`;
+    const colARange = sheet.range(colARangeAddress);
+    
+    colARange.style({
+      fill: 'ffffff', // White fill - RGB without alpha
+      // No font color change - keep existing font color
+    });
+    
+    console.log(`[Formatting] Formatted column A (${colARangeAddress}) with white fill`);
+    
+    // Format column O (column 15) with white fill
+    const colOLetter = colToLetter(15); // Column O
+    const colORangeAddress = `${colOLetter}${startRow}:${colOLetter}${lastRow}`;
+    const colORange = sheet.range(colORangeAddress);
+    
+    colORange.style({
+      fill: 'ffffff', // White fill - RGB without alpha
+      // No font color change - keep existing font color
+    });
+    
+    console.log(`[Formatting] Formatted column O (${colORangeAddress}) with white fill`);
+    
+  } catch (error) {
+    throw new Error(`Failed to format columns A and O with white fill: ${error}`);
+  }
+}
+
+/**
  * Clear formatting from a cell using XLSX-Populate
  * @param sheet - XLSX-Populate sheet
  * @param row - Row number (1-indexed)
  * @param col - Column number (1-indexed)
  */
 export function clearCellFormattingXLSXPopulate(
-  sheet: XLSXPopulate.Sheet,
+  sheet: Sheet,
   row: number,
   col: number
 ): void {

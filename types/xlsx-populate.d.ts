@@ -25,13 +25,13 @@ declare module 'xlsx-populate' {
     outputAsync(): Promise<Buffer>;
   }
 
-  interface XLSXPopulate {
+  interface XLSXPopulateStatic {
     fromDataAsync(data: Buffer | ArrayBuffer): Promise<Workbook>;
     fromBlankAsync(): Promise<Workbook>;
     fromFileAsync(filepath: string): Promise<Workbook>;
   }
 
-  const XLSXPopulate: XLSXPopulate;
+  const XLSXPopulate: XLSXPopulateStatic;
   export default XLSXPopulate;
 }
 
