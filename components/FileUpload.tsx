@@ -367,6 +367,19 @@ export default function FileUpload() {
           </div>
         )}
       </div>
+
+      {/* Footer */}
+      <div className="mt-8 text-center text-sm text-gray-500">
+        <p>
+          App is still in testing phase. If you found bugs or suggestions, email me on:{' '}
+          <a
+            href="mailto:a.santos@calimingo.com"
+            className="text-blue-600 hover:text-blue-800 hover:underline"
+          >
+            a.santos@calimingo.com
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
