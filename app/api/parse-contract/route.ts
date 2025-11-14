@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { parseEML } from '@/lib/emlParser';
+import { extractOrderItems, extractLocation } from '@/lib/tableExtractor';
+import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
+
+export async function POST(request: NextRequest) {
+  try {
+    const contentType = request.headers.get('content-type') || '';
+    
+    let fileContent: Buffer;
+    
+    if (contentType.includes('application/json')) {
+      // JSON with base64 encoded file
+      const body = await request.json();
+      
+      if (body && body.file) {
+        fileContent = Buffer.from(body.file, 'base64');
+      } else if (body && body.data) {
+        fileContent = Buffer.from(body.data, 'base64');
+      } else {
+        return NextResponse.json(
+          { error: 'No file data in request. Expected "file" or "data" field with base64 content.' },
+          { status: 400 }
+        );
+      }
+      
+      if (!fileContent || fileContent.length === 0) {
+        return NextResponse.json(
+          { error: 'No file uploaded or file is empty' },
+          { status: 400 }
+        );
+      }
+      
+      // Extract applyFormatting option (default: false)
+      const applyFormatting = body.applyFormatting === true;
+      
+      // Parse EML file
+      const parsed = await parseEML(fileContent);
+      
+      // Extract location
+      const location = extractLocation(parsed.text);
+      
+      // Extract order items
+      const items = extractOrderItems(parsed.html);
+      
+      // Generate spreadsheet with applyFormatting option
+      const spreadsheetBuffer = await generateSpreadsheet(items, location, applyFormatting);
+      
+      // Set headers for file download
+      const filename = `contract-${Date.now()}.xlsx`;
+      
+      // Return file as response (Buffer works directly with NextResponse in newer versions)
+      return new NextResponse(spreadsheetBuffer as any, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': spreadsheetBuffer.length.toString(),
+        },
+      });
+    } else {
+      return NextResponse.json(
+        { error: 'Unsupported content type. Please send JSON with base64 encoded file.' },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    console.error('Error processing contract:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to process contract',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
