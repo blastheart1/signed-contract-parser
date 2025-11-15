@@ -46,8 +46,8 @@ A Next.js web application that parses signed build contract `.eml` files and gen
   - **"Initial"**: All email contract items (main categories, subcategories, line items)
   - **"Addendum"**: All addendum items (main categories, subcategories, line items)
 - **Row Management**: 
-  - **Template-V2.xlsx**: Automatic deletion between last entry and row 338 (keeps 5 buffer rows)
-  - **template.xlsx**: Automatic deletion between last entry and row 452 (keeps 15 buffer rows)
+  - **Template-V2.xlsx**: Automatic deletion between last entry and row 338, leaves 5 buffer rows after last data entry
+  - **template.xlsx**: Automatic deletion between last entry and row 452, leaves 15 buffer rows after last data entry
 - **Value-Only Pasting**: All values in Columns D-H are pasted as plain values (no formulas) to preserve conditional formatting
 
 ## Getting Started
@@ -143,7 +143,9 @@ vercel
 **Spreadsheet Structure**:
 - **Row 16**: First Main Category Header (when using Template-V2.xlsx) or Location header (when using template.xlsx)
 - **Row 16 onwards**: Order items (main categories, subcategories, and line items)
-- **Main Categories**: Included with empty rows above them (except the first one at row 16)
+- **Main Categories**: Included with blank rows above them (except the first one at row 16)
+  - Blank rows labeled as "1 - Blank Row" in Column A
+  - Blank rows have empty values in columns D-N for visual separation
 - **Addendums**: Appended after email items with 2 blank rows separator
 - **Addendum Headers**: Formatted as "Addendum #X (URL ID)" (e.g., "Addendum #7 (35587)") with "1 - Header" label
 
@@ -240,10 +242,11 @@ vercel
 
 **Template-V2.xlsx** (when Apply Formatting is unchecked):
 - **Rows 1-15**: Preserved formulas and structure (not modified)
-- **Row 16**: First Main Category Header (first data row)
-- **Rows 16-339**: Data area for order items and addendums
-- **Row 339+**: Buffer rows (automatically deleted, keeps 5 buffer rows)
+- **Row 16**: First Main Category Header (first data row, no empty row above)
+- **Rows 16-338**: Data area for order items and addendums
+- **Row 338+**: Buffer rows (automatically deleted between last entry and row 338, keeps 5 buffer rows)
 - **Conditional Formatting**: Based on Column A values (rows 16-339)
+- **Blank Rows**: Visual separation rows above main categories (except first) labeled as "1 - Blank Row" with empty values in columns D-N
 
 **Columns**:
 - **A**: Row type labels ("1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row")
