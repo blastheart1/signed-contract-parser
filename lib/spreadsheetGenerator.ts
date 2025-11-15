@@ -29,16 +29,16 @@ function sanitizeSheetName(name: string): string {
 }
 
 /**
- * Find the last data row in the worksheet (scanning from row 16 up to row 452)
- * Template has maximum usable rows from 17 to 452 for subcategories and line items
+ * Find the last data row in the worksheet (scanning from row 16 up to row 339)
+ * Template has maximum usable rows from 17 to 339 for subcategories and line items
  * @param worksheet - Excel worksheet
  * @returns Last row number with data, or 15 if none found
  */
 function findLastDataRow(worksheet: ExcelJS.Worksheet): number {
   let lastRow = 15; // Start from row 16 (0-indexed is 15)
   
-  // Scan from row 16 to row 452 (maximum usable rows)
-  for (let rowNum = 16; rowNum <= 452; rowNum++) {
+  // Scan from row 16 to row 339 (maximum usable rows)
+  for (let rowNum = 16; rowNum <= 339; rowNum++) {
     const cellD = worksheet.getCell(rowNum, 4); // Column D
     const cellF = worksheet.getCell(rowNum, 6); // Column F
     const cellG = worksheet.getCell(rowNum, 7); // Column G
@@ -57,12 +57,12 @@ function findLastDataRow(worksheet: ExcelJS.Worksheet): number {
 /**
  * Clean shared formulas from worksheet to prevent cloning errors
  * Converts shared formulas to regular formulas for rows that might be affected
- * This is the "Alternative Quick Fix" - only clean rows 16-452 we'll be working with
+ * This is the "Alternative Quick Fix" - only clean rows 16-339 we'll be working with
  * @param worksheet - Excel worksheet
  * @param startRow - Start row number (default 16)
- * @param endRow - End row number (default 452)
+ * @param endRow - End row number (default 339)
  */
-function cleanSharedFormulasFromRange(worksheet: ExcelJS.Worksheet, startRow: number = 16, endRow: number = 452): void {
+function cleanSharedFormulasFromRange(worksheet: ExcelJS.Worksheet, startRow: number = 16, endRow: number = 339): void {
   try {
     // Clear shared formulas from worksheet model immediately (if it exists)
     if (worksheet.model && (worksheet.model as any).sharedFormulas) {
@@ -162,7 +162,7 @@ function cleanSharedFormulasFromRange(worksheet: ExcelJS.Worksheet, startRow: nu
  * @param buffer - Excel file buffer
  * @param sheetName - Name of the worksheet
  * @param lastDataRow - Last row number that contains data
- * @param maxRow - Maximum row number (452)
+ * @param maxRow - Maximum row number (339 for Template-V2, 452 for template.xlsx)
  * @param bufferRows - Number of buffer rows to keep (15)
  * @returns New buffer with rows deleted
  */
@@ -170,7 +170,7 @@ async function deleteUnusedRowsFromBuffer(
   buffer: Buffer,
   sheetName: string,
   lastDataRow: number,
-  maxRow: number = 452,
+  maxRow: number = 339,
   bufferRows: number = 15
 ): Promise<Buffer> {
   try {
@@ -291,17 +291,17 @@ async function deleteUnusedRowsFromBuffer(
 }
 
 /**
- * Delete unused rows between last data row and row 452, leaving 15 buffer rows
+ * Delete unused rows between last data row and maxRow, leaving 15 buffer rows
  * This makes the output cleaner while still allowing some extra rows for manual edits
  * @param worksheet - Excel worksheet
  * @param lastDataRow - Last row number that contains data
- * @param maxRow - Maximum row number (452)
+ * @param maxRow - Maximum row number (339 for Template-V2, 452 for template.xlsx)
  * @param bufferRows - Number of buffer rows to keep (15)
  */
 function deleteUnusedRows(
   worksheet: ExcelJS.Worksheet,
   lastDataRow: number,
-  maxRow: number = 452,
+  maxRow: number = 339,
   bufferRows: number = 15
 ): boolean {
   try {
@@ -485,96 +485,31 @@ export async function generateSpreadsheet(
   applyFormatting: boolean = false,
   addendumData: AddendumData[] = []
 ): Promise<Buffer> {
-  // Load template file
-  const templatePath = path.join(process.cwd(), 'contract-parser', 'template.xlsx');
+  // Load template file - use Template-V2.xlsx when applyFormatting is false
+  const templateFileName = applyFormatting ? 'template.xlsx' : 'Template-V2.xlsx';
+  const templatePath = path.join(process.cwd(), 'contract-parser', templateFileName);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(templatePath);
   
   // Get the first worksheet (or named "Order Items")
   let worksheet = workbook.getWorksheet('Order Items') || workbook.worksheets[0];
   
-  // Clean shared formulas from rows 16-452 (rows we'll be working with)
+  // Clean shared formulas from rows 16-339 (rows we'll be working with)
   // This prevents "Shared Formula master must exist" errors when saving
-  cleanSharedFormulasFromRange(worksheet, 16, 452);
+  // For Template-V2.xlsx, we use rows 16-339; for template.xlsx, we still use 16-452
+  const maxRow = applyFormatting ? 452 : 339;
+  cleanSharedFormulasFromRange(worksheet, 16, maxRow);
   
   // Rename worksheet to "#OrderNo-Street Address"
   const sheetName = sanitizeSheetName(`#${location.orderNo}-${location.streetAddress}`);
   worksheet.name = sheetName;
   
-  // Find last data row (scanning up to row 452 - maximum usable rows)
+  // Find last data row (scanning up to maxRow - maximum usable rows)
   const lastDataRow = findLastDataRow(worksheet);
-  let currentRow: number;
   
-  // Check if row 16 already has a location
-  const row16CellD = worksheet.getCell(16, 4);
-  const hasLocationRow = row16CellD.value && row16CellD.value.toString().includes('Pool & Spa');
-  
-  // Determine starting row for line items
-  if (hasLocationRow) {
-    // Location already exists, start appending after last data row
-    currentRow = lastDataRow + 1;
-  } else {
-    // No location row, add it at row 16
-    // Clean location header text to remove any special formatting characters
-    let locationHeader = `Pool & Spa - ${location.city}, ${location.state} ${location.zip}, United States`;
-    // Remove any zero-width characters or formatting characters that might affect formatting
-    locationHeader = locationHeader.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Zero-width spaces
-    locationHeader = locationHeader.replace(/[\u202A-\u202E]/g, ''); // Directional formatting
-    locationHeader = locationHeader.replace(/[\u2060-\u206F]/g, ''); // Word joiner, invisible separator
-    locationHeader = locationHeader.replace(/\s+/g, ' ').trim();
-    
-    const locationCell = worksheet.getCell(16, 4);
-    const locationCellE = worksheet.getCell(16, 5);
-    
-    // CRITICAL: Completely reset formatting from template BEFORE setting value
-    // Template row 16 has bold in model.style.font - we need to remove it completely
-    const locationCellModel = (locationCell as any).model;
-    const locationCellEModel = (locationCellE as any).model;
-    
-    // Set the value FIRST (as plain text)
-    locationCell.value = locationHeader; // Column D
-    
-    // Merge D:E for location row (check if already merged first)
-    try {
-      // Check if cells are already part of a merge before merging
-      const isMerged = worksheet.model.merges?.some((merge: any) => {
-        return merge.top <= 16 && merge.bottom >= 16 &&
-               merge.left <= 4 && merge.right >= 5;
-      });
-      if (!isMerged) {
-        worksheet.mergeCells(16, 4, 16, 5);
-      }
-    } catch (e) {
-      // Merge might already exist, ignore error
-    }
-    
-    // Apply formatting using the formatting component (staggered approach)
-    // Only format if applyFormatting is true
-    if (applyFormatting) {
-      formatLocationHeader(worksheet, 16, 4, 5);
-    } else {
-      // Basic mode: just set font to not bold (no formatting)
-      locationCell.font = { size: 11, bold: false };
-      locationCellE.font = { size: 11, bold: false };
-      locationCell.alignment = { vertical: 'middle', wrapText: true };
-      
-      // Reset model.style.font to prevent template inheritance
-      if (locationCellModel && locationCellModel.style) {
-        locationCellModel.style.font = { size: 11, bold: false };
-        if (locationCellModel.style.fill) {
-          delete locationCellModel.style.fill;
-        }
-      }
-      if (locationCellEModel && locationCellEModel.style) {
-        locationCellEModel.style.font = { size: 11, bold: false };
-        if (locationCellEModel.style.fill) {
-          delete locationCellEModel.style.fill;
-        }
-      }
-    }
-    
-    currentRow = 17; // Next row for line items
-  }
+  // Row 16 is now treated as a regular row for data (first Main Category Header)
+  // Start populating data from row 16
+  let currentRow = 16;
   
   // Process items and append them
   // STEP 1: Track subcategory row numbers during first pass (ExcelJS)
@@ -582,18 +517,102 @@ export async function generateSpreadsheet(
   const subcategoryRows: number[] = [];
   let subcategoryCount = 0;
   
+  // Track if this is the first item to determine if we need an empty row above
+  let isFirstItem = true;
+  
   for (const item of items) {
-    // SKIP main category headers - user doesn't want them after the main header (row 16)
+    // Process main category headers - add empty row above and write with Column A/B labels
     if (item.type === 'maincategory') {
-      // Just skip main categories - don't write them to the spreadsheet
+      // Add empty row above main category (except for the first item at row 16)
+      if (!isFirstItem) {
+        currentRow++;
+        
+        // Set up blank row for visual separation
+        const blankRow = currentRow;
+        const blankCellA = worksheet.getCell(blankRow, 1);
+        const blankCellB = worksheet.getCell(blankRow, 2);
+        
+        // Label Column A as "1 - Blank Row"
+        blankCellA.value = '1 - Blank Row';
+        
+        // Column B is empty
+        blankCellB.value = null;
+        
+        // Ensure empty values on columns D-N (columns 4-14)
+        for (let col = 4; col <= 14; col++) {
+          try {
+            const cell = worksheet.getCell(blankRow, col);
+            cell.value = null;
+          } catch (e) {
+            // Ignore errors for cells that don't exist
+          }
+        }
+        
+        currentRow++; // Move to the main category row
+      }
+      isFirstItem = false;
+      
+      // Clean the text to remove asterisks, special characters, and formatting
+      let cleanedText = (item.productService || '').toString();
+      cleanedText = cleanedText.replace(/\*\*/g, '').replace(/\*/g, '');
+      cleanedText = cleanedText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+      cleanedText = cleanedText.replace(/[\u202A-\u202E]/g, '');
+      cleanedText = cleanedText.replace(/[\u2060-\u206F]/g, '');
+      cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+      
+      const row = currentRow;
+      
+      // Get cells for main category
+      const cellA = worksheet.getCell(row, 1);
+      const cellB = worksheet.getCell(row, 2);
+      const cellD = worksheet.getCell(row, 4);
+      const cellE = worksheet.getCell(row, 5);
+      const cellF = worksheet.getCell(row, 6);
+      const cellG = worksheet.getCell(row, 7);
+      const cellH = worksheet.getCell(row, 8);
+      
+      // Set Column A to "1 - Header" (plain value, not formula)
+      cellA.value = '1 - Header';
+      
+      // Set Column B to "Initial" for email items (plain value)
+      cellB.value = 'Initial';
+      
+      // Set main category text in Column D (merged D-E)
+      cellD.value = cleanedText;
+      
+      // Merge D:E
+      try {
+      const isMerged = worksheet.model.merges?.some((merge: any) => {
+          return merge.top <= row && merge.bottom >= row &&
+               merge.left <= 4 && merge.right >= 5;
+      });
+      if (!isMerged) {
+          worksheet.mergeCells(row, 4, row, 5);
+      }
+    } catch (e) {
+      // Merge might already exist, ignore error
+    }
+    
+      // Set F, G, H to null/empty for main categories
+      cellF.value = null;
+      cellG.value = null;
+      cellH.value = null;
+      
+      // Ensure all values are plain values (no formulas)
+      // No formatting needed - let template conditional formatting handle it
+      
+      currentRow++;
       continue;
     } else if (item.type === 'subcategory') {
       // Sub-category header row - populate data ONLY (no formatting in first pass)
       const row = currentRow;
       subcategoryCount++;
+      isFirstItem = false; // Mark that we've processed at least one item
       
-      // TRACK this row as a subcategory for formatting in second pass
-      subcategoryRows.push(row);
+      // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
+      if (applyFormatting) {
+        subcategoryRows.push(row);
+      }
       console.log(`[First Pass] Tracked subcategory #${subcategoryCount} at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
       
       // Clean the text to remove asterisks, special characters, and formatting
@@ -608,11 +627,19 @@ export async function generateSpreadsheet(
       cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
       
       // Get cells
+      const cellA = worksheet.getCell(row, 1);
+      const cellB = worksheet.getCell(row, 2);
       const cellD = worksheet.getCell(row, 4);
       const cellE = worksheet.getCell(row, 5);
       const cellF = worksheet.getCell(row, 6);
       const cellG = worksheet.getCell(row, 7);
       const cellH = worksheet.getCell(row, 8);
+      
+      // Set Column A to "1 - Subheader" (plain value, not formula)
+      cellA.value = '1 - Subheader';
+      
+      // Set Column B to "Initial" for email items (plain value)
+      cellB.value = 'Initial';
       
       // Merge D:E FIRST (before setting value)
       try {
@@ -637,37 +664,41 @@ export async function generateSpreadsheet(
       cellG.value = null;
       cellH.value = null;
       
-      // Clear values from columns I (9) through BE (57) for subcategories
-      // These columns should be blank but will have fill color in second pass
-      for (let col = 9; col <= 57; col++) {
-        try {
-          const cell = worksheet.getCell(row, col);
-          cell.value = null;
-        } catch (e) {
-          // Ignore errors for cells that don't exist
+      // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
+      // Let the template's conditional formatting handle it
+      if (applyFormatting) {
+        // Clear values from columns I (9) through BE (57) for subcategories
+        // These columns should be blank but will have fill color in second pass
+        for (let col = 9; col <= 57; col++) {
+          try {
+            const cell = worksheet.getCell(row, col);
+            cell.value = null;
+          } catch (e) {
+            // Ignore errors for cells that don't exist
+          }
         }
-      }
-      
-      // Clear ALL formatting from all cells (D through BE) in first pass
-      // Formatting will be applied in second pass using XLSX-Populate
-      clearCellFormatting(cellD);
-      clearCellFormatting(cellE);
-      clearCellFormatting(cellF);
-      clearCellFormatting(cellG);
-      clearCellFormatting(cellH);
-      
-      // Also clear formatting from columns I through BE
-      for (let col = 9; col <= 57; col++) {
-        try {
-          const cell = worksheet.getCell(row, col);
-          clearCellFormatting(cell);
-        } catch (e) {
-          // Ignore errors
+        
+        // Clear ALL formatting from all cells (D through BE) in first pass
+        // Formatting will be applied in second pass using XLSX-Populate
+        clearCellFormatting(cellD);
+        clearCellFormatting(cellE);
+        clearCellFormatting(cellF);
+        clearCellFormatting(cellG);
+        clearCellFormatting(cellH);
+        
+        // Also clear formatting from columns I through BE
+        for (let col = 9; col <= 57; col++) {
+          try {
+            const cell = worksheet.getCell(row, col);
+            clearCellFormatting(cell);
+          } catch (e) {
+            // Ignore errors
+          }
         }
+        
+        // Set basic alignment for column D (without formatting)
+        cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
       }
-      
-      // Set basic alignment for column D (without formatting)
-      cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
       
       // Clear any shared formula reference
       if ((cellD as any).sharedFormula) delete (cellD as any).sharedFormula;
@@ -677,6 +708,7 @@ export async function generateSpreadsheet(
       } else if (item.type === 'item') {
         // Line item row - paste values with NO formatting
         const row = currentRow;
+        isFirstItem = false; // Mark that we've processed at least one item
         
         // Clean the text FIRST - remove asterisks, special characters, and formatting
         // Remove any characters that might cause formatting issues
@@ -697,35 +729,54 @@ export async function generateSpreadsheet(
         // Line items should have NO formatting (no fill, no bold, no color)
         
         // Get all cells for this row
+        const cellA = worksheet.getCell(row, 1);
+        const cellB = worksheet.getCell(row, 2);
         const cellD = worksheet.getCell(row, 4);
         const cellE = worksheet.getCell(row, 5);
         const cellF = worksheet.getCell(row, 6);
         const cellG = worksheet.getCell(row, 7);
         const cellH = worksheet.getCell(row, 8);
         
+        // Set Column A to "1 - Detail" for line items (plain value)
+        cellA.value = '1 - Detail';
+        
+        // Set Column B to "Initial" for email items (plain value)
+        cellB.value = 'Initial';
+        
         // CRITICAL: Line items should NEVER have formatting (no fill, no bold, no color)
         // Clear formatting MULTIPLE times to ensure template formatting is completely removed
         
         // STEP 1: Clear formatting from ALL cells FIRST (before setting values)
-        clearCellFormatting(cellD);
-        clearCellFormatting(cellE);
-        clearCellFormatting(cellF);
-        clearCellFormatting(cellG);
-        clearCellFormatting(cellH);
+        // Only clear formatting if applyFormatting is true (for template.xlsx)
+        // For Template-V2.xlsx, let conditional formatting handle it
+        if (applyFormatting) {
+          clearCellFormatting(cellD);
+          clearCellFormatting(cellE);
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
+        }
         
-        // STEP 2: Set values
+        // STEP 2: Set values (plain values, no formulas)
         cellD.value = cleanedText;
-        cellF.value = item.qty !== '' && item.qty !== null && item.qty !== undefined ? item.qty : 0;
-        cellG.value = item.rate !== '' && item.rate !== null && item.rate !== undefined ? item.rate : 0;
-        cellH.value = item.amount !== '' && item.amount !== null && item.amount !== undefined ? item.amount : 0;
+        // Ensure numeric values are plain numbers, not formulas
+        const qtyValue = item.qty !== '' && item.qty !== null && item.qty !== undefined ? (typeof item.qty === 'number' ? item.qty : parseFloat(String(item.qty)) || 0) : 0;
+        const rateValue = item.rate !== '' && item.rate !== null && item.rate !== undefined ? (typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate)) || 0) : 0;
+        const amountValue = item.amount !== '' && item.amount !== null && item.amount !== undefined ? (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount)) || 0) : 0;
         
-        // STEP 3: After setting values, clear formatting AGAIN
+        cellF.value = qtyValue;
+        cellG.value = rateValue;
+        cellH.value = amountValue;
+        
+        // STEP 3: After setting values, clear formatting AGAIN (only if applyFormatting is true)
         // Setting values can sometimes re-apply template formatting in ExcelJS
-        clearCellFormatting(cellD);
-        clearCellFormatting(cellE);
-        clearCellFormatting(cellF);
-        clearCellFormatting(cellG);
-        clearCellFormatting(cellH);
+        if (applyFormatting) {
+          clearCellFormatting(cellD);
+          clearCellFormatting(cellE);
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
+        }
         
         // STEP 4: Merge D:E AFTER clearing formatting and setting values
         try {
@@ -741,45 +792,48 @@ export async function generateSpreadsheet(
         }
         
         // STEP 5: After merge, clear formatting AGAIN (merge can copy formatting)
+        // Only if applyFormatting is true
+        if (applyFormatting) {
         const mergedCell = worksheet.getCell(row, 4);
-        clearCellFormatting(mergedCell);
-        clearCellFormatting(cellE); // Also clear E explicitly
-        clearCellFormatting(cellF);
-        clearCellFormatting(cellG);
-        clearCellFormatting(cellH);
+          clearCellFormatting(mergedCell);
+          clearCellFormatting(cellE); // Also clear E explicitly
+          clearCellFormatting(cellF);
+          clearCellFormatting(cellG);
+          clearCellFormatting(cellH);
         
-        // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
-        // This is the last line of defense
+          // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
+          // This is the last line of defense
         mergedCell.font = { size: 11, bold: false };
-        try {
-          (mergedCell as any).fill = null;
-          delete (mergedCell as any).fill;
-        } catch (e) {
-          // Ignore errors
-        }
-        
+          try {
+            (mergedCell as any).fill = null;
+            delete (mergedCell as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
         cellF.font = { size: 11, bold: false };
-        try {
-          (cellF as any).fill = null;
-          delete (cellF as any).fill;
-        } catch (e) {
-          // Ignore errors
-        }
-        
-        cellG.font = { size: 11, bold: false };
-        try {
-          (cellG as any).fill = null;
-          delete (cellG as any).fill;
-        } catch (e) {
-          // Ignore errors
-        }
-        
-        cellH.font = { size: 11, bold: false };
-        try {
-          (cellH as any).fill = null;
-          delete (cellH as any).fill;
-        } catch (e) {
-          // Ignore errors
+          try {
+            (cellF as any).fill = null;
+            delete (cellF as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          cellG.font = { size: 11, bold: false };
+          try {
+            (cellG as any).fill = null;
+            delete (cellG as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          cellH.font = { size: 11, bold: false };
+          try {
+            (cellH as any).fill = null;
+            delete (cellH as any).fill;
+          } catch (e) {
+            // Ignore errors
+          }
         }
       
         currentRow++;
@@ -812,8 +866,10 @@ export async function generateSpreadsheet(
       const addendumHeaderRow = currentRow;
       subcategoryCount++;
       
-      // TRACK this row as a subcategory for formatting in second pass
-      subcategoryRows.push(addendumHeaderRow);
+      // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
+      if (applyFormatting) {
+        subcategoryRows.push(addendumHeaderRow);
+      }
       // Format: "Addendum #7 (35587)"
       const addendumNum = addendum.addendumNumber;
       const urlId = addendum.urlId || addendum.addendumNumber; // Fallback to addendumNumber if urlId not available
@@ -821,11 +877,19 @@ export async function generateSpreadsheet(
       console.log(`[First Pass] Tracked addendum header #${addendumIndex + 1} at row ${addendumHeaderRow}: "${headerText}"`);
       
       // Get cells for addendum header
+      const cellA = worksheet.getCell(addendumHeaderRow, 1);
+      const cellB = worksheet.getCell(addendumHeaderRow, 2);
       const cellD = worksheet.getCell(addendumHeaderRow, 4);
       const cellE = worksheet.getCell(addendumHeaderRow, 5);
       const cellF = worksheet.getCell(addendumHeaderRow, 6);
       const cellG = worksheet.getCell(addendumHeaderRow, 7);
       const cellH = worksheet.getCell(addendumHeaderRow, 8);
+      
+      // Set Column A to "1 - Header" (plain value) - addendum headers are treated as headers
+      cellA.value = '1 - Header';
+      
+      // Set Column B to "Addendum" for addendum items (plain value)
+      cellB.value = 'Addendum';
       
       // Merge D:E FIRST (before setting value)
       try {
@@ -848,35 +912,39 @@ export async function generateSpreadsheet(
       cellG.value = null;
       cellH.value = null;
       
-      // Clear values from columns I through BE (columns 9-57)
-      for (let col = 9; col <= 57; col++) {
-        try {
-          const cell = worksheet.getCell(addendumHeaderRow, col);
-          cell.value = null;
-        } catch (e) {
-          // Ignore errors for cells that don't exist
+      // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
+      // Let the template's conditional formatting handle it
+      if (applyFormatting) {
+        // Clear values from columns I through BE (columns 9-57)
+        for (let col = 9; col <= 57; col++) {
+          try {
+            const cell = worksheet.getCell(addendumHeaderRow, col);
+            cell.value = null;
+          } catch (e) {
+            // Ignore errors for cells that don't exist
+          }
         }
-      }
-      
-      // Clear ALL formatting from all cells (D through BE) in first pass
-      clearCellFormatting(cellD);
-      clearCellFormatting(cellE);
-      clearCellFormatting(cellF);
-      clearCellFormatting(cellG);
-      clearCellFormatting(cellH);
-      
-      // Also clear formatting from columns I through BE
-      for (let col = 9; col <= 57; col++) {
-        try {
-          const cell = worksheet.getCell(addendumHeaderRow, col);
-          clearCellFormatting(cell);
-        } catch (e) {
-          // Ignore errors
+        
+        // Clear ALL formatting from all cells (D through BE) in first pass
+        clearCellFormatting(cellD);
+        clearCellFormatting(cellE);
+        clearCellFormatting(cellF);
+        clearCellFormatting(cellG);
+        clearCellFormatting(cellH);
+        
+        // Also clear formatting from columns I through BE
+        for (let col = 9; col <= 57; col++) {
+          try {
+            const cell = worksheet.getCell(addendumHeaderRow, col);
+            clearCellFormatting(cell);
+          } catch (e) {
+            // Ignore errors
+          }
         }
+        
+        // Set basic alignment for column D (without formatting)
+        cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
       }
-      
-      // Set basic alignment for column D (without formatting)
-      cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
       
       // Clear any shared formula reference
       if ((cellD as any).sharedFormula) delete (cellD as any).sharedFormula;
@@ -885,16 +953,94 @@ export async function generateSpreadsheet(
       
       // Process addendum items
       for (const item of addendum.items) {
-        // SKIP main category headers for addendums (same as email parser)
+        // Process main category headers for addendums - add empty row above and write with Column A/B labels
         if (item.type === 'maincategory') {
+          // Add empty row above main category
+          currentRow++;
+          
+          // Set up blank row for visual separation
+          const blankRow = currentRow;
+          const blankCellA = worksheet.getCell(blankRow, 1);
+          const blankCellB = worksheet.getCell(blankRow, 2);
+          
+          // Label Column A as "1 - Blank Row"
+          blankCellA.value = '1 - Blank Row';
+          
+          // Column B is empty
+          blankCellB.value = null;
+          
+          // Ensure empty values on columns D-N (columns 4-14)
+          for (let col = 4; col <= 14; col++) {
+            try {
+              const cell = worksheet.getCell(blankRow, col);
+              cell.value = null;
+            } catch (e) {
+              // Ignore errors for cells that don't exist
+            }
+          }
+          
+          currentRow++; // Move to the main category row
+          
+          // Clean the text to remove asterisks, special characters, and formatting
+          let cleanedText = (item.productService || '').toString();
+          cleanedText = cleanedText.replace(/\*\*/g, '').replace(/\*/g, '');
+          cleanedText = cleanedText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+          cleanedText = cleanedText.replace(/[\u202A-\u202E]/g, '');
+          cleanedText = cleanedText.replace(/[\u2060-\u206F]/g, '');
+          cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+          
+          const row = currentRow;
+          
+          // Get cells for main category
+          const cellA = worksheet.getCell(row, 1);
+          const cellB = worksheet.getCell(row, 2);
+          const cellD = worksheet.getCell(row, 4);
+          const cellE = worksheet.getCell(row, 5);
+          const cellF = worksheet.getCell(row, 6);
+        const cellG = worksheet.getCell(row, 7);
+          const cellH = worksheet.getCell(row, 8);
+          
+          // Set Column A to "1 - Header" (plain value, not formula)
+          cellA.value = '1 - Header';
+          
+          // Set Column B to "Addendum" for addendum items (plain value)
+          cellB.value = 'Addendum';
+          
+          // Set main category text in Column D (merged D-E)
+          cellD.value = cleanedText;
+          
+          // Merge D:E
+          try {
+            const isMerged = worksheet.model.merges?.some((merge: any) => {
+              return merge.top <= row && merge.bottom >= row &&
+                     merge.left <= 4 && merge.right >= 5;
+            });
+            if (!isMerged) {
+              worksheet.mergeCells(row, 4, row, 5);
+            }
+          } catch (e) {
+            // Merge might already exist, ignore error
+          }
+          
+          // Set F, G, H to null/empty for main categories
+          cellF.value = null;
+          cellG.value = null;
+          cellH.value = null;
+          
+          // Ensure all values are plain values (no formulas)
+          // No formatting needed - let template conditional formatting handle it
+          
+          currentRow++;
           continue;
         } else if (item.type === 'subcategory') {
           // Sub-category header row - populate data ONLY (no formatting in first pass)
           const row = currentRow;
           subcategoryCount++;
           
-          // TRACK this row as a subcategory for formatting in second pass
-          subcategoryRows.push(row);
+          // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
+          if (applyFormatting) {
+            subcategoryRows.push(row);
+          }
           console.log(`[First Pass] Tracked addendum subcategory at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
           
           // Clean the text to remove asterisks, special characters, and formatting
@@ -906,11 +1052,19 @@ export async function generateSpreadsheet(
           cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
           
           // Get cells
+          const cellA = worksheet.getCell(row, 1);
+          const cellB = worksheet.getCell(row, 2);
           const subCellD = worksheet.getCell(row, 4);
           const subCellE = worksheet.getCell(row, 5);
           const subCellF = worksheet.getCell(row, 6);
           const subCellG = worksheet.getCell(row, 7);
           const subCellH = worksheet.getCell(row, 8);
+          
+          // Set Column A to "1 - Subheader" (plain value, not formula)
+          cellA.value = '1 - Subheader';
+          
+          // Set Column B to "Addendum" for addendum items (plain value)
+          cellB.value = 'Addendum';
           
           // Merge D:E FIRST (before setting value)
           try {
@@ -933,35 +1087,39 @@ export async function generateSpreadsheet(
           subCellG.value = null;
           subCellH.value = null;
           
-          // Clear values from columns I through BE (columns 9-57)
-          for (let col = 9; col <= 57; col++) {
-            try {
-              const cell = worksheet.getCell(row, col);
-              cell.value = null;
-            } catch (e) {
-              // Ignore errors for cells that don't exist
+          // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
+          // Let the template's conditional formatting handle it
+          if (applyFormatting) {
+            // Clear values from columns I through BE (columns 9-57)
+            for (let col = 9; col <= 57; col++) {
+              try {
+                const cell = worksheet.getCell(row, col);
+                cell.value = null;
+              } catch (e) {
+                // Ignore errors for cells that don't exist
+              }
             }
-          }
-          
-          // Clear ALL formatting from all cells (D through BE) in first pass
-          clearCellFormatting(subCellD);
-          clearCellFormatting(subCellE);
-          clearCellFormatting(subCellF);
-          clearCellFormatting(subCellG);
-          clearCellFormatting(subCellH);
-          
-          // Also clear formatting from columns I through BE
-          for (let col = 9; col <= 57; col++) {
-            try {
-              const cell = worksheet.getCell(row, col);
-              clearCellFormatting(cell);
-            } catch (e) {
-              // Ignore errors
+            
+            // Clear ALL formatting from all cells (D through BE) in first pass
+            clearCellFormatting(subCellD);
+            clearCellFormatting(subCellE);
+            clearCellFormatting(subCellF);
+            clearCellFormatting(subCellG);
+            clearCellFormatting(subCellH);
+            
+            // Also clear formatting from columns I through BE
+            for (let col = 9; col <= 57; col++) {
+              try {
+                const cell = worksheet.getCell(row, col);
+                clearCellFormatting(cell);
+              } catch (e) {
+                // Ignore errors
+              }
             }
+            
+            // Set basic alignment for column D (without formatting)
+            subCellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
           }
-          
-          // Set basic alignment for column D (without formatting)
-          subCellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
           
           // Clear any shared formula reference
           if ((subCellD as any).sharedFormula) delete (subCellD as any).sharedFormula;
@@ -981,35 +1139,53 @@ export async function generateSpreadsheet(
           cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
           
           // Get all cells for this row
+          const cellA = worksheet.getCell(row, 1);
+          const cellB = worksheet.getCell(row, 2);
           const cellD = worksheet.getCell(row, 4);
           const cellE = worksheet.getCell(row, 5);
           const cellF = worksheet.getCell(row, 6);
           const cellG = worksheet.getCell(row, 7);
-          const cellH = worksheet.getCell(row, 8);
+        const cellH = worksheet.getCell(row, 8);
+          
+          // Set Column A to "1 - Detail" for line items (plain value)
+          cellA.value = '1 - Detail';
+          
+          // Set Column B to "Addendum" for addendum items (plain value)
+          cellB.value = 'Addendum';
           
           // CRITICAL: Line items should NEVER have formatting (no fill, no bold, no color)
           // Clear formatting MULTIPLE times to ensure template formatting is completely removed
+          // Only if applyFormatting is true (for template.xlsx)
+          // For Template-V2.xlsx, let conditional formatting handle it
           
           // STEP 1: Clear formatting from ALL cells FIRST (before setting values)
-          clearCellFormatting(cellD);
-          clearCellFormatting(cellE);
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
+          if (applyFormatting) {
+            clearCellFormatting(cellD);
+            clearCellFormatting(cellE);
+            clearCellFormatting(cellF);
+            clearCellFormatting(cellG);
+            clearCellFormatting(cellH);
+          }
           
-          // STEP 2: Set values
+          // STEP 2: Set values (plain values, no formulas)
           // For addendums: Description in D-E, Qty in F, Extended in H, G is empty
           cellD.value = cleanedText;
-          cellF.value = item.qty !== '' && item.qty !== null && item.qty !== undefined ? item.qty : 0;
-          cellG.value = null; // No rate for addendums - leave empty
-          cellH.value = item.amount !== '' && item.amount !== null && item.amount !== undefined ? item.amount : 0;
+          // Ensure numeric values are plain numbers, not formulas
+          const qtyValue = item.qty !== '' && item.qty !== null && item.qty !== undefined ? (typeof item.qty === 'number' ? item.qty : parseFloat(String(item.qty)) || 0) : 0;
+          const amountValue = item.amount !== '' && item.amount !== null && item.amount !== undefined ? (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount)) || 0) : 0;
           
-          // STEP 3: After setting values, clear formatting AGAIN
-          clearCellFormatting(cellD);
-          clearCellFormatting(cellE);
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
+          cellF.value = qtyValue;
+          cellG.value = null; // No rate for addendums - leave empty
+          cellH.value = amountValue;
+          
+          // STEP 3: After setting values, clear formatting AGAIN (only if applyFormatting is true)
+          if (applyFormatting) {
+            clearCellFormatting(cellD);
+            clearCellFormatting(cellE);
+            clearCellFormatting(cellF);
+            clearCellFormatting(cellG);
+            clearCellFormatting(cellH);
+          }
           
           // STEP 4: Merge D:E AFTER clearing formatting and setting values
           try {
@@ -1025,50 +1201,53 @@ export async function generateSpreadsheet(
           }
           
           // STEP 5: After merge, clear formatting AGAIN (merge can copy formatting)
-          const mergedCell = worksheet.getCell(row, 4);
-          clearCellFormatting(mergedCell);
-          clearCellFormatting(cellE);
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
-          
-          // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
-          mergedCell.font = { size: 11, bold: false };
-          try {
-            (mergedCell as any).fill = null;
-            delete (mergedCell as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          cellF.font = { size: 11, bold: false };
-          try {
-            (cellF as any).fill = null;
-            delete (cellF as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          cellG.font = { size: 11, bold: false };
-          try {
-            (cellG as any).fill = null;
-            delete (cellG as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          cellH.font = { size: 11, bold: false };
-          try {
-            (cellH as any).fill = null;
-            delete (cellH as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          currentRow++;
+          // Only if applyFormatting is true
+          if (applyFormatting) {
+            const mergedCell = worksheet.getCell(row, 4);
+            clearCellFormatting(mergedCell);
+            clearCellFormatting(cellE);
+            clearCellFormatting(cellF);
+            clearCellFormatting(cellG);
+            clearCellFormatting(cellH);
+            
+            // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
+            mergedCell.font = { size: 11, bold: false };
+            try {
+              (mergedCell as any).fill = null;
+              delete (mergedCell as any).fill;
+            } catch (e) {
+              // Ignore errors
+            }
+            
+            cellF.font = { size: 11, bold: false };
+            try {
+              (cellF as any).fill = null;
+              delete (cellF as any).fill;
+            } catch (e) {
+              // Ignore errors
+            }
+            
+            cellG.font = { size: 11, bold: false };
+            try {
+              (cellG as any).fill = null;
+              delete (cellG as any).fill;
+            } catch (e) {
+              // Ignore errors
+            }
+            
+            cellH.font = { size: 11, bold: false };
+            try {
+              (cellH as any).fill = null;
+              delete (cellH as any).fill;
+            } catch (e) {
+              // Ignore errors
+            }
         }
-      }
       
+        currentRow++;
+    }
+  }
+  
       console.log(`[First Pass] Completed addendum #${addendum.addendumNumber}: ${addendum.items.length} items processed`);
     }
     
@@ -1102,14 +1281,8 @@ export async function generateSpreadsheet(
       throw new Error(`Worksheet "${sheetName}" not found`);
     }
     
-    // STEP 4: Apply formatting to location header (Row 16) using XLSX-Populate
-    const row16CellD = formattedWorksheet.cell(16, 4);
-    const row16Value = row16CellD.value();
-    if (row16Value && row16Value.toString().includes('Pool & Spa')) {
-      // Apply formatting to location header using XLSX-Populate
-      // This function will handle merging D:E internally
-      await formatLocationHeaderXLSXPopulate(formattedWorkbook, sheetName, 16, 4, 5);
-    }
+    // Row 16 is now treated as a regular data row (first Main Category Header)
+    // No special location header formatting needed
     
     // STEP 5: Apply formatting ONLY to tracked subcategory rows
     // We know exactly which rows are subcategories from the first pass
@@ -1162,13 +1335,13 @@ export async function generateSpreadsheet(
     
     // STEP 6: Format columns A and O with white fill color
     // This applies white fill to entire columns A and O
-    // Format from row 1 to row 452 (maximum usable rows) to ensure all rows are covered
-    console.log(`[Formatting] Formatting columns A and O with white fill...`);
-    try {
-      // Format from row 1 to row 452 (maxRow) to cover all rows in the worksheet
-      // This ensures columns A and O have white fill throughout the entire data area
-      await formatColumnsAAndOWhite(formattedWorkbook, sheetName, 1, 452);
-      console.log(`[Formatting] Successfully formatted columns A and O (rows 1-452) with white fill`);
+      // Format from row 1 to maxRow (339 for Template-V2, 452 for template.xlsx) to ensure all rows are covered
+      console.log(`[Formatting] Formatting columns A and O with white fill...`);
+      try {
+        // Format from row 1 to maxRow to cover all rows in the worksheet
+        // This ensures columns A and O have white fill throughout the entire data area
+        await formatColumnsAAndOWhite(formattedWorkbook, sheetName, 1, maxRow);
+        console.log(`[Formatting] Successfully formatted columns A and O (rows 1-${maxRow}) with white fill`);
     } catch (columnFormatError: any) {
       console.warn(`[Formatting] Warning: Could not format columns A and O:`, columnFormatError?.message || columnFormatError);
       // Continue anyway - column formatting is not critical
@@ -1189,14 +1362,19 @@ export async function generateSpreadsheet(
     
     // STEP 8: Third pass - Delete unused rows AFTER formatting is complete
     // This prevents breaking shared formula references during formatting
+    // For template.xlsx: use maxRow and 15 buffer rows
+    const bufferRows = 15;
+    const deletionMaxRow = maxRow;
+    
     console.log(`[Row Cleanup] Starting third pass - row deletion...`);
+    console.log(`[Row Cleanup] Max row for deletion: ${deletionMaxRow}, Buffer rows to keep: ${bufferRows}`);
     const formattedBufferNode = Buffer.from(formattedBuffer);
     const finalBuffer = await deleteUnusedRowsFromBuffer(
       formattedBufferNode,
       sheetName,
       lastDataRowAfterProcessing,
-      452,
-      15
+      deletionMaxRow,
+      bufferRows
     );
     
     console.log(`[Row Cleanup] Row deletion complete. Final buffer: ${finalBuffer.byteLength} bytes`);
@@ -1205,14 +1383,20 @@ export async function generateSpreadsheet(
   
   // STEP 3: If no formatting, still do row deletion as third pass
   // This ensures consistent behavior regardless of formatting option
+  // For Template-V2.xlsx: delete between last entry and row 338, leave 5 buffer rows
+  // For template.xlsx: use maxRow and 15 buffer rows
+  const bufferRows = applyFormatting ? 15 : 5;
+  const deletionMaxRow = applyFormatting ? maxRow : 338;
+  
   console.log(`[Row Cleanup] Starting third pass - row deletion (no formatting applied)...`);
+  console.log(`[Row Cleanup] Max row for deletion: ${deletionMaxRow}, Buffer rows to keep: ${bufferRows}`);
   const initialBufferNode = Buffer.from(initialBuffer);
   const finalBuffer = await deleteUnusedRowsFromBuffer(
     initialBufferNode,
     sheetName,
     lastDataRowAfterProcessing,
-    452,
-    15
+    deletionMaxRow,
+    bufferRows
   );
   
   console.log(`[Row Cleanup] Row deletion complete. Final buffer: ${finalBuffer.byteLength} bytes`);

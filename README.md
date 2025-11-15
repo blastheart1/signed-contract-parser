@@ -19,10 +19,13 @@ A Next.js web application that parses signed build contract `.eml` files and gen
 - **Formatted Headers**: Display addendum headers as "Addendum #7 (35587)" format
 
 ### Formatting Options
-- **Conditional Formatting**: Toggle between basic (values only) and formatted (with styling) output
-- **Header Formatting**: Apply fill color, white font, and bold to headers and subcategories
+- **Template Selection**: 
+  - **Apply Formatting Unchecked**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values
+  - **Apply Formatting Checked**: Uses `template.xlsx` with manual formatting applied
+- **Conditional Formatting**: Template-V2.xlsx uses conditional formatting that depends on Column A values (rows 16-339)
+- **Header Formatting**: When formatting is enabled, applies fill color, white font, and bold to headers and subcategories
 - **Visual Separators**: Subcategory headers extend to column BE (57) as visual separators
-- **Column Formatting**: Automatic white fill for columns A and O
+- **Column Formatting**: Automatic white fill for columns A and O (when formatting enabled)
 
 ### Data Processing
 - **Column Mapping**:
@@ -34,7 +37,18 @@ A Next.js web application that parses signed build contract `.eml` files and gen
   - **Description**: Columns D-E (merged)
   - **Qty**: Column F
   - **Extended**: Column H (Rate column G is empty for addendums)
-- **Row Management**: Automatic deletion of unused buffer rows (keeps 15 buffer rows after last data entry)
+- **Column A Labels** (for Template-V2.xlsx conditional formatting):
+  - **"1 - Header"**: Main category headers and addendum headers
+  - **"1 - Subheader"**: Subcategory headers
+  - **"1 - Detail"**: Line items
+  - **"1 - Blank Row"**: Visual separation rows above main categories
+- **Column B Labels**:
+  - **"Initial"**: All email contract items (main categories, subcategories, line items)
+  - **"Addendum"**: All addendum items (main categories, subcategories, line items)
+- **Row Management**: 
+  - **Template-V2.xlsx**: Automatic deletion between last entry and row 338 (keeps 5 buffer rows)
+  - **template.xlsx**: Automatic deletion between last entry and row 452 (keeps 15 buffer rows)
+- **Value-Only Pasting**: All values in Columns D-H are pasted as plain values (no formulas) to preserve conditional formatting
 
 ## Getting Started
 
@@ -56,9 +70,10 @@ cd signed-contract-parser
 npm install
 ```
 
-3. Place the template file:
-   - Ensure `contract-parser/template.xlsx` exists in the project root
-   - This template contains formulas and structure that will be preserved
+3. Place the template files:
+   - Ensure `contract-parser/template.xlsx` exists (used when Apply Formatting is checked)
+   - Ensure `contract-parser/Template-V2.xlsx` exists (used when Apply Formatting is unchecked)
+   - These templates contain formulas and structure that will be preserved
 
 4. Run the development server:
 ```bash
@@ -93,9 +108,13 @@ vercel
    - URLs should be in format: `https://l1.prodbx.com/go/view/?35587.426.20251112100816` or `https://login.prodbx.com/go/view/?35587.426.20251112100816`
 
 3. **Optional: Apply Formatting**:
-   - Check the "Apply Formatting" checkbox for styled output
-   - Unchecked: Basic output with values only
-   - Checked: Formatted output with fill colors, white font, and bold headers
+   - **Unchecked**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values
+     - All values pasted as plain values (no formulas)
+     - Conditional formatting automatically applied based on Column A labels
+     - Row range: 16-339, leaves 5 buffer rows
+   - **Checked**: Uses `template.xlsx` with manual formatting
+     - Applies fill colors, white font, and bold headers
+     - Row range: 16-452, leaves 15 buffer rows
 
 4. **Generate Spreadsheet**:
    - Click "Generate Spreadsheet" button
@@ -122,10 +141,11 @@ vercel
 ### Output Format
 
 **Spreadsheet Structure**:
-- **Row 16**: Location header (e.g., "Pool & Spa - laguna beach, California 92651, United States")
-- **Row 17 onwards**: Order items (subcategories and line items)
+- **Row 16**: First Main Category Header (when using Template-V2.xlsx) or Location header (when using template.xlsx)
+- **Row 16 onwards**: Order items (main categories, subcategories, and line items)
+- **Main Categories**: Included with empty rows above them (except the first one at row 16)
 - **Addendums**: Appended after email items with 2 blank rows separator
-- **Addendum Headers**: Formatted as subcategories (e.g., "Addendum #7 (35587)")
+- **Addendum Headers**: Formatted as "Addendum #X (URL ID)" (e.g., "Addendum #7 (35587)") with "1 - Header" label
 
 **Sheet Naming**:
 - Format: `#OrderNo-Street Address`
@@ -171,14 +191,19 @@ vercel
 - Validates URL formats
 
 **`lib/spreadsheetGenerator.ts`**:
-- Loads `template.xlsx` as base
+- Loads template based on formatting option:
+  - `Template-V2.xlsx` when Apply Formatting is unchecked
+  - `template.xlsx` when Apply Formatting is checked
 - Preserves template structure and formulas
-- Populates data starting at row 16
-- Applies formatting (if enabled) using two-pass approach:
-  - First pass: Data population with ExcelJS
-  - Second pass: Formatting with XLSX-Populate
+- Populates data starting at row 16 (first Main Category Header)
+- Populates Column A with labels ("1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row")
+- Populates Column B with labels ("Initial" for email items, "Addendum" for addendum items)
+- Applies formatting (if enabled) using multi-pass approach:
+  - First pass: Data population with ExcelJS (values only, no formulas)
+  - Second pass: Formatting with XLSX-Populate (only when Apply Formatting is checked)
   - Third pass: Row deletion with ExcelJS
 - Handles shared formulas and merges
+- For Template-V2.xlsx: Skips formatting pass to preserve conditional formatting
 
 **`lib/filenameGenerator.ts`**:
 - Generates dynamic filenames based on extracted client information
@@ -207,13 +232,23 @@ vercel
 
 ### Template Structure
 
-**Rows 1-15**: Preserved formulas and structure (not modified)
-**Row 16**: Location header (populated by parser)
-**Rows 17-452**: Data area for order items and addendums
-**Row 452+**: Buffer rows (automatically deleted if unused)
+**template.xlsx** (when Apply Formatting is checked):
+- **Rows 1-15**: Preserved formulas and structure (not modified)
+- **Row 16**: Location header (populated by parser)
+- **Rows 17-452**: Data area for order items and addendums
+- **Row 452+**: Buffer rows (automatically deleted, keeps 15 buffer rows)
+
+**Template-V2.xlsx** (when Apply Formatting is unchecked):
+- **Rows 1-15**: Preserved formulas and structure (not modified)
+- **Row 16**: First Main Category Header (first data row)
+- **Rows 16-339**: Data area for order items and addendums
+- **Row 339+**: Buffer rows (automatically deleted, keeps 5 buffer rows)
+- **Conditional Formatting**: Based on Column A values (rows 16-339)
 
 **Columns**:
-- **A-C**: Row number, status, number (preserved from template)
+- **A**: Row type labels ("1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row")
+- **B**: Item source labels ("Initial" for email items, "Addendum" for addendum items)
+- **C**: Row number, status, number (preserved from template)
 - **D-E**: Product/Service (merged)
 - **F**: Qty
 - **G**: Rate (empty for addendums)
@@ -282,13 +317,20 @@ No environment variables are required for basic functionality. The application u
 - File system access for template loading
 - Vercel serverless functions for API routes
 
-### Template File
+### Template Files
 
-The template file (`contract-parser/template.xlsx`) must be present in the project root. This file:
+**`contract-parser/template.xlsx`** (used when Apply Formatting is checked):
 - Contains formulas in columns I-BE
 - Has structure in rows 1-15
 - Has buffer rows (17-452) for data population
 - Has invoice status section (rows 37-50, columns A-H)
+
+**`contract-parser/Template-V2.xlsx`** (used when Apply Formatting is unchecked):
+- Contains formulas in columns I-BE
+- Has structure in rows 1-15
+- Has conditional formatting based on Column A values (rows 16-339)
+- Has buffer rows (16-339) for data population
+- Conditional formatting depends on Column A labels
 
 ## Deployment
 
@@ -342,12 +384,15 @@ Enable debug logging by checking console output:
 
 ## Limitations
 
-1. **Template Dependency**: Requires `template.xlsx` file in `contract-parser/` directory
-2. **Row Limits**: Maximum 452 rows for data (rows 17-452)
+1. **Template Dependency**: Requires both `template.xlsx` and `Template-V2.xlsx` files in `contract-parser/` directory
+2. **Row Limits**: 
+   - Template-V2.xlsx: Maximum 339 rows for data (rows 16-339)
+   - template.xlsx: Maximum 452 rows for data (rows 17-452)
 3. **Sheet Name Length**: Excel sheet names limited to 31 characters
 4. **File Size**: Large EML files or many addendums may exceed serverless function timeout
 5. **URL Accessibility**: Addendum URLs must be publicly accessible (no authentication required)
 6. **HTML Structure**: Parser expects specific HTML table structure (class "pos" or first table)
+7. **Conditional Formatting**: Template-V2.xlsx conditional formatting requires proper Column A labels
 
 ## Contributing
 
@@ -371,7 +416,18 @@ For issues or questions:
 
 ## Changelog
 
-### Version 1.1.0 (Current - Addendum Support)
+### Version 1.2.0 (Current - Template-V2.xlsx Support)
+- Added Template-V2.xlsx support for conditional formatting mode
+- Row 16 now treated as first data row (Main Category Header)
+- Added Column A labels: "1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row"
+- Added Column B labels: "Initial" for email items, "Addendum" for addendum items
+- Main categories now included with empty rows above them
+- Value-only pasting to preserve conditional formatting
+- Row range updated to 16-339 for Template-V2.xlsx
+- Row deletion leaves 5 buffer rows for Template-V2.xlsx
+- Addendum headers treated as "1 - Header" instead of "1 - Subheader"
+
+### Version 1.1.0 (Addendum Support)
 - Added addendum URL parsing support
 - Added multiple addendum processing
 - Added addendum number extraction from page
