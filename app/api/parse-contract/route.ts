@@ -33,11 +33,11 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Extract applyFormatting option (default: false)
-      const applyFormatting = body.applyFormatting === true;
-      
       // Extract addendumLinks array (optional)
       const addendumLinks: string[] = body.addendumLinks || [];
+      
+      // Extract deleteExtraRows option (optional, default: false)
+      const deleteExtraRows: boolean = body.deleteExtraRows === true;
       
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
@@ -96,8 +96,8 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Generate spreadsheet with applyFormatting option and addendum data
-      const spreadsheetBuffer = await generateSpreadsheet(items, location, applyFormatting, addendumData);
+      // Generate spreadsheet with addendum data and deleteExtraRows option
+      const spreadsheetBuffer = await generateSpreadsheet(items, location, addendumData, deleteExtraRows);
       
       // Generate filename based on location data
       // Format: "{Client Initial Last Name} - #{DBX Customer ID} - {Address}.xlsx"

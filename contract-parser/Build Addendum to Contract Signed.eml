@@ -1,0 +1,417 @@
+Delivered-To: billing@calimingo.com
+Received: by 2002:a05:6919:5093:b0:3f6:6da7:6813 with SMTP id zv19csp310495ysb;
+        Wed, 12 Nov 2025 10:08:20 -0800 (PST)
+X-Google-Smtp-Source: AGHT+IFjwxk+giZSlTiFlZZXzZLuAnvNfU0uQbA7/D+0uhtSyMjPrsVUDQsxNS6M6YzkK++lZtXZ
+X-Received: by 2002:a05:6214:226f:b0:880:5730:d3db with SMTP id 6a1803df08f44-88271914f08mr58353296d6.21.1762970900061;
+        Wed, 12 Nov 2025 10:08:20 -0800 (PST)
+ARC-Seal: i=1; a=rsa-sha256; t=1762970900; cv=none;
+        d=google.com; s=arc-20240605;
+        b=bo67+j7/q66Tf7FRrgh7gjCpLn5h3B4itH4kcvm15VlGNU/U9+B8Jdz2n1pY7nVL3K
+         q7dUgshtnHoP0ZGDnnPmc6QQuSnQto1So3LD6TadMf4fb9aN5P3dKwEUpEyI5AnSczNM
+         bkV90dxqVsQdPhzSVRwxtJ5OIwmkAZPpD9apaDUK/3kN55YlHLwf4LnaHnrZ4FZQHxI6
+         j/yXoCWmmqzSsTNntTb+V9HuLeYEYkQUtH2U2dxPZEg/rAm5M67gaTQn7BGcZ8E2bjrQ
+         UsZzaSm1ssmfw1inyq3vIGlVNCWD4ZiA/XiKJ6D0NuubGcIiqLY+QDJn0rCXPiFruyUo
+         1FYg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=mime-version:feedback-id:to:reply-to:message-id:subject:date:from
+         :dkim-signature:dkim-signature;
+        bh=UqY2ectis97XMQPV3YufuWdyP5LQrQ+tA4smemNTK50=;
+        fh=1LxDB8EHz8U6dDZU635uM+KH6fCL2jEFSj+dE75F7/w=;
+        b=Cr+h+r61VK8x9GrsPSUDCoIE01us+06Ku4o3b4ndASc99ZVuwkfe4WwN9pHGO42fHg
+         SQ8i74ClhR1uqrGp85wFzhCtsxiDgWxOAQKA6SIzYqIxJg3nNgHnZPGwRAL1mXw0fsz/
+         i2v4SWQf0XuISdkWnWgrbsqyPyuM2uVu37chauRa1aR3Y3MYOgWtt2uI25UQwKax5uZy
+         fuENt8i05g11aVn+lqp/lnaygwPc2t8xP8z1Be/vYyvn8vdzj58PvGtNRUjDD65sEsA9
+         2m0NXtalP0PT42x9Ztgt97yhJ+YpKIYgTATerGk3HeyzuX/mijn70EibYGYgYkfkmPY5
+         Wc9w==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@ab.mtasv.net header.s=ab20250324 header.b=T0Z6a8EH;
+       dkim=pass header.i=@tx.clientimagedbx.com header.s=20251015170914pm header.b=fZR18NTY;
+       spf=pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.12 as permitted sender) smtp.mailfrom=pm_bounces@pm-bounces.tx.clientimagedbx.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=clientimagedbx.com
+Return-Path: <pm_bounces@pm-bounces.tx.clientimagedbx.com>
+Received: from mta12-ab1.mtasv.net (mta12-ab1.mtasv.net. [50.31.205.12])
+        by mx.google.com with ESMTPS id 6a1803df08f44-88238b83fcbsi39139896d6.471.2025.11.12.10.08.19
+        for <billing@calimingo.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 12 Nov 2025 10:08:20 -0800 (PST)
+Received-SPF: pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.12 as permitted sender) client-ip=50.31.205.12;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@ab.mtasv.net header.s=ab20250324 header.b=T0Z6a8EH;
+       dkim=pass header.i=@tx.clientimagedbx.com header.s=20251015170914pm header.b=fZR18NTY;
+       spf=pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.12 as permitted sender) smtp.mailfrom=pm_bounces@pm-bounces.tx.clientimagedbx.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=clientimagedbx.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; s=ab20250324; d=ab.mtasv.net;
+ h=From:Date:Subject:Message-Id:Reply-To:To:MIME-Version:Content-Type:Date:
+ From:Message-ID:Reply-To:Sender:Subject:To:CC; t=1762970899; x=1763057299;
+ bh=UqY2ectis97XMQPV3YufuWdyP5LQrQ+tA4smemNTK50=;
+ b=T0Z6a8EHGhWMZt9K4J8/josKxonAcwYvxwe5TTFdHRV3OSrohoF9KtXVgCoqw8DU6fW2WJu5VOMh
+   DaHWmodYef30hyhNT5+6abZMOGPIhQ/9K2daT4CBB1dx0p1Yrv8m4I0JzigWQRRpfAXI7JGkPkpL
+   6sLju+rqO0X8kzOQ4VVqLm9QDlYvXJ1DCi7kNO7RC7SYR4r9JL443aQTP+AkbMiNdwXVeUcVN3P3
+   zunZWNOripBh1ibLEIB8AU99XDR1mOy8mtsaPCpO9AFuEy/SOczrVxTyahYKe9G6DL3L+JbjpPY3
+   Nis/Mu67+Vu3CUJU9dQN301we7qzQWu/9J7sSA==
+Received: by mta12-ab1.mtasv.net id h2j6h63b84k1 for <billing@calimingo.com>; Wed, 12 Nov 2025 13:08:19 -0500 (envelope-from <pm_bounces@pm-bounces.tx.clientimagedbx.com>)
+X-PM-IP: 50.31.205.12
+X-IADB-IP: 50.31.205.12
+X-IADB-IP-REVERSE: 12.205.31.50
+DKIM-Signature: v=1; a=rsa-sha256; d=tx.clientimagedbx.com;
+	s=20251015170914pm; c=relaxed/relaxed; i=do-not-reply@tx.clientimagedbx.com;
+	t=1762970899; x=1763143699;
+	h=date:date:from:from:message-id:reply-to:reply-to:sender:subject:subject:to:
+	to:cc:feedback-id:mime-version:content-type;
+	bh=UqY2ectis97XMQPV3YufuWdyP5LQrQ+tA4smemNTK50=;
+	b=fZR18NTYl3oCvzrMHnh6W26aFdcIn5lZx2KlbOzQOQS1K8YmhWU6lpYExnHPDvKZiOFLggUL6iW
+	Yv8WcyN5xOXyfcxj7AX2vj3yZdrk9DWeBbeTkOlQhZWviQPaYtSof7JzrERIbmOiDkq2eYTieuyJx
+	vtPvoVkBbkflR7w134g=
+From: Calimingo Pools <do-not-reply@tx.clientimagedbx.com>
+Date: Wed, 12 Nov 2025 18:08:18 +0000
+Subject: Build Addendum to Contract Signed
+Message-Id: <cdb2b77c-dbb4-4e0c-a8f1-9078519717e3@mtasv.net>
+Reply-To: Calimingo Pools <clientportal@calimingo.com>
+To: Calimingo Billing <billing@calimingo.com>
+X-Mailer: PHPMailer 6.9.3 (https://github.com/PHPMailer/PHPMailer)
+X-PM-Message-Stream: notifications
+Feedback-ID: s9616014-_:s9616014:a250858:postmark
+X-Complaints-To: abuse@postmarkapp.com
+X-PM-Message-Id: cdb2b77c-dbb4-4e0c-a8f1-9078519717e3
+X-PM-RCPT: |bTB8MjUwODU4fDk2MTYwMTR8YmlsbGluZ0BjYWxpbWluZ28uY29t|
+X-PM-Message-Options: v1;1.UFMqMrgUloAh1mw9Oeifiw.k3SDnO9yQPpoWahsEYxWjLkkX2D9E7GazDhegCyOdlTe2hE0FC_tIWiSEmOrL8WdrmcfTf7bJCvVNmJCFLgoVRSkop4xwFw0UFJTKvmwp2cPvBONCMbxSup-N1QhAD9sFqNioDFK_guO9CumVVCu2gyu8IvKRU7pY_X14yL99wqx5mMwgitdCqrJDORO99JsR2jW93aC-R0lhsnArikE7w
+MIME-Version: 1.0
+X-PM-MTA-Pool: application-bulk-2
+Content-Type: multipart/alternative;
+	boundary=mk3-e99a363d721e442bb054e0c609e651d3; charset=UTF-8
+
+--mk3-e99a363d721e442bb054e0c609e651d3
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+
+
+
+
+Hey,
+
+=C2=A0
+
+A new Addendum to a contract has been signed.
+Please see all the details about the job Below.
+
+=C2=A0
+
+-- Customer Info --
+
+
+DBX Customer ID:11245
+
+
+Client:Andrea Rodriguez
+Email:andrearod@aol.com
+
+
+Phone:(310) 995-0898
+
+
+Address:12951 PANAMA ST
+
+
+City:Los Angeles
+
+
+State:California
+
+
+Zip:90066
+
+
+Full Address: 12951 PANAMA ST Los
+Angeles,=C2=A0California=C2=A090066
+
+=C2=A0
+
+-- Job Info --
+
+
+Order Id:9853
+
+
+Order Date:8/4/2025
+
+Order Po:
+
+
+Order Due Date:0
+
+Order Type:
+
+
+Order Delivered:0
+
+
+Quote Expiration Date:0
+
+
+Order Grand Total:262,460.17
+
+
+Progress Payments:
+
+
+
+Balance Due:262,460.17
+
+
+Sales Rep:Sean Lagrave
+
+=C2=A0
+
+Original Contract:=C2=A0
+
+
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F33047.426.202508=
+01132906./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/2/jQ23CoLR7m
+
+=C2=A0
+
+Addendums:=C2=A0
+
+
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F35587.426.202511=
+12100816./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/3/0wUV-y2_iM
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F35279.426.202510=
+20095021./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/4/Z085s9mzii
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F35237.426.202510=
+16121413./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/5/5qUb-g5LSZ
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F35098.426.202510=
+08144807./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/6/0re-gL_2n3
+https://track.pstmrk.it/3ts/l1.prodbx.com%2Fgo%2Fview%2F%3F34533.426.202509=
+15095400./jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/7/lF0qQqhiM4
+
+
+
+=C2=A0
+
+
+
+=09
+	=09
+		=09
+		=09
+		=09
+		=09
+			Office - (714) 235-3294=C2=A0Ext.=C2=A00
+			Connect@Calimingo.com
+
+			  =20
+		=09
+	=09
+=09
+
+
+
+
+
+
+
+
+ Powered by DBX:   www.ProDBX.com
+
+--mk3-e99a363d721e442bb054e0c609e651d3
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head><meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf=
+-8"></head>
+<body>
+<div>Hey,</div>
+
+<div>=C2=A0</div>
+
+<div>A new Addendum to a contract has been signed. Please see all the detai=
+ls about the job Below.</div>
+
+<div>=C2=A0</div>
+
+<div><strong>-- Customer Info --</strong></div>
+
+<div>
+<strong>DBX Customer ID:</strong>11245</div>
+
+<div>
+<strong>Client:</strong>Andrea Rodriguez</div>
+<strong>Email:</strong>andrearod@aol.com
+
+<div>
+<strong>Phone:</strong>(310) 995-0898</div>
+
+<div>
+<strong>Address:</strong>12951 PANAMA ST</div>
+
+<div>
+<strong>City:</strong>Los Angeles</div>
+
+<div>
+<strong>State:</strong>California</div>
+
+<div>
+<strong>Zip:</strong>90066</div>
+
+<div>
+<strong>Full Address: </strong>12951 PANAMA ST Los Angeles,=C2=A0California=
+=C2=A090066</div>
+
+<div>=C2=A0</div>
+
+<div><strong>-- Job Info --</strong></div>
+
+<div>
+<strong>Order Id:</strong>9853</div>
+
+<div>
+<strong>Order Date:</strong>8/4/2025</div>
+
+<div><strong>Order Po:</strong></div>
+
+<div>
+<strong>Order Due Date:</strong>0</div>
+
+<div><strong>Order Type:</strong></div>
+
+<div>
+<strong>Order Delivered:</strong>0</div>
+
+<div>
+<strong>Quote Expiration Date:</strong>0</div>
+
+<div>
+<strong>Order Grand Total:</strong>262,460.17</div>
+
+<div>
+<strong>Progress Payments:</strong>
+</div>
+
+<div>
+<strong>Balance Due:</strong>262,460.17</div>
+
+<div>
+<strong>Sales Rep:</strong>Sean Lagrave</div>
+
+<div>=C2=A0</div>
+
+<div><strong>Original Contract:=C2=A0</strong></div>
+
+<div>
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzMzMDQ3LjQyNi4yMDI1MDgwMTEzMjkwNi4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzMzM=
+DQ3LjQyNi4yMDI1MDgwMTEzMjkwNg%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?33047.426.20250801132906</a>.</div>
+
+<div>=C2=A0</div>
+
+<div><strong>Addendums:=C2=A0</strong></div>
+
+<div>
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzM1NTg3LjQyNi4yMDI1MTExMjEwMDgxNi4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM1N=
+Tg3LjQyNi4yMDI1MTExMjEwMDgxNg%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?35587.426.20251112100816</a>.
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzM1Mjc5LjQyNi4yMDI1MTAyMDA5NTAyMS4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM1M=
+jc5LjQyNi4yMDI1MTAyMDA5NTAyMQ%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?35279.426.20251020095021</a>.
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzM1MjM3LjQyNi4yMDI1MTAxNjEyMTQxMy4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM1M=
+jM3LjQyNi4yMDI1MTAxNjEyMTQxMw%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?35237.426.20251016121413</a>.
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzM1MDk4LjQyNi4yMDI1MTAwODE0NDgwNy4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM1M=
+Dk4LjQyNi4yMDI1MTAwODE0NDgwNw%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?35098.426.20251008144807</a>.
+<br><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5w=
+cm9kYnguY29tL2dvL3ZpZXcvPzM0NTMzLjQyNi4yMDI1MDkxNTA5NTQwMC4%3D" rel=3D"nofo=
+llow" target=3D"_blank" data-pm-no-track=3D""></a><a href=3D"https://l2511a=
+.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM0N=
+TMzLjQyNi4yMDI1MDkxNTA5NTQwMA%3D%3D" target=3D"_blank" data-pm-no-track=3D"=
+">https://l1.prodbx.com/go/view/?34533.426.20250915095400</a>.</div>
+
+<div>
+<br>
+=C2=A0</div>
+
+<div>
+<table style=3D"min-width: 40%;">
+	<tbody>
+		<tr>
+			<td>
+			<p style=3D"text-align: center;"><a href=3D"https://l2511a.prodbx.com/go=
+?l=3D426-427947-aHR0cHM6Ly9jYWxpbWluZ28uY29tLw%3D%3D" rel=3D"nofollow" targ=
+et=3D"_blank" data-pm-no-track=3D""><img src=3D"https://login.prodbx.com/go=
+/view/?271.426.20201125115142.DX8uNn" alt=3D"?271.426.20201125115142.DX8uNn=
+" style=3D"width: 200px; height: 70px;"></a></p>
+			</td>
+			<td>
+			<p><strong>Office</strong> - <a href=3D"tel:7142353294">(714) 235-3294</=
+a>=C2=A0Ext.=C2=A00<br>
+			<a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-bWFpbHRvOkNvbm5lY=
+3RAQ2FsaW1pbmdvLmNvbQ%3D%3D" target=3D"_blank" data-pm-no-track=3D"">Connec=
+t@Calimingo.com</a></p>
+
+			<p><a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly93d3=
+cuaW5zdGFncmFtLmNvbS9jYWxpbWluZ29wb29scy8%3D" rel=3D"nofollow" target=3D"_b=
+lank" data-pm-no-track=3D""><img src=3D"https://calimingo-pools-media.s3-us=
+-west-1.amazonaws.com/Instagram+Button+30++x+34.png" alt=3D"Instagram+Butto=
+n+30++x+34.png"></a> <a href=3D"https://l2511a.prodbx.com/go?l=3D426-427947=
+-aHR0cHM6Ly93d3cuZmFjZWJvb2suY29tL2NhbGltaW5nb3Bvb2xzLw%3D%3D" rel=3D"nofol=
+low" target=3D"_blank" data-pm-no-track=3D""><img src=3D"https://calimingo-=
+pools-media.s3-us-west-1.amazonaws.com/Facebook+Button+30++x+34.png" alt=3D=
+"Facebook+Button+30++x+34.png"></a> <a href=3D"https://l2511a.prodbx.com/go=
+?l=3D426-427947-aHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ240MEo2emtyNDd=
+xVHdTLVlzU3h1Ymc%3D" rel=3D"nofollow" target=3D"_blank" data-pm-no-track=3D=
+""><img src=3D"https://calimingo-pools-media.s3-us-west-1.amazonaws.com/You=
+tube+Button+30++x+34.png" alt=3D"Youtube+Button+30++x+34.png"></a> <a href=3D=
+"https://l2511a.prodbx.com/go?l=3D426-427947-aHR0cHM6Ly93d3cueWVscC5jb20vYm=
+l6L2NhbGltaW5nby1wb29scy1uZXdwb3J0LWJlYWNo" rel=3D"nofollow" target=3D"_bla=
+nk" data-pm-no-track=3D""><img src=3D"https://calimingo-pools-media.s3-us-w=
+est-1.amazonaws.com/Yelp+Button+30+x+34.png" alt=3D"Yelp+Button+30+x+34.png=
+"></a></p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+<div class=3D"off" style=3D"display: none;"></div>
+<div></div>
+
+
+<div style=3D"clear: both; height: .5rem;"></div>
+<hr>
+<span style=3D"color: #999;"><a href=3D"https://track.pstmrk.it/3/1.dbx.bz%=
+2Fbe/jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/1/Lq8iQTRuwQ"><img=
+ alt=3D"" border=3D"0" src=3D"https://l1.prodbx.com/slices/logo-email.php?4=
+26-427947"></a> Powered by DBX:   <a href=3D"https://track.pstmrk.it/3/1.db=
+x.bz%2Fbe/jrqS/4VXBAQ/AQ/cdb2b77c-dbb4-4e0c-a8f1-9078519717e3/1/Lq8iQTRuwQ"=
+ style=3D"color: #999;">www.ProDBX.com</a></span>
+<img src=3D"https://ea.pstmrk.it/open?m=3Dv3_1.OFhk5Bz55s0uN0ANfEHN1A.YlmPe=
+U8Qfbgk2ag62t5IpGn43G5JIXylD40DqxMQsRZlHK97QnL6f2apANxSyf4YWmQaNDxDaxmxq0ix=
+qW5gzf2Aqq5TvX2UVbNlto3q2qJbu83yqYe2W5bdEIiSIFHJ9lngcW2h3AkqZxNdZ5dNrgrVf-z=
+-o1rQT5trdZGSpnnqdFdfkhUh39Hh48aSKxGvrk_n557c0YkmJZjSVDhf-PAAYRa6zmGnGrNmZY=
+_QiM7lvITDRrTGMX80N-b8FzeuFSmJIR9ufp0opmWk7eR27QI6wmcQHzVZlfjsHcRmwCK12njQs=
+OyAm12rhMUM40rZ7bfLNGe5dKKwXw-PCg8Qikturde2yUT_pE5hIPEn6j4d-t1-ApH4bPPWIbcU=
+AdzLlpCNN4jpUUkaWLhM58j0Frvk-QUgDYGb3RJ2pfUpIu8Ub_rh2baJmzf1kxeV6XcFreVA79C=
+xwSb4sBNGv7bVTr7En1Ifoh9mgD_zMOMCCO0ME_rYIWfASYFRnNcdO7IJr83wil1Hno63ZnE5Q1=
+9a9Vim2LFvXyMUML0T5bjkGSQ" width=3D"1" height=3D"1" border=3D"0" alt=3D"" /=
+></body>
+</html>
+
+--mk3-e99a363d721e442bb054e0c609e651d3--

@@ -9,7 +9,7 @@ A Next.js web application that parses signed build contract `.eml` files and gen
 - **Order Items Extraction**: Extract order items, categories, and subcategories from email HTML tables
 - **Location Extraction**: Extract client information, DBX Customer ID, order number, and address from email text
 - **Excel Generation**: Generate formatted Excel spreadsheets with proper column mapping and styling
-- **Template-Based**: Uses a base template (`template.xlsx`) to preserve formulas and structure
+- **Template-Based**: Uses `Template-V2.xlsx` template to preserve formulas, structure, and conditional formatting
 
 ### Addendum Support
 - **Addendum URL Parsing**: Parse addendums from ProDBX public URLs
@@ -18,14 +18,10 @@ A Next.js web application that parses signed build contract `.eml` files and gen
 - **Main Category Filtering**: Automatically filters out redundant main category rows (e.g., "0100 Calimingo - Concrete")
 - **Formatted Headers**: Display addendum headers as "Addendum #7 (35587)" format
 
-### Formatting Options
-- **Template Selection**: 
-  - **Apply Formatting Unchecked**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values
-  - **Apply Formatting Checked**: Uses `template.xlsx` with manual formatting applied
-- **Conditional Formatting**: Template-V2.xlsx uses conditional formatting that depends on Column A values (rows 16-339)
-- **Header Formatting**: When formatting is enabled, applies fill color, white font, and bold to headers and subcategories
-- **Visual Separators**: Subcategory headers extend to column BE (57) as visual separators
-- **Column Formatting**: Automatic white fill for columns A and O (when formatting enabled)
+### Formatting
+- **Conditional Formatting**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values (rows 16-339)
+- **Automatic Formatting**: All formatting is handled by the template's conditional formatting rules based on Column A labels
+- **Value-Only Pasting**: All values in Columns D-H are pasted as plain values (no formulas) to preserve conditional formatting
 
 ### Data Processing
 - **Column Mapping**:
@@ -45,10 +41,7 @@ A Next.js web application that parses signed build contract `.eml` files and gen
 - **Column B Labels**:
   - **"Initial"**: All email contract items (main categories, subcategories, line items)
   - **"Addendum"**: All addendum items (main categories, subcategories, line items)
-- **Row Management**: 
-  - **Template-V2.xlsx**: Automatic deletion between last entry and row 338, leaves 5 buffer rows after last data entry
-  - **template.xlsx**: Automatic deletion between last entry and row 452, leaves 15 buffer rows after last data entry
-- **Value-Only Pasting**: All values in Columns D-H are pasted as plain values (no formulas) to preserve conditional formatting
+- **Row Management**: Automatic deletion between last entry and row 338, leaves 5 buffer rows after last data entry
 
 ## Getting Started
 
@@ -70,10 +63,9 @@ cd signed-contract-parser
 npm install
 ```
 
-3. Place the template files:
-   - Ensure `contract-parser/template.xlsx` exists (used when Apply Formatting is checked)
-   - Ensure `contract-parser/Template-V2.xlsx` exists (used when Apply Formatting is unchecked)
-   - These templates contain formulas and structure that will be preserved
+3. Place the template file:
+   - Ensure `contract-parser/Template-V2.xlsx` exists
+   - This template contains formulas, structure, and conditional formatting that will be preserved
 
 4. Run the development server:
 ```bash
@@ -107,16 +99,7 @@ vercel
    - Paste addendum URLs in the textarea (one per line)
    - URLs should be in format: `https://l1.prodbx.com/go/view/?35587.426.20251112100816` or `https://login.prodbx.com/go/view/?35587.426.20251112100816`
 
-3. **Optional: Apply Formatting**:
-   - **Unchecked**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values
-     - All values pasted as plain values (no formulas)
-     - Conditional formatting automatically applied based on Column A labels
-     - Row range: 16-339, leaves 5 buffer rows
-   - **Checked**: Uses `template.xlsx` with manual formatting
-     - Applies fill colors, white font, and bold headers
-     - Row range: 16-452, leaves 15 buffer rows
-
-4. **Generate Spreadsheet**:
+3. **Generate Spreadsheet**:
    - Click "Generate Spreadsheet" button
    - The spreadsheet will be automatically downloaded
 
@@ -141,7 +124,7 @@ vercel
 ### Output Format
 
 **Spreadsheet Structure**:
-- **Row 16**: First Main Category Header (when using Template-V2.xlsx) or Location header (when using template.xlsx)
+- **Row 16**: First Main Category Header
 - **Row 16 onwards**: Order items (main categories, subcategories, and line items)
 - **Main Categories**: Included with blank rows above them (except the first one at row 16)
   - Blank rows labeled as "1 - Blank Row" in Column A
@@ -172,7 +155,7 @@ vercel
 **Backend**:
 - Next.js API routes (serverless functions)
 - Node.js 18+ with native `fetch` support
-- Excel generation using ExcelJS and XLSX-Populate
+- Excel generation using ExcelJS
 
 ### Key Modules
 
@@ -193,54 +176,35 @@ vercel
 - Validates URL formats
 
 **`lib/spreadsheetGenerator.ts`**:
-- Loads template based on formatting option:
-  - `Template-V2.xlsx` when Apply Formatting is unchecked
-  - `template.xlsx` when Apply Formatting is checked
-- Preserves template structure and formulas
+- Loads `Template-V2.xlsx` template
+- Preserves template structure, formulas, and conditional formatting
 - Populates data starting at row 16 (first Main Category Header)
 - Populates Column A with labels ("1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row")
 - Populates Column B with labels ("Initial" for email items, "Addendum" for addendum items)
-- Applies formatting (if enabled) using multi-pass approach:
+- Uses two-pass approach:
   - First pass: Data population with ExcelJS (values only, no formulas)
-  - Second pass: Formatting with XLSX-Populate (only when Apply Formatting is checked)
-  - Third pass: Row deletion with ExcelJS
+  - Second pass: Row deletion with ExcelJS
 - Handles shared formulas and merges
-- For Template-V2.xlsx: Skips formatting pass to preserve conditional formatting
+- Conditional formatting is automatically applied by the template based on Column A labels
 
 **`lib/filenameGenerator.ts`**:
 - Generates dynamic filenames based on extracted client information
 - Formats client names as "First Initial. Last Name"
 - Sanitizes filenames for filesystem compatibility
 
-**`lib/cellFormatter.ts`**:
-- ExcelJS-based formatting functions
-- Applies and clears cell formatting
-- Handles merged cells
-
-**`lib/xlsxPopulateFormatter.ts`**:
-- XLSX-Populate-based formatting functions
-- Second-pass formatting for better style persistence
-- Handles column-wide formatting
 
 ### Data Flow
 
 1. **Upload**: User uploads `.eml` file (and optionally adds addendum URLs)
 2. **Parse**: Backend parses EML file and extracts order items
 3. **Fetch Addendums**: If provided, backend fetches and parses addendum URLs
-4. **Generate**: Spreadsheet is generated with all data
-5. **Format**: If enabled, formatting is applied in second pass
-6. **Cleanup**: Unused rows are deleted (third pass)
-7. **Download**: Spreadsheet is downloaded with dynamic filename
+4. **Generate**: Spreadsheet is generated with all data (conditional formatting applied automatically by template)
+5. **Cleanup**: Unused rows are deleted
+6. **Download**: Spreadsheet is downloaded with dynamic filename
 
 ### Template Structure
 
-**template.xlsx** (when Apply Formatting is checked):
-- **Rows 1-15**: Preserved formulas and structure (not modified)
-- **Row 16**: Location header (populated by parser)
-- **Rows 17-452**: Data area for order items and addendums
-- **Row 452+**: Buffer rows (automatically deleted, keeps 15 buffer rows)
-
-**Template-V2.xlsx** (when Apply Formatting is unchecked):
+**Template-V2.xlsx**:
 - **Rows 1-15**: Preserved formulas and structure (not modified)
 - **Row 16**: First Main Category Header (first data row, no empty row above)
 - **Rows 16-338**: Data area for order items and addendums
@@ -301,10 +265,9 @@ npx tsx test-addendum-multiple.ts
    - Check that each addendum has its own header
 
 4. **Test Formatting**:
-   - Generate spreadsheet with formatting enabled
-   - Verify headers and subcategories are formatted
-   - Check that line items are not formatted
-   - Verify columns A and O have white fill
+   - Generate spreadsheet
+   - Verify conditional formatting is applied based on Column A labels
+   - Check that headers, subcategories, and line items are formatted correctly
 
 5. **Test Error Handling**:
    - Test with invalid addendum URLs
@@ -322,13 +285,7 @@ No environment variables are required for basic functionality. The application u
 
 ### Template Files
 
-**`contract-parser/template.xlsx`** (used when Apply Formatting is checked):
-- Contains formulas in columns I-BE
-- Has structure in rows 1-15
-- Has buffer rows (17-452) for data population
-- Has invoice status section (rows 37-50, columns A-H)
-
-**`contract-parser/Template-V2.xlsx`** (used when Apply Formatting is unchecked):
+**`contract-parser/Template-V2.xlsx`**:
 - Contains formulas in columns I-BE
 - Has structure in rows 1-15
 - Has conditional formatting based on Column A values (rows 16-339)
@@ -351,7 +308,7 @@ No environment variables are required for basic functionality. The application u
 ### Build Configuration
 
 The `next.config.js` is configured to:
-- Mark server-only modules as external (`exceljs`, `xlsx-populate`, `mailparser`, `cheerio`)
+- Mark server-only modules as external (`exceljs`, `mailparser`, `cheerio`)
 - Provide fallbacks for Node.js core modules
 - Exclude `lib/` modules from client-side bundling
 
@@ -382,15 +339,13 @@ The `next.config.js` is configured to:
 Enable debug logging by checking console output:
 - `[API]` prefix: API route logs
 - `[Addendum Parser]` prefix: Addendum parsing logs
-- `[First Pass]` prefix: Spreadsheet generation logs
-- `[Formatting]` prefix: Formatting application logs
+- `[Data Population]` prefix: Spreadsheet generation logs
+- `[Row Cleanup]` prefix: Row deletion logs
 
 ## Limitations
 
-1. **Template Dependency**: Requires both `template.xlsx` and `Template-V2.xlsx` files in `contract-parser/` directory
-2. **Row Limits**: 
-   - Template-V2.xlsx: Maximum 339 rows for data (rows 16-339)
-   - template.xlsx: Maximum 452 rows for data (rows 17-452)
+1. **Template Dependency**: Requires `Template-V2.xlsx` file in `contract-parser/` directory
+2. **Row Limits**: Maximum 339 rows for data (rows 16-339)
 3. **Sheet Name Length**: Excel sheet names limited to 31 characters
 4. **File Size**: Large EML files or many addendums may exceed serverless function timeout
 5. **URL Accessibility**: Addendum URLs must be publicly accessible (no authentication required)
@@ -419,7 +374,13 @@ For issues or questions:
 
 ## Changelog
 
-### Version 1.2.0 (Current - Template-V2.xlsx Support)
+### Version 1.3.0 (Current - Removed Apply Formatting Feature)
+- Removed "Apply Formatting" feature - now always uses Template-V2.xlsx with conditional formatting
+- Simplified codebase by removing conditional formatting logic and XLSX-Populate dependency
+- All formatting is now handled automatically by the template's conditional formatting rules
+- Improved performance by removing formatting pass
+
+### Version 1.2.0 (Template-V2.xlsx Support)
 - Added Template-V2.xlsx support for conditional formatting mode
 - Row 16 now treated as first data row (Main Category Header)
 - Added Column A labels: "1 - Header", "1 - Subheader", "1 - Detail", "1 - Blank Row"

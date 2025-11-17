@@ -1,15 +1,7 @@
 import ExcelJS from 'exceljs';
 import path from 'path';
-import XLSXPopulate from 'xlsx-populate';
 import { OrderItem, Location } from './tableExtractor';
 import { AddendumData } from './addendumParser';
-import { formatLocationHeader, formatSubCategoryHeader, clearCellFormatting } from './cellFormatter';
-import { 
-  formatSubCategoryHeaderXLSXPopulate, 
-  formatLocationHeaderXLSXPopulate,
-  formatColumnsAAndOWhite,
-  clearCellFormattingXLSXPopulate 
-} from './xlsxPopulateFormatter';
 
 /**
  * Sanitize sheet name for Excel (max 31 chars, no invalid characters)
@@ -39,13 +31,30 @@ function findLastDataRow(worksheet: ExcelJS.Worksheet): number {
   
   // Scan from row 16 to row 339 (maximum usable rows)
   for (let rowNum = 16; rowNum <= 339; rowNum++) {
+    // Check column A first - if it has a label, it's a data row
+    const cellA = worksheet.getCell(rowNum, 1);
+    const cellAValue = cellA.value;
+    
+    // Skip rows that are marked as blank rows (these shouldn't count as data)
+    if (cellAValue === '1 - Blank Row') {
+      continue;
+    }
+    
+    // Check if this row has actual data content in columns D, F, G, or H
     const cellD = worksheet.getCell(rowNum, 4); // Column D
     const cellF = worksheet.getCell(rowNum, 6); // Column F
     const cellG = worksheet.getCell(rowNum, 7); // Column G
     const cellH = worksheet.getCell(rowNum, 8); // Column H
     
-    // Check if this row has data in D, F, G, or H
-    if (cellD.value || cellF.value || cellG.value || cellH.value) {
+    // Check if row has meaningful data (not just empty strings or formulas evaluating to empty)
+    const hasData = 
+      (cellAValue && cellAValue !== '1 - Blank Row') || // Has label in A (Header, Subheader, Detail)
+      (cellD.value && cellD.value.toString().trim().length > 0) || // Has text in D
+      (cellF.value && typeof cellF.value === 'number' && cellF.value !== 0) || // Has non-zero number in F
+      (cellG.value && typeof cellG.value === 'number' && cellG.value !== 0) || // Has non-zero number in G
+      (cellH.value && typeof cellH.value === 'number' && cellH.value !== 0); // Has non-zero number in H
+    
+    if (hasData) {
       lastRow = rowNum;
     }
   }
@@ -156,22 +165,20 @@ function cleanSharedFormulasFromRange(worksheet: ExcelJS.Worksheet, startRow: nu
 }
 
 /**
- * Delete unused rows from a buffer (third pass)
- * This function loads the buffer, deletes rows, and returns a new buffer
- * This is done as a separate pass AFTER formatting to avoid breaking shared formulas
- * @param buffer - Excel file buffer
+ * Delete rows after end marker (Pass 2)
+ * Simple, straightforward deletion: delete all rows from (endMarkerRow + 1) to maxRow
+ * Deletes from bottom to top to avoid index shifting issues
+ * @param buffer - Excel file buffer from Pass 1
  * @param sheetName - Name of the worksheet
- * @param lastDataRow - Last row number that contains data
- * @param maxRow - Maximum row number (339 for Template-V2, 452 for template.xlsx)
- * @param bufferRows - Number of buffer rows to keep (15)
+ * @param endMarkerRow - Row number of the end marker (Column B = "Last Row")
+ * @param maxRow - Maximum row number to delete up to (338)
  * @returns New buffer with rows deleted
  */
-async function deleteUnusedRowsFromBuffer(
+async function deleteRowsAfterMarker(
   buffer: Buffer,
   sheetName: string,
-  lastDataRow: number,
-  maxRow: number = 339,
-  bufferRows: number = 15
+  endMarkerRow: number,
+  maxRow: number = 338
 ): Promise<Buffer> {
   try {
     // Load the buffer into ExcelJS workbook
@@ -180,112 +187,227 @@ async function deleteUnusedRowsFromBuffer(
     
     const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) {
-      console.warn(`[Row Cleanup] Worksheet "${sheetName}" not found, returning original buffer`);
+      console.warn(`[Pass 2] Worksheet "${sheetName}" not found, returning original buffer`);
       return buffer;
     }
     
-    // CRITICAL: Clean ALL shared formulas in the entire worksheet BEFORE deletion
-    // This prevents broken references after rows are deleted and shifted
-    console.log(`[Row Cleanup] Cleaning ALL shared formulas before row deletion...`);
+    // Verify end marker row by checking Column B for "Last Row"
+    let foundMarkerRow = endMarkerRow;
     try {
-      // Clean from row 1 to a high row number to catch all shared formulas
+      const markerCellB = worksheet.getCell(endMarkerRow, 2);
+      if (markerCellB.value !== 'Last Row') {
+        console.warn(`[Pass 2] End marker not found at row ${endMarkerRow} (Column B = "${markerCellB.value}"), searching...`);
+        // Search for the marker row
+        for (let row = 16; row <= maxRow; row++) {
+          const cellB = worksheet.getCell(row, 2);
+          if (cellB.value === 'Last Row') {
+            foundMarkerRow = row;
+            console.log(`[Pass 2] Found end marker at row ${foundMarkerRow}`);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[Pass 2] Could not verify end marker row, using provided row ${endMarkerRow}`);
+    }
+    
+    // Calculate rows to delete: from (foundMarkerRow + 1) to maxRow
+    const firstRowToDelete = foundMarkerRow + 1;
+    const lastRowToDelete = maxRow;
+    
+    // Check if there are any rows to delete
+    if (firstRowToDelete > lastRowToDelete) {
+      console.log(`[Pass 2] No rows to delete (marker at row ${foundMarkerRow}, max row is ${maxRow})`);
+      return buffer;
+    }
+    
+    const rowsToDelete = lastRowToDelete - firstRowToDelete + 1;
+    console.log(`[Pass 2] Will delete ${rowsToDelete} rows: rows ${firstRowToDelete} to ${lastRowToDelete}`);
+    
+    // CRITICAL: Clean ALL shared formulas BEFORE deletion
+    // This prevents orphaned references when rows are deleted
+    console.log(`[Pass 2] Cleaning all shared formulas before row deletion...`);
+    try {
+      // Clean shared formulas from the entire worksheet (rows 1 to a high number)
       cleanSharedFormulasFromRange(worksheet, 1, 1000);
-      console.log(`[Row Cleanup] All shared formulas cleaned before deletion`);
+      
+      // Also clear all shared formula definitions from worksheet model
+      if (worksheet.model && (worksheet.model as any).sharedFormulas) {
+        console.log(`[Pass 2] Clearing all shared formula definitions from worksheet model before deletion...`);
+        (worksheet.model as any).sharedFormulas = {};
+      }
+      
+      console.log(`[Pass 2] Shared formulas cleaned before deletion`);
     } catch (cleanError: any) {
-      console.warn(`[Row Cleanup] Warning: Could not clean shared formulas before deletion:`, cleanError?.message || cleanError);
+      console.warn(`[Pass 2] Warning: Could not clean shared formulas before deletion:`, cleanError?.message || cleanError);
       // Continue anyway - we'll try to delete rows
     }
     
-    // Call the row deletion logic
-    const rowsDeleted = deleteUnusedRows(worksheet, lastDataRow, maxRow, bufferRows);
-    
-    if (!rowsDeleted) {
-      console.log(`[Row Cleanup] No rows were deleted, returning original buffer`);
-      return buffer;
+    // Delete rows from bottom to top (simple, straightforward - like user would do)
+    // This avoids index shifting issues
+    let deletedCount = 0;
+    for (let rowToDelete = lastRowToDelete; rowToDelete >= firstRowToDelete; rowToDelete--) {
+      try {
+        // Verify spliceRows method exists
+        if (typeof worksheet.spliceRows !== 'function') {
+          console.error(`[Pass 2] spliceRows method not available, cannot delete rows`);
+          throw new Error('spliceRows method not available');
+        }
+        
+        // Delete one row at a time (more reliable than batch deletion)
+        worksheet.spliceRows(rowToDelete, 1);
+        deletedCount++;
+      } catch (error: any) {
+        console.warn(`[Pass 2] Could not delete row ${rowToDelete}:`, error?.message || error);
+        // Continue with other rows
+      }
     }
     
-    // CRITICAL: After deleting rows, clean shared formulas again from remaining rows
-    // Row deletion shifts rows up, which can break formula references
-    // Clean from row 1 to the new maximum row (after deletion)
-    const newMaxRow = lastDataRow + bufferRows; // After deletion, max row should be lastDataRow + bufferRows
-    console.log(`[Row Cleanup] Cleaning shared formulas after row deletion (rows 1-${newMaxRow})...`);
+    console.log(`[Pass 2] Successfully deleted ${deletedCount} out of ${rowsToDelete} rows`);
+    
+    // CRITICAL: Clean ALL shared formulas AFTER deletion, before writing buffer
+    // Row deletion can leave orphaned shared formula references
+    // We need to clean the entire worksheet to prevent "Shared Formula master must exist" errors
+    console.log(`[Pass 2] Cleaning all shared formulas after row deletion...`);
     try {
-      cleanSharedFormulasFromRange(worksheet, 1, newMaxRow + 50); // Add buffer for safety
-      console.log(`[Row Cleanup] Shared formulas cleaned after deletion`);
+      // First, clear all shared formula definitions from worksheet model
+      if (worksheet.model && (worksheet.model as any).sharedFormulas) {
+        console.log(`[Pass 2] Clearing all shared formula definitions from worksheet model...`);
+        (worksheet.model as any).sharedFormulas = {};
+      }
+      
+      // Clean shared formulas from the entire worksheet (rows 1 to a high number)
+      // Check up to row 1000 to catch any formulas beyond our data area
+      cleanSharedFormulasFromRange(worksheet, 1, 1000);
+      
+      // Also iterate through all rows in the worksheet model if available
+      // This catches shared formulas that might be in the model but not accessible via getCell
+      if (worksheet.model && (worksheet.model as any).rows) {
+        console.log(`[Pass 2] Cleaning shared formulas from worksheet model rows...`);
+        const rows = (worksheet.model as any).rows;
+        if (Array.isArray(rows)) {
+          rows.forEach((row: any, rowIndex: number) => {
+            if (row && row.cells) {
+              Object.values(row.cells).forEach((cell: any) => {
+                if (cell && cell.value && typeof cell.value === 'object' && cell.value.sharedFormula) {
+                  if (cell.formula) {
+                    cell.value = { formula: cell.formula };
+                  } else {
+                    cell.value = null;
+                  }
+                }
+                if (cell && cell.sharedFormula) {
+                  delete cell.sharedFormula;
+                }
+              });
+            }
+          });
+        }
+      }
+      
+      console.log(`[Pass 2] Shared formulas cleaned successfully`);
     } catch (cleanError: any) {
-      console.warn(`[Row Cleanup] Warning: Could not clean shared formulas after deletion:`, cleanError?.message || cleanError);
+      console.warn(`[Pass 2] Warning: Could not clean shared formulas after deletion:`, cleanError?.message || cleanError);
       // Continue anyway - we'll try to write the buffer
     }
     
-    // CRITICAL: Also clear all shared formula definitions from worksheet model
-    // This is a more aggressive approach that removes all shared formula references
+    // Generate final buffer
+    console.log(`[Pass 2] Generating final buffer...`);
     try {
-      if (worksheet.model && (worksheet.model as any).sharedFormulas) {
-        console.log(`[Row Cleanup] Clearing all shared formula definitions from worksheet model...`);
-        (worksheet.model as any).sharedFormulas = {};
-        console.log(`[Row Cleanup] All shared formula definitions cleared from model`);
-      }
-    } catch (modelError: any) {
-      console.warn(`[Row Cleanup] Warning: Could not clear shared formulas from model:`, modelError?.message || modelError);
-    }
-    
-    // Generate new buffer with rows deleted
-    console.log(`[Row Cleanup] Writing buffer after row deletion...`);
-    try {
-      const newBuffer = await workbook.xlsx.writeBuffer();
-      console.log(`[Row Cleanup] Buffer written successfully: ${newBuffer.byteLength} bytes`);
-      return Buffer.from(newBuffer);
+      const finalBuffer = await workbook.xlsx.writeBuffer();
+      console.log(`[Pass 2] Final buffer generated: ${finalBuffer.byteLength} bytes`);
+      return Buffer.from(finalBuffer);
     } catch (writeError: any) {
-      console.error(`[Row Cleanup] Error writing buffer after row deletion:`, writeError?.message || writeError);
-      console.error(`[Row Cleanup] Stack trace:`, writeError?.stack || 'No stack trace');
-      // If writing fails, try one more aggressive cleanup
-      console.log(`[Row Cleanup] Attempting aggressive shared formula cleanup...`);
+      console.error(`[Pass 2] Error writing buffer:`, writeError?.message || writeError);
+      
+      // If writing fails due to shared formulas, try aggressive cleanup
+      console.log(`[Pass 2] Attempting aggressive shared formula cleanup...`);
       try {
-        // Clear ALL shared formulas from the entire worksheet
+        // Clear ALL shared formulas from worksheet model first
         if (worksheet.model) {
           (worksheet.model as any).sharedFormulas = {};
+          console.log(`[Pass 2] Cleared shared formulas from model`);
         }
-        // Also clear from all cells
-        for (let rowNum = 1; rowNum <= newMaxRow + 100; rowNum++) {
-          for (let colNum = 1; colNum <= 100; colNum++) {
+        
+        // Get the actual row count from the worksheet
+        // ExcelJS might have rows beyond what rowCount reports, so check a high number
+        const actualRowCount = worksheet.rowCount || 1000;
+        const maxRowToCheck = Math.max(actualRowCount, 1000, 900); // Check at least up to row 900 (error was at 832)
+        console.log(`[Pass 2] Checking all rows (1-${maxRowToCheck}) for shared formulas...`);
+        
+        // Check ALL rows in the worksheet (not just up to marker)
+        // The error shows row 832, so we need to check all rows
+        for (let rowNum = 1; rowNum <= maxRowToCheck; rowNum++) {
+          for (let colNum = 1; colNum <= 200; colNum++) { // Check up to column 200 (BS is column 71, but check more)
             try {
               const cell = worksheet.getCell(rowNum, colNum);
+              
+              // Check if cell has shared formula in value object
               const cellValue = cell.value;
               if (cellValue && typeof cellValue === 'object' && !Array.isArray(cellValue)) {
                 const valueObj = cellValue as any;
                 if (valueObj.sharedFormula) {
-                  // Remove shared formula reference - convert to null or keep existing value
+                  // Convert to regular formula if available
                   if (cell.formula) {
                     cell.value = { formula: cell.formula };
                   } else {
-                    // Clear the cell if it has a shared formula but no formula string
+                    // No formula available, clear the cell
                     cell.value = null;
                   }
                 }
               }
-              // Also clear sharedFormula property directly
+              
+              // Also check and clear sharedFormula property directly on cell
               if ((cell as any).sharedFormula) {
                 delete (cell as any).sharedFormula;
               }
+              
+              // Also check the cell model directly
+              const cellModel = (cell as any).model;
+              if (cellModel) {
+                if (cellModel.sharedFormula) {
+                  delete cellModel.sharedFormula;
+                }
+                if (cellModel.value && typeof cellModel.value === 'object' && cellModel.value.sharedFormula) {
+                  if (cellModel.formula) {
+                    cellModel.value = { formula: cellModel.formula };
+                  } else {
+                    cellModel.value = null;
+                  }
+                }
+              }
             } catch (e) {
-              // Ignore errors
+              // Ignore errors for cells that don't exist
             }
           }
         }
+        
+        // Clear shared formulas from model one more time
+        if (worksheet.model) {
+          (worksheet.model as any).sharedFormulas = {};
+        }
+        
+        console.log(`[Pass 2] Aggressive cleanup complete, attempting to write buffer...`);
+        
         // Try writing again
-        const newBuffer = await workbook.xlsx.writeBuffer();
-        console.log(`[Row Cleanup] Buffer written successfully after aggressive cleanup: ${newBuffer.byteLength} bytes`);
-        return Buffer.from(newBuffer);
+        const finalBuffer = await workbook.xlsx.writeBuffer();
+        console.log(`[Pass 2] Final buffer generated after aggressive cleanup: ${finalBuffer.byteLength} bytes`);
+        return Buffer.from(finalBuffer);
       } catch (retryError: any) {
-        console.error(`[Row Cleanup] Failed to write buffer even after aggressive cleanup:`, retryError?.message || retryError);
-        throw retryError; // Re-throw to be caught by outer catch
+        console.error(`[Pass 2] Failed to write buffer even after aggressive cleanup:`, retryError?.message || retryError);
+        // If even aggressive cleanup fails, return the original buffer (without deletion)
+        // This ensures the file is still generated, just with extra rows
+        // The end marker is still in place, so users can see where data ends
+        console.warn(`[Pass 2] Returning original buffer (rows not deleted) due to persistent shared formula errors`);
+        console.warn(`[Pass 2] Note: End marker is still in place at row ${foundMarkerRow} (Column B = "Last Row")`);
+        return buffer;
       }
     }
   } catch (error: any) {
-    console.error(`[Row Cleanup] Error during row deletion from buffer:`, error?.message || error);
-    console.error(`[Row Cleanup] Stack trace:`, error?.stack || 'No stack trace');
-    // Return original buffer if deletion fails - row deletion is not critical
-    console.warn(`[Row Cleanup] Returning original buffer due to error`);
+    console.error(`[Pass 2] Error during row deletion:`, error?.message || error);
+    console.error(`[Pass 2] Stack trace:`, error?.stack || 'No stack trace');
+    // Return original buffer if deletion fails - deletion is not critical
+    console.warn(`[Pass 2] Returning original buffer due to error`);
     return buffer;
   }
 }
@@ -362,17 +484,26 @@ function deleteUnusedRows(
     // We verify rows are empty before deleting to avoid deleting rows with data or formulas
     
     // First, verify that rows from firstRowToDelete to lastRowToDelete are empty
-    // Check columns D-H (our working columns) to ensure they don't have data
+    // Check columns A, D-H to ensure they don't have data
     let allRowsEmpty = true;
     for (let rowToCheck = firstRowToDelete; rowToCheck <= lastRowToDelete; rowToCheck++) {
-      // Check if row has any data in columns D-H (our working columns)
-      // We're checking D-H because those are the columns we populate
-      for (let col = 4; col <= 8; col++) {
-        try {
+      try {
+        // Check column A - if it has a label (not "1 - Blank Row" which we'll add later), don't delete
+        const cellA = worksheet.getCell(rowToCheck, 1);
+        const cellAValue = cellA.value;
+        if (cellAValue && cellAValue !== '1 - Blank Row' && cellAValue.toString().trim().length > 0) {
+          allRowsEmpty = false;
+          console.log(`[Row Cleanup] Row ${rowToCheck} has data in column A: "${cellAValue.toString().substring(0, 50)}"`);
+          break;
+        }
+        
+        // Check columns D-H (our working columns) for actual data
+        // We're checking D-H because those are the columns we populate
+        for (let col = 4; col <= 8; col++) {
           const cell = worksheet.getCell(rowToCheck, col);
           const cellValue = cell.value;
           
-          // If cell has a value that's not empty/null/zero, don't delete
+          // If cell has meaningful data (not empty/null/zero/empty string), don't delete
           if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
             if (typeof cellValue === 'string' && cellValue.trim().length > 0) {
               allRowsEmpty = false;
@@ -384,11 +515,13 @@ function deleteUnusedRows(
               break;
             }
           }
-        } catch (e) {
-          // Ignore errors for cells that don't exist
         }
+        if (!allRowsEmpty) break;
+      } catch (e) {
+        // If we can't access the row, assume it's empty and can be deleted
+        // This might happen if the row is beyond the worksheet range
+        console.warn(`[Row Cleanup] Warning: Could not check row ${rowToCheck}, assuming empty:`, e);
       }
-      if (!allRowsEmpty) break;
     }
     
     if (allRowsEmpty && rowsToDelete > 0) {
@@ -396,16 +529,146 @@ function deleteUnusedRows(
       try {
         console.log(`[Row Cleanup] All ${rowsToDelete} rows are empty. Deleting in one batch...`);
         
+        // Check worksheet row count before deletion
+        const rowCountBefore = worksheet.rowCount;
+        console.log(`[Row Cleanup] Worksheet row count before deletion: ${rowCountBefore}`);
+        
         // Verify spliceRows method exists before calling it
         if (typeof worksheet.spliceRows !== 'function') {
-          console.warn(`[Row Cleanup] spliceRows method not available, skipping row deletion`);
-          return false;
+          console.warn(`[Row Cleanup] spliceRows method not available, trying alternative method...`);
+          
+          // Alternative: Delete rows one by one from bottom to top (avoids index shifting issues)
+          console.log(`[Row Cleanup] Using alternative deletion method: deleting from bottom to top...`);
+          let deletedCount = 0;
+          for (let rowToDelete = lastRowToDelete; rowToDelete >= firstRowToDelete; rowToDelete--) {
+            try {
+              // Check if row exists
+              const testCell = worksheet.getCell(rowToDelete, 1);
+              if (testCell) {
+                worksheet.spliceRows(rowToDelete, 1);
+                deletedCount++;
+              }
+            } catch (e) {
+              console.warn(`[Row Cleanup] Could not delete row ${rowToDelete}:`, e);
+            }
+          }
+          
+          if (deletedCount > 0) {
+            console.log(`[Row Cleanup] Successfully deleted ${deletedCount} rows using alternative method`);
+            console.log(`[Row Cleanup] Final result: ${bufferRows} buffer rows after last data row (rows ${firstRowToKeep}-${lastRowToKeep})`);
+            
+            // Set up buffer rows after deletion
+            for (let i = 0; i < bufferRows; i++) {
+              const bufferRowNum = firstRowToKeep + i;
+              try {
+                const cellA = worksheet.getCell(bufferRowNum, 1);
+                const cellB = worksheet.getCell(bufferRowNum, 2);
+                cellA.value = '1 - Blank Row';
+                cellB.value = null;
+                for (let col = 4; col <= 14; col++) {
+                  try {
+                    worksheet.getCell(bufferRowNum, col).value = null;
+                  } catch (e) {
+                    // Ignore
+                  }
+                }
+              } catch (e) {
+                console.warn(`[Row Cleanup] Warning: Could not set up buffer row ${bufferRowNum}:`, e);
+              }
+            }
+            console.log(`[Row Cleanup] Set up ${bufferRows} buffer rows with "1 - Blank Row" labels`);
+            return true;
+          } else {
+            console.warn(`[Row Cleanup] Alternative deletion method failed, no rows deleted`);
+            return false;
+          }
         }
         
-        // Call spliceRows with validation
-        worksheet.spliceRows(firstRowToDelete, rowsToDelete);
-        console.log(`[Row Cleanup] Successfully deleted ${rowsToDelete} rows (rows ${firstRowToDelete}-${lastRowToDelete})`);
+        // Use spliceRows if available (more efficient)
+        console.log(`[Row Cleanup] Calling spliceRows(${firstRowToDelete}, ${rowsToDelete})...`);
+        
+        // ExcelJS spliceRows(start, count) - deletes 'count' rows starting from 'start' (1-indexed)
+        // Note: ExcelJS might use 0-indexed or 1-indexed, so we verify the behavior
+        try {
+          worksheet.spliceRows(firstRowToDelete, rowsToDelete);
+        } catch (spliceError: any) {
+          console.error(`[Row Cleanup] Error with spliceRows, trying alternative method:`, spliceError?.message || spliceError);
+          // Fall back to alternative method if spliceRows fails
+          let deletedCount = 0;
+          for (let rowToDelete = lastRowToDelete; rowToDelete >= firstRowToDelete; rowToDelete--) {
+            try {
+              const testCell = worksheet.getCell(rowToDelete, 1);
+              if (testCell) {
+                worksheet.spliceRows(rowToDelete, 1);
+                deletedCount++;
+              }
+            } catch (e) {
+              console.warn(`[Row Cleanup] Could not delete row ${rowToDelete}:`, e);
+            }
+          }
+          console.log(`[Row Cleanup] Deleted ${deletedCount} rows using fallback method`);
+        }
+        
+        // Check row count after deletion to verify deletion worked
+        const rowCountAfter = worksheet.rowCount;
+        const rowsDeleted = rowCountBefore - rowCountAfter;
+        console.log(`[Row Cleanup] Worksheet row count after deletion: ${rowCountAfter} (deleted: ${rowsDeleted} rows)`);
+        
+        // Verify that the rows we wanted to delete are actually gone
+        // Check a few rows that should have been deleted
+        let verifiedDeleted = true;
+        for (let checkRow = firstRowToDelete; checkRow <= Math.min(firstRowToDelete + 5, lastRowToDelete); checkRow++) {
+          try {
+            const checkCell = worksheet.getCell(checkRow, 1);
+            // If row was deleted, accessing it might throw or return a different row (shifted up)
+            // Check if the row now contains what should be in a buffer row
+            if (checkRow <= lastRowToKeep && checkCell.value === '1 - Blank Row') {
+              // This is expected - buffer row
+              continue;
+            } else if (checkRow > lastRowToKeep) {
+              // This row should have been deleted - verify it's empty or doesn't exist
+              const hasData = checkCell.value && checkCell.value !== '1 - Blank Row';
+              if (hasData) {
+                console.warn(`[Row Cleanup] Row ${checkRow} should have been deleted but still has data: ${checkCell.value}`);
+              }
+            }
+          } catch (e) {
+            // Row might not exist anymore, which is good
+          }
+        }
+        
+        console.log(`[Row Cleanup] Successfully deleted rows (rows ${firstRowToDelete}-${lastRowToDelete})`);
         console.log(`[Row Cleanup] Final result: ${bufferRows} buffer rows after last data row (rows ${firstRowToKeep}-${lastRowToKeep})`);
+        
+        // Set up buffer rows with proper labels after deletion
+        // Buffer rows should have: Column A = "1 - Blank Row", Column B = empty, D-N = empty
+        for (let i = 0; i < bufferRows; i++) {
+          const bufferRowNum = firstRowToKeep + i;
+          try {
+            const cellA = worksheet.getCell(bufferRowNum, 1);
+            const cellB = worksheet.getCell(bufferRowNum, 2);
+            
+            // Set Column A to "1 - Blank Row"
+            cellA.value = '1 - Blank Row';
+            
+            // Set Column B to empty
+            cellB.value = null;
+            
+            // Clear columns D-N (4-14) for visual separation
+            for (let col = 4; col <= 14; col++) {
+              try {
+                const cell = worksheet.getCell(bufferRowNum, col);
+                cell.value = null;
+              } catch (e) {
+                // Ignore errors for cells that don't exist
+              }
+            }
+          } catch (e) {
+            console.warn(`[Row Cleanup] Warning: Could not set up buffer row ${bufferRowNum}:`, e);
+          }
+        }
+        console.log(`[Row Cleanup] Set up ${bufferRows} buffer rows with "1 - Blank Row" labels`);
+        
         return true; // Successfully deleted rows
       } catch (error: any) {
         console.error(`[Row Cleanup] Error deleting rows in batch:`, error?.message || error);
@@ -473,21 +736,21 @@ function clearBoldFromCell(cell: ExcelJS.Cell): void {
 
 /**
  * Generate Excel spreadsheet from order items, appending to template
+ * Uses Template-V2.xlsx with conditional formatting based on Column A values
  * @param items - Array of order items from email parser
  * @param location - Location object with orderNo, streetAddress, city, state, zip
- * @param applyFormatting - Whether to apply formatting (default: false)
  * @param addendumData - Array of addendum data (optional)
+ * @param deleteExtraRows - Whether to delete extra rows after end marker (optional, default: false)
  * @returns Excel file buffer
  */
 export async function generateSpreadsheet(
   items: OrderItem[], 
   location: Location, 
-  applyFormatting: boolean = false,
-  addendumData: AddendumData[] = []
+  addendumData: AddendumData[] = [],
+  deleteExtraRows: boolean = false
 ): Promise<Buffer> {
-  // Load template file - use Template-V2.xlsx when applyFormatting is false
-  const templateFileName = applyFormatting ? 'template.xlsx' : 'Template-V2.xlsx';
-  const templatePath = path.join(process.cwd(), 'contract-parser', templateFileName);
+  // Load Template-V2.xlsx template file
+  const templatePath = path.join(process.cwd(), 'contract-parser', 'Template-V2.xlsx');
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(templatePath);
   
@@ -496,27 +759,18 @@ export async function generateSpreadsheet(
   
   // Clean shared formulas from rows 16-339 (rows we'll be working with)
   // This prevents "Shared Formula master must exist" errors when saving
-  // For Template-V2.xlsx, we use rows 16-339; for template.xlsx, we still use 16-452
-  const maxRow = applyFormatting ? 452 : 339;
+  const maxRow = 339;
   cleanSharedFormulasFromRange(worksheet, 16, maxRow);
   
   // Rename worksheet to "#OrderNo-Street Address"
   const sheetName = sanitizeSheetName(`#${location.orderNo}-${location.streetAddress}`);
   worksheet.name = sheetName;
   
-  // Find last data row (scanning up to maxRow - maximum usable rows)
-  const lastDataRow = findLastDataRow(worksheet);
-  
   // Row 16 is now treated as a regular row for data (first Main Category Header)
   // Start populating data from row 16
   let currentRow = 16;
   
   // Process items and append them
-  // STEP 1: Track subcategory row numbers during first pass (ExcelJS)
-  // We'll use this list in the second pass (XLSX-Populate) to format ONLY subcategories
-  const subcategoryRows: number[] = [];
-  let subcategoryCount = 0;
-  
   // Track if this is the first item to determine if we need an empty row above
   let isFirstItem = true;
   
@@ -604,16 +858,9 @@ export async function generateSpreadsheet(
       currentRow++;
       continue;
     } else if (item.type === 'subcategory') {
-      // Sub-category header row - populate data ONLY (no formatting in first pass)
+      // Sub-category header row - populate data with plain values only
       const row = currentRow;
-      subcategoryCount++;
       isFirstItem = false; // Mark that we've processed at least one item
-      
-      // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
-      if (applyFormatting) {
-        subcategoryRows.push(row);
-      }
-      console.log(`[First Pass] Tracked subcategory #${subcategoryCount} at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
       
       // Clean the text to remove asterisks, special characters, and formatting
       let cleanedText = (item.productService || '').toString();
@@ -654,51 +901,16 @@ export async function generateSpreadsheet(
         // Merge might already exist, ignore error
       }
       
-      // Set value ONLY (no formatting in first pass)
+      // Set value ONLY (plain value, no formatting)
       cellD.value = cleanedText;
       
       // Explicitly set F, G, H to empty/null for subcategories
-      // CRITICAL: Also clear values from columns I through BE (columns 9-57)
-      // Subcategory rows serve as visual separators - only D-E should have text
       cellF.value = null;
       cellG.value = null;
       cellH.value = null;
       
-      // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
-      // Let the template's conditional formatting handle it
-      if (applyFormatting) {
-        // Clear values from columns I (9) through BE (57) for subcategories
-        // These columns should be blank but will have fill color in second pass
-        for (let col = 9; col <= 57; col++) {
-          try {
-            const cell = worksheet.getCell(row, col);
-            cell.value = null;
-          } catch (e) {
-            // Ignore errors for cells that don't exist
-          }
-        }
-        
-        // Clear ALL formatting from all cells (D through BE) in first pass
-        // Formatting will be applied in second pass using XLSX-Populate
-        clearCellFormatting(cellD);
-        clearCellFormatting(cellE);
-        clearCellFormatting(cellF);
-        clearCellFormatting(cellG);
-        clearCellFormatting(cellH);
-        
-        // Also clear formatting from columns I through BE
-        for (let col = 9; col <= 57; col++) {
-          try {
-            const cell = worksheet.getCell(row, col);
-            clearCellFormatting(cell);
-          } catch (e) {
-            // Ignore errors
-          }
-        }
-        
-        // Set basic alignment for column D (without formatting)
-        cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
-      }
+      // Template-V2.xlsx uses conditional formatting based on Column A values
+      // No need to clear or apply formatting - let the template handle it
       
       // Clear any shared formula reference
       if ((cellD as any).sharedFormula) delete (cellD as any).sharedFormula;
@@ -724,10 +936,6 @@ export async function generateSpreadsheet(
         // Normalize whitespace
         cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
         
-        // CRITICAL: Clear formatting FIRST before setting any values
-        // This prevents template formatting from being inherited
-        // Line items should have NO formatting (no fill, no bold, no color)
-        
         // Get all cells for this row
         const cellA = worksheet.getCell(row, 1);
         const cellB = worksheet.getCell(row, 2);
@@ -743,21 +951,7 @@ export async function generateSpreadsheet(
         // Set Column B to "Initial" for email items (plain value)
         cellB.value = 'Initial';
         
-        // CRITICAL: Line items should NEVER have formatting (no fill, no bold, no color)
-        // Clear formatting MULTIPLE times to ensure template formatting is completely removed
-        
-        // STEP 1: Clear formatting from ALL cells FIRST (before setting values)
-        // Only clear formatting if applyFormatting is true (for template.xlsx)
-        // For Template-V2.xlsx, let conditional formatting handle it
-        if (applyFormatting) {
-          clearCellFormatting(cellD);
-          clearCellFormatting(cellE);
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
-        }
-        
-        // STEP 2: Set values (plain values, no formulas)
+        // Set values (plain values, no formulas)
         cellD.value = cleanedText;
         // Ensure numeric values are plain numbers, not formulas
         const qtyValue = item.qty !== '' && item.qty !== null && item.qty !== undefined ? (typeof item.qty === 'number' ? item.qty : parseFloat(String(item.qty)) || 0) : 0;
@@ -768,17 +962,7 @@ export async function generateSpreadsheet(
         cellG.value = rateValue;
         cellH.value = amountValue;
         
-        // STEP 3: After setting values, clear formatting AGAIN (only if applyFormatting is true)
-        // Setting values can sometimes re-apply template formatting in ExcelJS
-        if (applyFormatting) {
-          clearCellFormatting(cellD);
-          clearCellFormatting(cellE);
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
-        }
-        
-        // STEP 4: Merge D:E AFTER clearing formatting and setting values
+        // Merge D:E
         try {
           const isMerged = worksheet.model.merges?.some((merge: any) => {
             return merge.top <= row && merge.bottom >= row &&
@@ -791,62 +975,19 @@ export async function generateSpreadsheet(
           // Merge might already exist, ignore error
         }
         
-        // STEP 5: After merge, clear formatting AGAIN (merge can copy formatting)
-        // Only if applyFormatting is true
-        if (applyFormatting) {
-        const mergedCell = worksheet.getCell(row, 4);
-          clearCellFormatting(mergedCell);
-          clearCellFormatting(cellE); // Also clear E explicitly
-          clearCellFormatting(cellF);
-          clearCellFormatting(cellG);
-          clearCellFormatting(cellH);
-        
-          // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
-          // This is the last line of defense
-        mergedCell.font = { size: 11, bold: false };
-          try {
-            (mergedCell as any).fill = null;
-            delete (mergedCell as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-        cellF.font = { size: 11, bold: false };
-          try {
-            (cellF as any).fill = null;
-            delete (cellF as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          cellG.font = { size: 11, bold: false };
-          try {
-            (cellG as any).fill = null;
-            delete (cellG as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-          
-          cellH.font = { size: 11, bold: false };
-          try {
-            (cellH as any).fill = null;
-            delete (cellH as any).fill;
-          } catch (e) {
-            // Ignore errors
-          }
-        }
+        // Template-V2.xlsx uses conditional formatting based on Column A values
+        // No need to clear or apply formatting - let the template handle it
       
         currentRow++;
     }
   }
   
-  console.log(`[First Pass] Total subcategories tracked: ${subcategoryCount} (rows: ${subcategoryRows.join(', ')})`);
-  console.log(`[First Pass] Current row after processing email items: ${currentRow}`);
+  console.log(`[Data Population] Current row after processing email items: ${currentRow}`);
   
   // STEP 1.5: Process addendum data if provided
   // Addendums should be inserted AFTER email parser items with 2 blank rows separator
   if (addendumData && addendumData.length > 0) {
-    console.log(`[First Pass] Processing ${addendumData.length} addendum(s)...`);
+    console.log(`[Data Population] Processing ${addendumData.length} addendum(s)...`);
     
     // Find last row with data after email parser items
     const lastEmailItemRow = currentRow - 1;
@@ -855,26 +996,21 @@ export async function generateSpreadsheet(
     const addendumStartRow = lastEmailItemRow + 3; // Skip 2 blank rows
     currentRow = addendumStartRow;
     
-    console.log(`[First Pass] Starting addendums at row ${currentRow} (after ${lastEmailItemRow}, skipped 2 blank rows)`);
+    console.log(`[Data Population] Starting addendums at row ${currentRow} (after ${lastEmailItemRow}, skipped 2 blank rows)`);
     
     // Process each addendum
     for (let addendumIndex = 0; addendumIndex < addendumData.length; addendumIndex++) {
       const addendum = addendumData[addendumIndex];
-      console.log(`[First Pass] Processing addendum #${addendum.addendumNumber} (${addendumIndex + 1}/${addendumData.length})`);
+      console.log(`[Data Population] Processing addendum #${addendum.addendumNumber} (${addendumIndex + 1}/${addendumData.length})`);
       
-      // Add "Addendum #: X" header row (format as subcategory)
+      // Add "Addendum #: X" header row
       const addendumHeaderRow = currentRow;
-      subcategoryCount++;
       
-      // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
-      if (applyFormatting) {
-        subcategoryRows.push(addendumHeaderRow);
-      }
       // Format: "Addendum #7 (35587)"
       const addendumNum = addendum.addendumNumber;
       const urlId = addendum.urlId || addendum.addendumNumber; // Fallback to addendumNumber if urlId not available
       const headerText = `Addendum #${addendumNum} (${urlId})`;
-      console.log(`[First Pass] Tracked addendum header #${addendumIndex + 1} at row ${addendumHeaderRow}: "${headerText}"`);
+      console.log(`[Data Population] Addendum header #${addendumIndex + 1} at row ${addendumHeaderRow}: "${headerText}"`);
       
       // Get cells for addendum header
       const cellA = worksheet.getCell(addendumHeaderRow, 1);
@@ -912,39 +1048,8 @@ export async function generateSpreadsheet(
       cellG.value = null;
       cellH.value = null;
       
-      // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
-      // Let the template's conditional formatting handle it
-      if (applyFormatting) {
-        // Clear values from columns I through BE (columns 9-57)
-        for (let col = 9; col <= 57; col++) {
-          try {
-            const cell = worksheet.getCell(addendumHeaderRow, col);
-            cell.value = null;
-          } catch (e) {
-            // Ignore errors for cells that don't exist
-          }
-        }
-        
-        // Clear ALL formatting from all cells (D through BE) in first pass
-        clearCellFormatting(cellD);
-        clearCellFormatting(cellE);
-        clearCellFormatting(cellF);
-        clearCellFormatting(cellG);
-        clearCellFormatting(cellH);
-        
-        // Also clear formatting from columns I through BE
-        for (let col = 9; col <= 57; col++) {
-          try {
-            const cell = worksheet.getCell(addendumHeaderRow, col);
-            clearCellFormatting(cell);
-          } catch (e) {
-            // Ignore errors
-          }
-        }
-        
-        // Set basic alignment for column D (without formatting)
-        cellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
-      }
+      // Template-V2.xlsx uses conditional formatting based on Column A values
+      // No need to clear or apply formatting - let the template handle it
       
       // Clear any shared formula reference
       if ((cellD as any).sharedFormula) delete (cellD as any).sharedFormula;
@@ -1033,15 +1138,10 @@ export async function generateSpreadsheet(
           currentRow++;
           continue;
         } else if (item.type === 'subcategory') {
-          // Sub-category header row - populate data ONLY (no formatting in first pass)
+          // Sub-category header row - populate data with plain values only
           const row = currentRow;
-          subcategoryCount++;
           
-          // TRACK this row as a subcategory for formatting in second pass (only if applyFormatting is true)
-          if (applyFormatting) {
-            subcategoryRows.push(row);
-          }
-          console.log(`[First Pass] Tracked addendum subcategory at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
+          console.log(`[Data Population] Addendum subcategory at row ${row}: "${item.productService?.toString().substring(0, 50)}..."`);
           
           // Clean the text to remove asterisks, special characters, and formatting
           let cleanedText = (item.productService || '').toString();
@@ -1087,39 +1187,8 @@ export async function generateSpreadsheet(
           subCellG.value = null;
           subCellH.value = null;
           
-          // For Template-V2.xlsx (applyFormatting = false), don't clear formatting
-          // Let the template's conditional formatting handle it
-          if (applyFormatting) {
-            // Clear values from columns I through BE (columns 9-57)
-            for (let col = 9; col <= 57; col++) {
-              try {
-                const cell = worksheet.getCell(row, col);
-                cell.value = null;
-              } catch (e) {
-                // Ignore errors for cells that don't exist
-              }
-            }
-            
-            // Clear ALL formatting from all cells (D through BE) in first pass
-            clearCellFormatting(subCellD);
-            clearCellFormatting(subCellE);
-            clearCellFormatting(subCellF);
-            clearCellFormatting(subCellG);
-            clearCellFormatting(subCellH);
-            
-            // Also clear formatting from columns I through BE
-            for (let col = 9; col <= 57; col++) {
-              try {
-                const cell = worksheet.getCell(row, col);
-                clearCellFormatting(cell);
-              } catch (e) {
-                // Ignore errors
-              }
-            }
-            
-            // Set basic alignment for column D (without formatting)
-            subCellD.alignment = { vertical: 'middle', indent: 1, wrapText: true };
-          }
+          // Template-V2.xlsx uses conditional formatting based on Column A values
+          // No need to clear or apply formatting - let the template handle it
           
           // Clear any shared formula reference
           if ((subCellD as any).sharedFormula) delete (subCellD as any).sharedFormula;
@@ -1153,21 +1222,7 @@ export async function generateSpreadsheet(
           // Set Column B to "Addendum" for addendum items (plain value)
           cellB.value = 'Addendum';
           
-          // CRITICAL: Line items should NEVER have formatting (no fill, no bold, no color)
-          // Clear formatting MULTIPLE times to ensure template formatting is completely removed
-          // Only if applyFormatting is true (for template.xlsx)
-          // For Template-V2.xlsx, let conditional formatting handle it
-          
-          // STEP 1: Clear formatting from ALL cells FIRST (before setting values)
-          if (applyFormatting) {
-            clearCellFormatting(cellD);
-            clearCellFormatting(cellE);
-            clearCellFormatting(cellF);
-            clearCellFormatting(cellG);
-            clearCellFormatting(cellH);
-          }
-          
-          // STEP 2: Set values (plain values, no formulas)
+          // Set values (plain values, no formulas)
           // For addendums: Description in D-E, Qty in F, Extended in H, G is empty
           cellD.value = cleanedText;
           // Ensure numeric values are plain numbers, not formulas
@@ -1178,16 +1233,7 @@ export async function generateSpreadsheet(
           cellG.value = null; // No rate for addendums - leave empty
           cellH.value = amountValue;
           
-          // STEP 3: After setting values, clear formatting AGAIN (only if applyFormatting is true)
-          if (applyFormatting) {
-            clearCellFormatting(cellD);
-            clearCellFormatting(cellE);
-            clearCellFormatting(cellF);
-            clearCellFormatting(cellG);
-            clearCellFormatting(cellH);
-          }
-          
-          // STEP 4: Merge D:E AFTER clearing formatting and setting values
+          // Merge D:E
           try {
             const isMerged = worksheet.model.merges?.some((merge: any) => {
               return merge.top <= row && merge.bottom >= row &&
@@ -1200,211 +1246,114 @@ export async function generateSpreadsheet(
             // Merge might already exist, ignore error
           }
           
-          // STEP 5: After merge, clear formatting AGAIN (merge can copy formatting)
-          // Only if applyFormatting is true
-          if (applyFormatting) {
-            const mergedCell = worksheet.getCell(row, 4);
-            clearCellFormatting(mergedCell);
-            clearCellFormatting(cellE);
-            clearCellFormatting(cellF);
-            clearCellFormatting(cellG);
-            clearCellFormatting(cellH);
-            
-            // STEP 6: Final verification - explicitly set font and fill to ensure no formatting
-            mergedCell.font = { size: 11, bold: false };
-            try {
-              (mergedCell as any).fill = null;
-              delete (mergedCell as any).fill;
-            } catch (e) {
-              // Ignore errors
-            }
-            
-            cellF.font = { size: 11, bold: false };
-            try {
-              (cellF as any).fill = null;
-              delete (cellF as any).fill;
-            } catch (e) {
-              // Ignore errors
-            }
-            
-            cellG.font = { size: 11, bold: false };
-            try {
-              (cellG as any).fill = null;
-              delete (cellG as any).fill;
-            } catch (e) {
-              // Ignore errors
-            }
-            
-            cellH.font = { size: 11, bold: false };
-            try {
-              (cellH as any).fill = null;
-              delete (cellH as any).fill;
-            } catch (e) {
-              // Ignore errors
-            }
-        }
+          // Template-V2.xlsx uses conditional formatting based on Column A values
+          // No need to clear or apply formatting - let the template handle it
       
         currentRow++;
     }
   }
   
-      console.log(`[First Pass] Completed addendum #${addendum.addendumNumber}: ${addendum.items.length} items processed`);
+      console.log(`[Data Population] Completed addendum #${addendum.addendumNumber}: ${addendum.items.length} items processed`);
     }
     
-    console.log(`[First Pass] All addendums processed. Final row: ${currentRow - 1}`);
+    console.log(`[Data Population] All addendums processed. Final row: ${currentRow - 1}`);
   }
   
-  // Store the last data row for row deletion in third pass
-  const lastDataRowAfterProcessing = currentRow - 1; // currentRow is the next row to write
+  // Store the last data row - this is the last row with actual data
+  const lastDataRow = currentRow - 1; // currentRow is the next row to write
   
-  // STEP 2: Generate initial buffer WITHOUT formatting
-  // We'll apply formatting in second pass using XLSX-Populate (better at preserving styles)
-  // Row deletion will happen in third pass to avoid breaking shared formulas
+  console.log(`[Data Population] Last data row: ${lastDataRow}`);
+  
+  // PASS 1: Add buffer rows and end marker
+  const bufferRows = 5;
+  
+  // Add 5 buffer rows after last data row
+  for (let i = 1; i <= bufferRows; i++) {
+    const bufferRowNum = lastDataRow + i;
+    const blankCellA = worksheet.getCell(bufferRowNum, 1);
+    const blankCellB = worksheet.getCell(bufferRowNum, 2);
+    
+    // Label Column A as "1 - Blank Row"
+    blankCellA.value = '1 - Blank Row';
+    
+    // Column B is empty
+    blankCellB.value = null;
+    
+    // Ensure empty values on columns D-N (columns 4-14)
+    for (let col = 4; col <= 14; col++) {
+      try {
+        const cell = worksheet.getCell(bufferRowNum, col);
+        cell.value = null;
+      } catch (e) {
+        // Ignore errors for cells that don't exist
+      }
+    }
+  }
+  
+  // Add end marker row after buffer rows
+  const endMarkerRow = lastDataRow + bufferRows + 1;
+  const markerCellA = worksheet.getCell(endMarkerRow, 1);
+  const markerCellB = worksheet.getCell(endMarkerRow, 2);
+  
+  // Column A = "1 - Header" (to match conditional formatting pattern)
+  markerCellA.value = '1 - Header';
+  
+  // Column B = "Last Row" (to identify this as the end marker)
+  markerCellB.value = 'Last Row';
+  
+  // Clear columns D-N for the marker row
+  for (let col = 4; col <= 14; col++) {
+    try {
+      const cell = worksheet.getCell(endMarkerRow, col);
+      cell.value = null;
+    } catch (e) {
+      // Ignore errors for cells that don't exist
+    }
+  }
+  
+  console.log(`[Data Population] Added ${bufferRows} buffer rows and end marker at row ${endMarkerRow}`);
+  
+  // Clean shared formulas from the deletion range (rows after marker up to 338)
+  // This prevents issues during row deletion in Pass 2
+  const deletionStartRow = endMarkerRow + 1;
+  const deletionEndRow = 338;
+  if (deletionStartRow <= deletionEndRow) {
+    console.log(`[Data Population] Cleaning shared formulas in deletion range (rows ${deletionStartRow}-${deletionEndRow})...`);
+    cleanSharedFormulasFromRange(worksheet, deletionStartRow, deletionEndRow);
+  }
+  
+  // Generate buffer with data populated and end marker set
+  // Template-V2.xlsx uses conditional formatting based on Column A values
+  // No manual formatting needed - the template handles all formatting automatically
   const initialBuffer = await workbook.xlsx.writeBuffer();
-  console.log(`[First Pass] Generated initial buffer: ${initialBuffer.byteLength} bytes`);
+  console.log(`[Pass 1] Generated buffer: ${initialBuffer.byteLength} bytes`);
   
   // Verify buffer was generated successfully
   if (!initialBuffer || initialBuffer.byteLength === 0) {
     throw new Error('Failed to generate buffer');
   }
   
-  // STEP 3: If formatting is requested, use XLSX-Populate for second pass formatting
-  // XLSX-Populate is better at preserving and applying formatting when reading/writing buffers
-  if (applyFormatting) {
-    // Load the buffer into XLSX-Populate workbook
-    const formattedWorkbook = await XLSXPopulate.fromDataAsync(initialBuffer);
+  // PASS 2: Delete rows after end marker up to row 338 (only if deleteExtraRows is enabled)
+  if (deleteExtraRows) {
+    console.log(`[Pass 2] Starting row deletion: deleting rows ${deletionStartRow} to ${deletionEndRow}...`);
     
-    // Get the worksheet by name
-    const formattedWorksheet = formattedWorkbook.sheet(sheetName);
+    // Convert initialBuffer to Node.js Buffer if needed
+    const initialBufferNode = Buffer.from(initialBuffer);
     
-    if (!formattedWorksheet) {
-      throw new Error(`Worksheet "${sheetName}" not found`);
-    }
-    
-    // Row 16 is now treated as a regular data row (first Main Category Header)
-    // No special location header formatting needed
-    
-    // STEP 5: Apply formatting ONLY to tracked subcategory rows
-    // We know exactly which rows are subcategories from the first pass
-    // This is more reliable than trying to infer from cell values
-    console.log(`[Formatting] Starting formatting phase...`);
-    console.log(`[Formatting] Total subcategory rows to format: ${subcategoryRows.length}`);
-    console.log(`[Formatting] Subcategory rows: ${subcategoryRows.join(', ')}`);
-    
-    let formattedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
-    
-    // Process ALL subcategory rows - don't stop on errors
-    for (let i = 0; i < subcategoryRows.length; i++) {
-      const rowNum = subcategoryRows[i];
-      try {
-        // Verify the row exists and has data before formatting
-        const cellD = formattedWorksheet.cell(rowNum, 4);
-        const cellDValue = cellD.value();
-        
-        // Only format if the cell has a value (it's a subcategory)
-        if (cellDValue && cellDValue.toString().trim().length > 0) {
-          const preview = cellDValue.toString().substring(0, 50);
-          console.log(`[Formatting] [${i + 1}/${subcategoryRows.length}] Formatting row ${rowNum}: "${preview}..."`);
-          
-          // Apply formatting to subcategory header using XLSX-Populate
-          // This function will format columns D-BE (4-57) with fill color
-          // Columns D-E will have text with white font, columns F-BE will be blank with fill color
-          await formatSubCategoryHeaderXLSXPopulate(formattedWorkbook, sheetName, rowNum, 4, 57);
-          
-          formattedCount++;
-          console.log(`[Formatting] ✓ Successfully formatted row ${rowNum} (${formattedCount} total)`);
-        } else {
-          skippedCount++;
-          console.warn(`[Formatting] ⚠ Skipping row ${rowNum} - no value in cell D (empty or null)`);
-        }
-      } catch (error) {
-        errorCount++;
-        // Log error but continue processing other rows - CRITICAL for processing all rows
-        console.error(`[Formatting] ✗ Error formatting row ${rowNum} (${errorCount} errors):`, error);
-        // Continue to next row instead of stopping - we want to format ALL rows
-      }
-    }
-    
-    console.log(`[Formatting] Completed formatting phase:`);
-    console.log(`[Formatting]   - Formatted: ${formattedCount} rows`);
-    console.log(`[Formatting]   - Skipped: ${skippedCount} rows`);
-    console.log(`[Formatting]   - Errors: ${errorCount} rows`);
-    console.log(`[Formatting]   - Total processed: ${formattedCount + skippedCount + errorCount} / ${subcategoryRows.length} rows`);
-    
-    // STEP 6: Format columns A and O with white fill color
-    // This applies white fill to entire columns A and O
-      // Format from row 1 to maxRow (339 for Template-V2, 452 for template.xlsx) to ensure all rows are covered
-      console.log(`[Formatting] Formatting columns A and O with white fill...`);
-      try {
-        // Format from row 1 to maxRow to cover all rows in the worksheet
-        // This ensures columns A and O have white fill throughout the entire data area
-        await formatColumnsAAndOWhite(formattedWorkbook, sheetName, 1, maxRow);
-        console.log(`[Formatting] Successfully formatted columns A and O (rows 1-${maxRow}) with white fill`);
-    } catch (columnFormatError: any) {
-      console.warn(`[Formatting] Warning: Could not format columns A and O:`, columnFormatError?.message || columnFormatError);
-      // Continue anyway - column formatting is not critical
-    }
-    
-    // STEP 7: Generate final buffer with formatting applied using XLSX-Populate
-    // XLSX-Populate should preserve formatting better than ExcelJS when writing
-    console.log(`[Formatting] Generating final buffer with formatting...`);
-    const formattedBuffer = await formattedWorkbook.outputAsync();
-    
-    // Verify buffer was generated successfully
-    if (!formattedBuffer || formattedBuffer.byteLength === 0) {
-      throw new Error('Failed to generate formatted buffer');
-    }
-    
-    console.log(`[Formatting] Generated formatted buffer: ${formattedBuffer.byteLength} bytes`);
-    console.log(`[Formatting] Formatting complete! Processed ${formattedCount} subcategory rows.`);
-    
-    // STEP 8: Third pass - Delete unused rows AFTER formatting is complete
-    // This prevents breaking shared formula references during formatting
-    // For template.xlsx: use maxRow and 15 buffer rows
-    const bufferRows = 15;
-    const deletionMaxRow = maxRow;
-    
-    console.log(`[Row Cleanup] Starting third pass - row deletion...`);
-    console.log(`[Row Cleanup] Max row for deletion: ${deletionMaxRow}, Buffer rows to keep: ${bufferRows}`);
-    const formattedBufferNode = Buffer.from(formattedBuffer);
-    const finalBuffer = await deleteUnusedRowsFromBuffer(
-      formattedBufferNode,
+    const finalBuffer = await deleteRowsAfterMarker(
+      initialBufferNode,
       sheetName,
-      lastDataRowAfterProcessing,
-      deletionMaxRow,
-      bufferRows
+      endMarkerRow,
+      deletionEndRow
     );
     
-    console.log(`[Row Cleanup] Row deletion complete. Final buffer: ${finalBuffer.byteLength} bytes`);
+    console.log(`[Pass 2] Row deletion complete. Final buffer: ${finalBuffer.byteLength} bytes`);
+    
+    // Return the final buffer after row deletion
     return finalBuffer;
+  } else {
+    console.log(`[Pass 2] Row deletion skipped (deleteExtraRows is false). End marker at row ${endMarkerRow} indicates where data ends.`);
+    // Return the buffer with end marker (no deletion)
+    return Buffer.from(initialBuffer);
   }
-  
-  // STEP 3: If no formatting, still do row deletion as third pass
-  // This ensures consistent behavior regardless of formatting option
-  // For Template-V2.xlsx: delete between last entry and row 338, leave 5 buffer rows
-  // For template.xlsx: use maxRow and 15 buffer rows
-  const bufferRows = applyFormatting ? 15 : 5;
-  const deletionMaxRow = applyFormatting ? maxRow : 338;
-  
-  console.log(`[Row Cleanup] Starting third pass - row deletion (no formatting applied)...`);
-  console.log(`[Row Cleanup] Max row for deletion: ${deletionMaxRow}, Buffer rows to keep: ${bufferRows}`);
-  const initialBufferNode = Buffer.from(initialBuffer);
-  const finalBuffer = await deleteUnusedRowsFromBuffer(
-    initialBufferNode,
-    sheetName,
-    lastDataRowAfterProcessing,
-    deletionMaxRow,
-    bufferRows
-  );
-  
-  console.log(`[Row Cleanup] Row deletion complete. Final buffer: ${finalBuffer.byteLength} bytes`);
-  
-  // No need to update formulas - template has buffer rows and formulas handle themselves
-  // Shared formulas were already cleaned from range 16-452 during load
-  
-  // CRITICAL: Return the final buffer after row deletion
-  // This is the output after all processing is complete
-  return finalBuffer;
 }
