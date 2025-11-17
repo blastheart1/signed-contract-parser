@@ -451,28 +451,60 @@ export function parseOriginalContract(html: string, contractId: string, url: str
         return;
       }
       
-      // Check if this is a sub-category header (class "ssg_title" or similar)
+      // Check if this is a sub-category header
+      // Original Contract structure: row with 2 cells, first cell empty, second cell has border-top and contains <strong> with subcategory name
       const firstCell = cells.first();
-      const isSubCategory = $row.hasClass('ssg_title') || 
-                           firstCell.hasClass('ssg_title') ||
-                           firstCell.attr('class')?.includes('ssg_title') ||
-                           $row.hasClass('subcategory') ||
-                           firstCell.attr('class')?.includes('subcategory');
+      let isSubCategory = false;
+      let subCategoryName = '';
       
-      if (isSubCategory) {
-        const categoryName = cleanText(firstCell.text());
-        if (categoryName && categoryName.trim().length > 0) {
-          currentSubCategory = categoryName;
-          items.push({
-            type: 'subcategory',
-            productService: categoryName,
-            qty: '',
-            rate: '',
-            amount: '',
-            mainCategory: currentMainCategory,
-            subCategory: categoryName,
-          });
+      // Check for Original Contract subcategory pattern (2 cells, second cell has border-top style and strong tag)
+      if (cells.length === 2) {
+        const firstCellText = cleanText(firstCell.text());
+        const secondCell = cells.eq(1);
+        const secondCellStyle = secondCell.attr('style') || '';
+        const secondCellHtml = secondCell.html() || '';
+        
+        // Check if first cell is empty (after cleaning, &nbsp; becomes space, so just check for empty/whitespace)
+        // and second cell has the subcategory pattern
+        if ((!firstCellText || firstCellText.trim() === '') &&
+            secondCellStyle.includes('border-top:solid 1px #BBB') &&
+            secondCellStyle.includes('letter-spacing:2px')) {
+          // Extract subcategory name from <strong> tag inside the div
+          const strongTag = secondCell.find('strong');
+          if (strongTag.length > 0) {
+            subCategoryName = cleanText(strongTag.text());
+            if (subCategoryName && subCategoryName.trim().length > 0) {
+              isSubCategory = true;
+            }
+          }
         }
+      }
+      
+      // Also check for addendum-style subcategory (class "ssg_title" or similar)
+      if (!isSubCategory) {
+        isSubCategory = !!($row.hasClass('ssg_title') || 
+                       firstCell.hasClass('ssg_title') ||
+                       firstCell.attr('class')?.includes('ssg_title') ||
+                       $row.hasClass('subcategory') ||
+                       firstCell.attr('class')?.includes('subcategory'));
+        
+        if (isSubCategory) {
+          subCategoryName = cleanText(firstCell.text());
+        }
+      }
+      
+      if (isSubCategory && subCategoryName && subCategoryName.trim().length > 0) {
+        currentSubCategory = subCategoryName;
+        items.push({
+          type: 'subcategory',
+          productService: subCategoryName,
+          qty: '',
+          rate: '',
+          amount: '',
+          mainCategory: currentMainCategory,
+          subCategory: subCategoryName,
+        });
+        console.log(`[Original Contract Parser] Added subcategory: "${subCategoryName}"`);
         return;
       }
       

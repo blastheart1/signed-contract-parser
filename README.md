@@ -17,6 +17,9 @@ A Next.js web application that parses signed build contract `.eml` files and gen
 - **Addendum Number Extraction**: Extract addendum number from the page (e.g., "7") and URL ID (e.g., "35587")
 - **Main Category Filtering**: Automatically filters out redundant main category rows (e.g., "0100 Calimingo - Concrete")
 - **Formatted Headers**: Display addendum headers as "Addendum #7 (35587)" format
+- **Auto-Detection**: Automatically detects and processes "Original Contract" and "Addendum" links from EML email bodies when "Add Addendum" checkbox is unchecked
+- **Original Contract Parsing**: Parses Original Contract links with full support for main categories, subcategories, and line items
+- **Subcategory Detection**: Identifies subcategories in both Original Contract and Addendum pages (e.g., "EXCAVATION", "PLUMBING", "SHELL", "INTERIOR FINISH")
 
 ### Formatting
 - **Conditional Formatting**: Uses `Template-V2.xlsx` with conditional formatting based on Column A values (rows 16-339)
@@ -95,11 +98,15 @@ vercel
    - Click "Browse Files" to select a file
 
 2. **Optional: Add Addendums**:
-   - Check the "Add Addendum" checkbox
-   - Paste addendum URLs in the textarea (one per line)
+   - **Auto-Detection Mode** (Recommended): Leave "Add Addendum" checkbox unchecked. The app will automatically detect and process "Original Contract" and "Addendum" links from the EML email body.
+   - **Manual Mode**: Check the "Add Addendum" checkbox and paste addendum URLs in the textarea (one per line)
    - URLs should be in format: `https://l1.prodbx.com/go/view/?35587.426.20251112100816` or `https://login.prodbx.com/go/view/?35587.426.20251112100816`
 
-3. **Generate Spreadsheet**:
+3. **Optional: Delete Extra Rows**:
+   - Check the "Delete Extra Rows" checkbox to automatically delete rows after the end marker
+   - If unchecked, the end marker indicates where data ends (rows are preserved)
+
+4. **Generate Spreadsheet**:
    - Click "Generate Spreadsheet" button
    - The spreadsheet will be automatically downloaded
 
@@ -120,6 +127,9 @@ vercel
 - Invalid URLs are validated before processing
 - Failed addendums are logged but don't stop processing of other addendums
 - If all addendums fail, an error is returned (but email items are still processed)
+- Detailed feedback shows which links succeeded (green), which had warnings (yellow), and which failed (red)
+- All URLs in feedback messages are clickable for easy verification
+- Simplified error messages with specific reasons for failures
 
 ### Output Format
 
@@ -172,8 +182,16 @@ vercel
 - Fetches HTML content from ProDBX URLs
 - Extracts addendum number from page and URL
 - Parses addendum HTML tables (similar to email parser)
-- Filters out main category rows
+- Parses Original Contract pages with full support for main categories, subcategories, and line items
+- Detects subcategories in both Original Contract and Addendum pages
+- Filters out main category rows in addendums (but includes them in Original Contract)
 - Validates URL formats
+
+**`lib/contractLinkExtractor.ts`**:
+- Extracts "Original Contract" and "Addendum" links from EML email bodies
+- Handles complex tracking URLs (URL-encoded and base64-encoded)
+- Separates detection logic for Original Contract and Addendums to prevent interference
+- Prioritizes links with visible text content
 
 **`lib/spreadsheetGenerator.ts`**:
 - Loads `Template-V2.xlsx` template
@@ -374,7 +392,18 @@ For issues or questions:
 
 ## Changelog
 
-### Version 1.3.0 (Current - Removed Apply Formatting Feature)
+### Version 1.4.0 (Current - Auto-Detection & Subcategory Support)
+- Added auto-detection of "Original Contract" and "Addendum" links from EML email bodies
+- Added Original Contract parsing with full support for main categories, subcategories, and line items
+- Added subcategory detection in Original Contract pages (e.g., "EXCAVATION", "PLUMBING", "SHELL", "INTERIOR FINISH")
+- Enhanced error handling with detailed feedback (green for success, yellow for warnings, red for errors)
+- Made all URLs in feedback messages clickable
+- Simplified error messages with specific failure reasons
+- Added "Delete Extra Rows" checkbox option (optional row deletion after end marker)
+- Separated detection logic for Original Contract and Addendums to prevent interference
+- Improved URL extraction from complex tracking links (URL-encoded and base64-encoded)
+
+### Version 1.3.0 (Removed Apply Formatting Feature)
 - Removed "Apply Formatting" feature - now always uses Template-V2.xlsx with conditional formatting
 - Simplified codebase by removing conditional formatting logic and XLSX-Populate dependency
 - All formatting is now handled automatically by the template's conditional formatting rules
