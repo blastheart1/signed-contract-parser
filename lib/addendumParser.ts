@@ -399,6 +399,222 @@ export function parseAddendum(html: string, addendumNumber: string, url: string)
 }
 
 /**
+ * Parse Original Contract page (similar to addendum but includes main categories)
+ * @param html - HTML content from Original Contract URL
+ * @param contractId - Contract ID from URL
+ * @param url - Original URL
+ * @returns Array of OrderItems (includes main categories, subcategories, and line items)
+ */
+export function parseOriginalContract(html: string, contractId: string, url: string): OrderItem[] {
+  try {
+    const $ = load(html);
+    const items: OrderItem[] = [];
+    
+    // Find the table with class "pos" (same as addendum parser)
+    const table = $('table.pos');
+    
+    if (table.length === 0) {
+      // Try alternative table selectors
+      const altTable = $('table').first();
+      if (altTable.length === 0) {
+        throw new Error('Order Items Table not found in Original Contract HTML. Expected table with class "pos"');
+      }
+      console.warn(`[Original Contract Parser] Warning: Table with class "pos" not found, using first table instead`);
+    }
+    
+    // Use the table found (pos table or first table)
+    const targetTable = table.length > 0 ? table : $('table').first();
+    
+    // Find all rows in the table
+    const rows = targetTable.find('tr');
+    
+    if (rows.length === 0) {
+      throw new Error('No rows found in Original Contract table');
+    }
+    
+    let currentMainCategory: string | null = null;
+    let currentSubCategory: string | null = null;
+    
+    // Process all rows
+    rows.each((index, row) => {
+      const $row = $(row);
+      const cells = $row.find('td');
+      
+      // Skip empty rows
+      if (cells.length === 0) {
+        return;
+      }
+      
+      // Skip header row (first row with "Description", "Qty", "Extended")
+      const rowText = $row.text().toLowerCase();
+      if (rowText.includes('description') && rowText.includes('qty') && rowText.includes('extended')) {
+        return;
+      }
+      
+      // Check if this is a sub-category header (class "ssg_title" or similar)
+      const firstCell = cells.first();
+      const isSubCategory = $row.hasClass('ssg_title') || 
+                           firstCell.hasClass('ssg_title') ||
+                           firstCell.attr('class')?.includes('ssg_title') ||
+                           $row.hasClass('subcategory') ||
+                           firstCell.attr('class')?.includes('subcategory');
+      
+      if (isSubCategory) {
+        const categoryName = cleanText(firstCell.text());
+        if (categoryName && categoryName.trim().length > 0) {
+          currentSubCategory = categoryName;
+          items.push({
+            type: 'subcategory',
+            productService: categoryName,
+            qty: '',
+            rate: '',
+            amount: '',
+            mainCategory: currentMainCategory,
+            subCategory: categoryName,
+          });
+        }
+        return;
+      }
+      
+      // Check if this is a main category (bold text, larger font, has qty and extended)
+      // Also check for category code patterns like "0100 Calimingo", "0020 Calimingo", etc.
+      if (cells.length >= 3) {
+        const firstCellText = firstCell.html() || '';
+        const categoryText = cleanText(firstCell.text());
+        
+        // Check for category code pattern (e.g., "0100 Calimingo - Concrete", "0020 Calimingo - Pools")
+        const categoryCodePattern = /^\s*\d{4}\s+Calimingo/i;
+        const hasCategoryCode = categoryCodePattern.test(categoryText.trim());
+        
+        // Check for bold formatting
+        const isBold = firstCellText.includes('font-weight: bold') ||
+                      firstCellText.includes('font-size: 14px') ||
+                      firstCell.find('span[style*="font-weight: bold"]').length > 0 ||
+                      firstCell.find('span[style*="font-size: 14px"]').length > 0 ||
+                      firstCell.find('strong').length > 0 ||
+                      firstCell.find('b').length > 0;
+        
+        // Check if it has a quantity and extended amount (main categories do)
+        const qtyCell = cells.eq(1);
+        const extendedCell = cells.eq(2);
+        const hasQtyAndExtended = qtyCell.text().trim() && extendedCell.text().trim();
+        
+        // Include main category if it matches category code pattern AND has qty/extended
+        // OR if it's bold and has qty/extended
+        if ((hasCategoryCode && hasQtyAndExtended) || (isBold && hasQtyAndExtended)) {
+          if (categoryText && categoryText.trim().length > 0) {
+            // Build full category name with colon at the end (like email parser)
+            let fullCategoryName = categoryText.trim();
+            // Remove trailing colon if present, then add it
+            fullCategoryName = fullCategoryName.replace(/:\s*$/, '').trim();
+            fullCategoryName = `${fullCategoryName}:`;
+            
+            currentMainCategory = fullCategoryName;
+            currentSubCategory = null; // Reset sub-category when new main category starts
+            
+            // Extract qty and amount for main category
+            const qtyText = cleanText(qtyCell.text());
+            const extendedText = cleanText(extendedCell.text());
+            const qty = extractQuantity(qtyText);
+            const extended = extractAmount(extendedText);
+            
+            items.push({
+              type: 'maincategory',
+              productService: fullCategoryName,
+              qty: qty,
+              rate: '', // Main categories don't have rate in ProDBX pages
+              amount: extended,
+              mainCategory: fullCategoryName,
+              subCategory: null,
+            });
+            console.log(`[Original Contract Parser] Added main category: "${fullCategoryName}"`);
+            return;
+          }
+        }
+      }
+      
+      // Check if this is a regular line item (has description, qty, and extended)
+      // Only process if it's not a main category or subcategory
+      if (cells.length >= 3) {
+        const descriptionCell = cells.eq(0);
+        const qtyCell = cells.eq(1);
+        const extendedCell = cells.eq(2);
+        
+        // Extract text properly
+        const cellHtml = descriptionCell.html() || '';
+        const plainText = cellHtml
+          .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '$1')
+          .replace(/<em[^>]*>(.*?)<\/em>/gi, '$1')
+          .replace(/<b[^>]*>(.*?)<\/b>/gi, '$1')
+          .replace(/<i[^>]*>(.*?)<\/i>/gi, '$1')
+          .replace(/<br\s*\/?>/gi, ' ')
+          .replace(/<\/?[^>]+(>|$)/g, ' ');
+        const description = cleanText(plainText);
+        
+        const qtyText = cleanText(qtyCell.text());
+        const extendedText = cleanText(extendedCell.text());
+        
+        // Skip if description is empty
+        if (!description || description.trim().length === 0) {
+          return;
+        }
+        
+        // Skip header rows that might have been missed
+        if (description.toLowerCase().includes('description') && 
+            qtyText.toLowerCase().includes('qty')) {
+          return;
+        }
+        
+        // Skip subtotal/tax/grand total rows
+        if (description.toLowerCase().includes('subtotal') ||
+            description.toLowerCase().includes('tax') ||
+            description.toLowerCase().includes('grand total') ||
+            description.toLowerCase().includes('current balance')) {
+          return;
+        }
+        
+        // Skip main category rows that might have been missed
+        const categoryCodePattern = /^\s*\d{4}\s+Calimingo/i;
+        const trimmedDescription = description.trim();
+        const hasQtyAndExtendedInLineItem = qtyText.trim() && extendedText.trim();
+        
+        if (categoryCodePattern.test(trimmedDescription) && hasQtyAndExtendedInLineItem) {
+          // This looks like a main category row - skip it (already processed above)
+          return;
+        }
+        
+        // Extract values
+        const qty = extractQuantity(qtyText);
+        const extended = extractAmount(extendedText);
+        
+        // Add line item
+        if (description && description.trim().length > 0) {
+          items.push({
+            type: 'item',
+            productService: description,
+            qty: qty,
+            rate: '', // ProDBX pages don't have rate column
+            amount: extended,
+            mainCategory: currentMainCategory,
+            subCategory: currentSubCategory,
+          });
+        }
+      }
+    });
+    
+    if (items.length === 0) {
+      throw new Error(`No order items found in Original Contract. Please verify the HTML structure.`);
+    }
+    
+    console.log(`[Original Contract Parser] Successfully parsed Original Contract: ${items.length} items found`);
+    
+    return items;
+  } catch (error) {
+    throw new Error(`Failed to parse Original Contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Fetch and parse a single addendum URL
  * @param url - Addendum URL
  * @returns AddendumData

@@ -13,6 +13,8 @@ export default function FileUpload() {
   const [processingStage, setProcessingStage] = useState<ProcessingStage>('idle');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string>('Spreadsheet generated successfully! Download started.');
+  const [successMessageType, setSuccessMessageType] = useState<'success' | 'warning' | 'error'>('success');
   const [addAddendum, setAddAddendum] = useState(false);
   const [addendumLinks, setAddendumLinks] = useState<string>('');
   const [deleteExtraRows, setDeleteExtraRows] = useState(false);
@@ -45,6 +47,8 @@ export default function FileUpload() {
       setFile(droppedFile);
       setError(null);
       setSuccess(false);
+      setSuccessMessage('Spreadsheet generated successfully! Download started.');
+      setSuccessMessageType('success');
     } else {
       setError('Please upload a .eml file');
     }
@@ -56,6 +60,8 @@ export default function FileUpload() {
       setFile(selectedFile);
       setError(null);
       setSuccess(false);
+      setSuccessMessage('Spreadsheet generated successfully! Download started.');
+      setSuccessMessageType('success');
     } else {
       setError('Please select a .eml file');
     }
@@ -70,6 +76,7 @@ export default function FileUpload() {
     setIsProcessing(true);
     setError(null);
     setSuccess(false);
+    setSuccessMessage('Spreadsheet generated successfully! Download started.');
     setProcessingStage('uploading');
 
     try {
@@ -91,6 +98,7 @@ export default function FileUpload() {
             body: JSON.stringify({
               file: base64Data,
               filename: file.name,
+              addAddendum: addAddendum,
               addendumLinks: addAddendum && addendumLinks.trim() 
                 ? addendumLinks.split('\n').map(link => link.trim()).filter(link => link.length > 0)
                 : undefined,
@@ -135,6 +143,17 @@ export default function FileUpload() {
             }
           }
           
+          // Extract processing summary from header
+          const processingSummaryHeader = response.headers.get('X-Processing-Summary');
+          let processingSummary: any = null;
+          if (processingSummaryHeader) {
+            try {
+              processingSummary = JSON.parse(processingSummaryHeader);
+            } catch (e) {
+              console.warn('Failed to parse processing summary:', e);
+            }
+          }
+          
           // Create download link
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -145,6 +164,93 @@ export default function FileUpload() {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
 
+          // Build success/warning/error message based on processing summary
+          let message = 'Spreadsheet generated successfully! Download started.';
+          let messageType: 'success' | 'warning' | 'error' = 'success';
+          
+          if (processingSummary) {
+            const successItems: string[] = [];
+            const warnings: string[] = [];
+            const errors: string[] = [];
+            
+            // Extract successful Original Contract
+            if (processingSummary.originalContract.status === 'success' && processingSummary.originalContract.url) {
+              successItems.push(`**Original Contract:**\n- ${processingSummary.originalContract.url}`);
+            }
+            
+            // Extract successful Addendums
+            const successfulAddendums = processingSummary.addendums.filter((a: any) => a.status === 'success');
+            if (successfulAddendums.length > 0) {
+              successItems.push(`**Addendums (${successfulAddendums.length}):**\n${successfulAddendums.map((a: any) => `- ${a.url}`).join('\n')}`);
+            }
+            
+            // Check Original Contract status
+            if (processingSummary.originalContract.status === 'failed') {
+              // Extract just the error reason (remove wrapper messages)
+              let errorReason = processingSummary.originalContract.error || 'Unknown error';
+              // Remove "Failed to fetch addendum HTML: " prefix if present
+              errorReason = errorReason.replace(/^Failed to fetch addendum HTML: /, '');
+              warnings.push(`**Original Contract link failed:** ${errorReason}. Using email data instead.`);
+            }
+            
+            // Check Addendums status
+            const failedAddendums = processingSummary.addendums.filter((a: any) => a.status === 'failed');
+            if (failedAddendums.length > 0) {
+              // Extract simplified error messages
+              const failedItems = failedAddendums.map((a: any) => {
+                let errorReason = a.error || 'Unknown error';
+                // Remove wrapper messages like "All addendum URLs failed to process. Errors: " or "Failed to process addendum URL ...: "
+                errorReason = errorReason.replace(/^All addendum URLs failed to process\. Errors: /, '');
+                errorReason = errorReason.replace(/^Failed to process addendum URL [^:]+: /, '');
+                // Extract the actual error (usually starts with "Failed to parse addendum" or similar)
+                const actualErrorMatch = errorReason.match(/Failed to parse addendum \d+: (.+)/);
+                if (actualErrorMatch) {
+                  errorReason = actualErrorMatch[1];
+                }
+                return {
+                  url: a.url,
+                  error: errorReason
+                };
+              });
+              
+              if (failedAddendums.length === processingSummary.addendums.length) {
+                errors.push(`**All ${failedAddendums.length} addendum(s) failed to process.**\n\nFailed links:\n${failedItems.map((item: any) => `- ${item.url}`).join('\n')}\n\nErrors:\n${failedItems.map((item: any) => `- ${item.error}`).join('\n')}`);
+                messageType = 'error';
+              } else {
+                warnings.push(`**${failedAddendums.length} out of ${processingSummary.addendums.length} addendum(s) failed.**\n\nFailed links:\n${failedItems.map((item: any) => `- ${item.url}`).join('\n')}\n\nErrors:\n${failedItems.map((item: any) => `- ${item.error}`).join('\n')}`);
+              }
+            }
+            
+            // Build message with success items first
+            let messageParts: string[] = [];
+            
+            if (successItems.length > 0) {
+              messageParts.push(`**Successfully processed:**\n\n${successItems.join('\n\n')}`);
+            }
+            
+            if (errors.length > 0) {
+              messageParts.push(`**Errors:**\n\n${errors.join('\n\n')}`);
+              messageType = 'error';
+            } else if (warnings.length > 0) {
+              messageParts.push(`**Warnings:**\n\n${warnings.join('\n\n')}`);
+              messageType = 'warning';
+            }
+            
+            if (messageParts.length > 0) {
+              message = messageParts.join('\n\n');
+              if (messageType !== 'success') {
+                message += '\n\nPlease check the .eml file and verify the links are accessible.';
+              } else {
+                message += '\n\nDownload started.';
+              }
+            } else if (processingSummary.summary.totalLinks > 0) {
+              message = `**Spreadsheet generated successfully!**\n\nProcessed ${processingSummary.summary.successful} out of ${processingSummary.summary.totalLinks} link(s). Download started.`;
+              messageType = 'success';
+            }
+          }
+
+          setSuccessMessage(message);
+          setSuccessMessageType(messageType);
           setSuccess(true);
           setFile(null);
           setAddAddendum(false);
@@ -157,6 +263,7 @@ export default function FileUpload() {
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to process contract');
           setProcessingStage('idle');
+          setSuccessMessageType('error');
         } finally {
           setIsProcessing(false);
         }
@@ -166,6 +273,7 @@ export default function FileUpload() {
         setError('Failed to read file');
         setIsProcessing(false);
         setProcessingStage('idle');
+        setSuccessMessageType('error');
       };
 
       reader.readAsDataURL(file);
@@ -277,6 +385,7 @@ export default function FileUpload() {
                   setFile(null);
                   setError(null);
                   setSuccess(false);
+                  setSuccessMessage('Spreadsheet generated successfully! Download started.');
                   if (fileInputRef.current) {
                     fileInputRef.current.value = '';
                   }
@@ -352,11 +461,118 @@ export default function FileUpload() {
               animate={{ opacity: 1, y: 0, height: 'auto' }}
               exit={{ opacity: 0, y: -10, height: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-4 sm:mt-5 p-3 sm:p-4 bg-green-50 border border-green-100 rounded-lg"
+              className={`mt-4 sm:mt-5 p-4 sm:p-5 rounded-lg border ${
+                successMessageType === 'error'
+                  ? 'bg-red-50 border-red-200'
+                  : successMessageType === 'warning'
+                  ? 'bg-yellow-50 border-yellow-200'
+                  : 'bg-green-50 border-green-100'
+              }`}
             >
-              <p className="text-green-600 text-xs sm:text-sm">
-                Spreadsheet generated successfully! Download started.
-              </p>
+              <div className="text-xs sm:text-sm whitespace-pre-line leading-relaxed space-y-2">
+                {(() => {
+                  const lines = successMessage.split('\n');
+                  let currentSection: 'success' | 'error' | 'warning' | 'default' = 'default';
+                  
+                  return lines.map((line, index) => {
+                    // Detect section headers
+                    if (line.includes('Successfully processed:')) {
+                      currentSection = 'success';
+                    } else if (line.includes('Errors:')) {
+                      currentSection = 'error';
+                    } else if (line.includes('Warnings:')) {
+                      currentSection = 'warning';
+                    }
+                    
+                    // Determine color based on current section
+                    let textColor = '';
+                    if (currentSection === 'success') {
+                      textColor = 'text-green-700';
+                    } else if (currentSection === 'error') {
+                      textColor = 'text-red-800';
+                    } else if (currentSection === 'warning') {
+                      textColor = 'text-yellow-800';
+                    } else {
+                      // Default color based on message type
+                      textColor = successMessageType === 'error'
+                        ? 'text-red-800'
+                        : successMessageType === 'warning'
+                        ? 'text-yellow-800'
+                        : 'text-green-700';
+                    }
+                  
+                  // Helper function to render text with clickable URLs
+                  const renderTextWithLinks = (text: string, className: string) => {
+                    // URL pattern for ProDBX links
+                    const urlPattern = /(https?:\/\/[^\s<>]+)/g;
+                    const parts: (string | JSX.Element)[] = [];
+                    let lastIndex = 0;
+                    let match;
+                    
+                    while ((match = urlPattern.exec(text)) !== null) {
+                      // Add text before URL
+                      if (match.index > lastIndex) {
+                        parts.push(text.substring(lastIndex, match.index));
+                      }
+                      // Add clickable URL
+                      parts.push(
+                        <a
+                          key={`url-${match.index}`}
+                          href={match[0]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:opacity-80 transition-opacity"
+                        >
+                          {match[0]}
+                        </a>
+                      );
+                      lastIndex = match.index + match[0].length;
+                    }
+                    // Add remaining text
+                    if (lastIndex < text.length) {
+                      parts.push(text.substring(lastIndex));
+                    }
+                    
+                    // If no URLs found, return original text
+                    if (parts.length === 0) {
+                      return text;
+                    }
+                    
+                    return <>{parts}</>;
+                  };
+                  
+                  // Handle bold text (**text**)
+                  if (line.startsWith('**') && line.endsWith('**')) {
+                    const text = line.replace(/\*\*/g, '');
+                    return (
+                      <p key={index} className={`font-semibold mt-2 first:mt-0 ${textColor}`}>
+                        {renderTextWithLinks(text, textColor)}
+                      </p>
+                    );
+                  }
+                  // Handle list items (- item)
+                  if (line.trim().startsWith('- ')) {
+                    const text = line.trim();
+                    return (
+                      <p key={index} className={`ml-4 ${textColor}`}>
+                        {renderTextWithLinks(text, textColor)}
+                      </p>
+                    );
+                  }
+                  // Handle empty lines
+                  if (line.trim() === '') {
+                    return <br key={index} />;
+                  }
+                  // Regular text
+                  const text = line.replace(/\*\*/g, '');
+                  return (
+                    <p key={index} className={`${index === 0 ? 'font-semibold' : ''} ${textColor}`}>
+                      {renderTextWithLinks(text, textColor)}
+                    </p>
+                  );
+                  });
+                })()}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -498,3 +714,4 @@ export default function FileUpload() {
     </motion.div>
   );
 }
+

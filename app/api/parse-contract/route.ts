@@ -3,7 +3,8 @@ import { parseEML } from '@/lib/emlParser';
 import { extractOrderItems, extractLocation } from '@/lib/tableExtractor';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
-import { fetchAndParseAddendums, validateAddendumUrl, AddendumData } from '@/lib/addendumParser';
+import { fetchAndParseAddendums, validateAddendumUrl, AddendumData, fetchAddendumHTML, parseOriginalContract, extractAddendumNumber } from '@/lib/addendumParser';
+import { extractContractLinks } from '@/lib/contractLinkExtractor';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +34,10 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Extract addendumLinks array (optional)
+      // Extract addAddendum flag (optional, default: false)
+      const addAddendum: boolean = body.addAddendum === true;
+      
+      // Extract addendumLinks array (optional, only used when addAddendum is true)
       const addendumLinks: string[] = body.addendumLinks || [];
       
       // Extract deleteExtraRows option (optional, default: false)
@@ -62,38 +66,135 @@ export async function POST(request: NextRequest) {
       // Debug: Log extracted location data
       console.log('[API] Extracted location:', JSON.stringify(location, null, 2));
       
-      // Extract order items from email
-      const items = extractOrderItems(parsed.html);
+      // Initialize processing summary
+      const processingSummary: {
+        originalContract: { url: string | null; status: 'success' | 'failed' | 'not_found'; error?: string };
+        addendums: Array<{ url: string; status: 'success' | 'failed'; error?: string }>;
+        summary: { totalLinks: number; successful: number; failed: number };
+      } = {
+        originalContract: { url: null, status: 'not_found' },
+        addendums: [],
+        summary: { totalLinks: 0, successful: 0, failed: 0 },
+      };
       
-      // Fetch and parse addendums if provided
+      let items: ReturnType<typeof extractOrderItems> = [];
       let addendumData: AddendumData[] = [];
-      if (addendumLinks.length > 0) {
-        console.log(`[API] Processing ${addendumLinks.length} addendum link(s)...`);
-        // fetchAndParseAddendums handles errors gracefully - continues with other links if one fails
-        try {
-          addendumData = await fetchAndParseAddendums(addendumLinks);
-          console.log(`[API] Successfully processed ${addendumData.length} addendum(s) out of ${addendumLinks.length} link(s)`);
+      
+      // Auto-detect links if addAddendum checkbox is unchecked
+      if (!addAddendum) {
+        console.log('[API] Auto-detecting contract links from email...');
+        const extractedLinks = extractContractLinks(parsed);
+        console.log(`[API] Extracted links - Original Contract: ${extractedLinks.originalContractUrl || 'not found'}, Addendums: ${extractedLinks.addendumUrls.length}`);
+        
+        // Process Original Contract if found
+        if (extractedLinks.originalContractUrl) {
+          processingSummary.originalContract.url = extractedLinks.originalContractUrl;
+          console.log(`[API] Found Original Contract link: ${extractedLinks.originalContractUrl}`);
           
-          // Log summary of addendum items
-          addendumData.forEach((addendum) => {
-            console.log(`[API] Addendum #${addendum.addendumNumber}: ${addendum.items.length} items`);
-          });
-          
-          // If no addendums were processed but links were provided, log warning
-          if (addendumData.length === 0) {
-            console.warn(`[API] Warning: All ${addendumLinks.length} addendum link(s) failed to process`);
+          try {
+            // Parse Original Contract using specialized parser (includes main categories)
+            const originalContractHTML = await fetchAddendumHTML(extractedLinks.originalContractUrl);
+            const contractId = extractAddendumNumber(extractedLinks.originalContractUrl);
+            // Use parseOriginalContract to parse the Original Contract page (includes main categories)
+            items = parseOriginalContract(originalContractHTML, contractId, extractedLinks.originalContractUrl);
+            processingSummary.originalContract.status = 'success';
+            processingSummary.summary.successful++;
+            console.log(`[API] Successfully processed Original Contract: ${items.length} items`);
+          } catch (error) {
+            processingSummary.originalContract.status = 'failed';
+            processingSummary.originalContract.error = error instanceof Error ? error.message : 'Unknown error';
+            processingSummary.summary.failed++;
+            console.warn(`[API] Failed to process Original Contract: ${processingSummary.originalContract.error}`);
+            // Try to fall back to email HTML only if it has a table
+            try {
+              items = extractOrderItems(parsed.html);
+              console.log('[API] Falling back to email HTML for main contract items');
+            } catch (emailError) {
+              // Email HTML doesn't have a table - this is expected for addendum emails
+              console.warn('[API] Email HTML does not contain order items table. This is expected for addendum emails.');
+              // Set items to empty array - we'll only have addendums
+              items = [];
+            }
           }
-        } catch (error) {
-          // Only throw if ALL links failed and function throws error
-          console.error('[API] Error processing addendums:', error);
-          // Continue with email items even if addendums fail
-          // Log error but don't fail the entire request
-          if (error instanceof Error) {
-            console.error('[API] Addendum error details:', error.message);
+        } else {
+          // No Original Contract link found
+          console.log('[API] No Original Contract link found in email');
+          // Try to use email HTML only if it has a table (for regular contract emails)
+          try {
+            items = extractOrderItems(parsed.html);
+            console.log('[API] Using email HTML for main contract items');
+          } catch (emailError) {
+            // Email HTML doesn't have a table - this is expected for addendum-only emails
+            console.warn('[API] Email HTML does not contain order items table. This email may only contain addendum links.');
+            // Set items to empty array - we'll only have addendums
+            items = [];
           }
-          // Set addendumData to empty array to continue with email items only
-          addendumData = [];
         }
+        
+        // Process auto-detected addendums
+        if (extractedLinks.addendumUrls.length > 0) {
+          console.log(`[API] Found ${extractedLinks.addendumUrls.length} addendum link(s) in email`);
+          processingSummary.summary.totalLinks = extractedLinks.addendumUrls.length;
+          
+          // Process each addendum and track status
+          for (const url of extractedLinks.addendumUrls) {
+            try {
+              const addendumResult = await fetchAndParseAddendums([url]);
+              if (addendumResult.length > 0) {
+                addendumData.push(...addendumResult);
+                processingSummary.addendums.push({ url, status: 'success' });
+                processingSummary.summary.successful++;
+                console.log(`[API] Successfully processed addendum: ${url}`);
+              } else {
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.summary.failed++;
+                console.warn(`[API] Failed to process addendum: ${url} - No items found`);
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              processingSummary.addendums.push({ url, status: 'failed', error: errorMessage });
+              processingSummary.summary.failed++;
+              console.error(`[API] Failed to process addendum: ${url} - ${errorMessage}`);
+            }
+          }
+        } else {
+          console.log('[API] No addendum links found in email');
+        }
+      } else {
+        // Manual addendum links provided (existing behavior)
+        items = extractOrderItems(parsed.html);
+        
+        if (addendumLinks.length > 0) {
+          console.log(`[API] Processing ${addendumLinks.length} manually entered addendum link(s)...`);
+          processingSummary.summary.totalLinks = addendumLinks.length;
+          
+          // Process each addendum and track status
+          for (const url of addendumLinks) {
+            try {
+              const addendumResult = await fetchAndParseAddendums([url]);
+              if (addendumResult.length > 0) {
+                addendumData.push(...addendumResult);
+                processingSummary.addendums.push({ url, status: 'success' });
+                processingSummary.summary.successful++;
+                console.log(`[API] Successfully processed addendum: ${url}`);
+              } else {
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.summary.failed++;
+                console.warn(`[API] Failed to process addendum: ${url} - No items found`);
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              processingSummary.addendums.push({ url, status: 'failed', error: errorMessage });
+              processingSummary.summary.failed++;
+              console.error(`[API] Failed to process addendum: ${url} - ${errorMessage}`);
+            }
+          }
+        }
+      }
+      
+      // Update total links count (include Original Contract if it was processed)
+      if (processingSummary.originalContract.status !== 'not_found') {
+        processingSummary.summary.totalLinks++;
       }
       
       // Generate spreadsheet with addendum data and deleteExtraRows option
@@ -111,7 +212,7 @@ export async function POST(request: NextRequest) {
       const encodedFilename = encodeURIComponent(filename);
       const contentDisposition = `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`;
       
-      // Return file as response (Buffer works directly with NextResponse in newer versions)
+      // Return file as response with processing summary in header
       return new NextResponse(spreadsheetBuffer as any, {
         status: 200,
         headers: {
@@ -119,6 +220,7 @@ export async function POST(request: NextRequest) {
           'Content-Disposition': contentDisposition,
           'Content-Length': spreadsheetBuffer.length.toString(),
           'X-Content-Type-Options': 'nosniff',
+          'X-Processing-Summary': JSON.stringify(processingSummary),
         },
       });
     } else {
