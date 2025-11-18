@@ -1,10 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseEML } from '@/lib/emlParser';
-import { extractOrderItems, extractLocation } from '@/lib/tableExtractor';
+import { extractOrderItems, extractLocation, OrderItem } from '@/lib/tableExtractor';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
 import { fetchAndParseAddendums, validateAddendumUrl, AddendumData, fetchAddendumHTML, parseOriginalContract, extractAddendumNumber } from '@/lib/addendumParser';
 import { extractContractLinks } from '@/lib/contractLinkExtractor';
+
+/**
+ * Filter items based on category inclusion flags
+ * @param items - Array of order items to filter
+ * @param includeMainCategories - Whether to include main category items
+ * @param includeSubcategories - Whether to include subcategory items
+ * @returns Filtered array of items
+ */
+function filterItems(
+  items: OrderItem[],
+  includeMainCategories: boolean,
+  includeSubcategories: boolean
+): OrderItem[] {
+  return items.filter(item => {
+    if (item.type === 'maincategory' && !includeMainCategories) {
+      return false;
+    }
+    if (item.type === 'subcategory' && !includeSubcategories) {
+      return false;
+    }
+    return true;
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +65,10 @@ export async function POST(request: NextRequest) {
       
       // Extract deleteExtraRows option (optional, default: false)
       const deleteExtraRows: boolean = body.deleteExtraRows === true;
+      
+      // Extract category inclusion flags (optional, default: true)
+      const includeMainCategories: boolean = body.includeMainCategories !== false;
+      const includeSubcategories: boolean = body.includeSubcategories !== false;
       
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
@@ -197,8 +224,18 @@ export async function POST(request: NextRequest) {
         processingSummary.summary.totalLinks++;
       }
       
-      // Generate spreadsheet with addendum data and deleteExtraRows option
-      const spreadsheetBuffer = await generateSpreadsheet(items, location, addendumData, deleteExtraRows);
+      // Apply filtering based on category inclusion flags
+      const filteredItems = filterItems(items, includeMainCategories, includeSubcategories);
+      const filteredAddendumData = addendumData.map(addendum => ({
+        ...addendum,
+        items: filterItems(addendum.items, includeMainCategories, includeSubcategories),
+      }));
+      
+      console.log(`[API] Filtered items: ${filteredItems.length} (from ${items.length} original)`);
+      console.log(`[API] Filtered addendums: ${filteredAddendumData.length} addendums with filtered items`);
+      
+      // Generate spreadsheet with filtered data and deleteExtraRows option
+      const spreadsheetBuffer = await generateSpreadsheet(filteredItems, location, filteredAddendumData, deleteExtraRows);
       
       // Generate filename based on location data
       // Format: "{Client Initial Last Name} - #{DBX Customer ID} - {Address}.xlsx"

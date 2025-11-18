@@ -18,6 +18,8 @@ export default function FileUpload() {
   const [addAddendum, setAddAddendum] = useState(false);
   const [addendumLinks, setAddendumLinks] = useState<string>('');
   const [deleteExtraRows, setDeleteExtraRows] = useState(false);
+  const [includeMainCategories, setIncludeMainCategories] = useState(true);
+  const [includeSubcategories, setIncludeSubcategories] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -103,6 +105,8 @@ export default function FileUpload() {
                 ? addendumLinks.split('\n').map(link => link.trim()).filter(link => link.length > 0)
                 : undefined,
               deleteExtraRows: deleteExtraRows,
+              includeMainCategories: includeMainCategories,
+              includeSubcategories: includeSubcategories,
             }),
           });
 
@@ -587,33 +591,58 @@ export default function FileUpload() {
               transition={{ duration: 0.3 }}
               className="mt-6 sm:mt-8 flex flex-col items-center space-y-2.5 sm:space-y-3"
             >
-              <div className="flex flex-col items-center gap-2.5 sm:gap-3 w-full max-w-xs ml-8 sm:ml-12 pl-11">
-                {/* Add Addendum Toggle */}
-                <label className="flex items-center gap-2.5 cursor-pointer w-full">
-                  <input
-                    type="checkbox"
-                    checked={addAddendum}
-                    onChange={(e) => {
-                      setAddAddendum(e.target.checked);
-                      if (!e.target.checked) {
-                        setAddendumLinks('');
-                      }
-                    }}
-                    className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
-                  />
-                  <span className="text-sm sm:text-base text-gray-700">Add Addendum</span>
-                </label>
-                
-                {/* Delete Extra Rows Toggle */}
-                <label className="flex items-center gap-2.5 cursor-pointer w-full">
-                  <input
-                    type="checkbox"
-                    checked={deleteExtraRows}
-                    onChange={(e) => setDeleteExtraRows(e.target.checked)}
-                    className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
-                  />
-                  <span className="text-sm sm:text-base text-gray-700">Delete Extra Rows</span>
-                </label>
+              <div className="w-full flex justify-center">
+                {/* 2x2 Checkbox Grid */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-4">
+                  {/* Row 1, Col 1: Add Addendum */}
+                  <label className="flex items-center gap-2.5 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={addAddendum}
+                      onChange={(e) => {
+                        setAddAddendum(e.target.checked);
+                        if (!e.target.checked) {
+                          setAddendumLinks('');
+                        }
+                      }}
+                      className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-sm sm:text-base text-gray-700">Add Addendum</span>
+                  </label>
+                  
+                  {/* Row 1, Col 2: Delete Extra Rows */}
+                  <label className="flex items-center gap-2.5 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={deleteExtraRows}
+                      onChange={(e) => setDeleteExtraRows(e.target.checked)}
+                      className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-sm sm:text-base text-gray-700">Delete Extra Rows</span>
+                  </label>
+                  
+                  {/* Row 2, Col 1: Include Main Categories */}
+                  <label className="flex items-center gap-2.5 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={includeMainCategories}
+                      onChange={(e) => setIncludeMainCategories(e.target.checked)}
+                      className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-sm sm:text-base text-gray-700">Include Main Categories</span>
+                  </label>
+                  
+                  {/* Row 2, Col 2: Include Subcategories */}
+                  <label className="flex items-center gap-2.5 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={includeSubcategories}
+                      onChange={(e) => setIncludeSubcategories(e.target.checked)}
+                      className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-sm sm:text-base text-gray-700">Include Subcategories</span>
+                  </label>
+                </div>
               </div>
               
               {/* Addendum Links Textarea */}
