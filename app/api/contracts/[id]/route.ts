@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { convertDatabaseToStoredContract, saveContractToDatabase } from '@/lib/db/contractHelpers';
 import { eq, or } from 'drizzle-orm';
+import { logCustomerEdit, logOrderEdit, valueToString } from '@/lib/services/changeHistory';
 import type { StoredContract } from '@/lib/store/contractStore';
 
 export async function GET(
@@ -160,8 +161,74 @@ export async function PUT(
       contract.parsedAt = new Date(contract.parsedAt);
     }
 
+    // Fetch existing customer and order for comparison
+    const customerId = contract.customer.dbxCustomerId;
+    if (!customerId) {
+      return NextResponse.json(
+        {
+          error: 'Invalid contract data',
+          message: 'Contract customer must have dbxCustomerId'
+        },
+        { status: 400 }
+      );
+    }
+    
+    const existingCustomer = await db.query.customers.findFirst({
+      where: eq(schema.customers.dbxCustomerId, customerId),
+    });
+
+    const existingOrder = await db.query.orders.findFirst({
+      where: eq(schema.orders.orderNo, contract.order.orderNo),
+    });
+
+    // Save the contract
     const updatedContractId = await saveContractToDatabase(contract);
     console.log(`[PUT /api/contracts/${params.id}] Contract updated successfully: ${updatedContractId}`);
+
+    // Log customer changes
+    if (existingCustomer) {
+      const customerFields = [
+        { name: 'clientName', old: existingCustomer.clientName, new: contract.customer.clientName },
+        { name: 'email', old: existingCustomer.email, new: contract.customer.email },
+        { name: 'phone', old: existingCustomer.phone, new: contract.customer.phone },
+        { name: 'streetAddress', old: existingCustomer.streetAddress, new: contract.customer.streetAddress },
+        { name: 'city', old: existingCustomer.city, new: contract.customer.city },
+        { name: 'state', old: existingCustomer.state, new: contract.customer.state },
+        { name: 'zip', old: existingCustomer.zip, new: contract.customer.zip },
+      ];
+
+      for (const field of customerFields) {
+        const oldStr = valueToString(field.old);
+        const newStr = valueToString(field.new);
+        if (oldStr !== newStr) {
+          await logCustomerEdit(field.name, oldStr, newStr, customerId);
+        }
+      }
+    }
+
+    // Log order changes
+    if (existingOrder) {
+      const orderFields = [
+        { name: 'orderDate', old: existingOrder.orderDate, new: contract.order.orderDate },
+        { name: 'orderPO', old: existingOrder.orderPO, new: contract.order.orderPO },
+        { name: 'orderDueDate', old: existingOrder.orderDueDate, new: contract.order.orderDueDate },
+        { name: 'orderType', old: existingOrder.orderType, new: contract.order.orderType },
+        { name: 'orderDelivered', old: existingOrder.orderDelivered, new: contract.order.orderDelivered },
+        { name: 'quoteExpirationDate', old: existingOrder.quoteExpirationDate, new: contract.order.quoteExpirationDate },
+        { name: 'orderGrandTotal', old: existingOrder.orderGrandTotal, new: contract.order.orderGrandTotal },
+        { name: 'progressPayments', old: existingOrder.progressPayments, new: contract.order.progressPayments },
+        { name: 'balanceDue', old: existingOrder.balanceDue, new: contract.order.balanceDue },
+        { name: 'salesRep', old: existingOrder.salesRep, new: contract.order.salesRep },
+      ];
+
+      for (const field of orderFields) {
+        const oldStr = valueToString(field.old);
+        const newStr = valueToString(field.new);
+        if (oldStr !== newStr) {
+          await logOrderEdit(field.name, oldStr, newStr, existingOrder.id, customerId);
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, contractId: updatedContractId });
   } catch (error) {

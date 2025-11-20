@@ -5,10 +5,11 @@ import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Edit, Trash2 } from 'lucide-react';
+import { AlertTriangle, Edit, Trash2, History } from 'lucide-react';
 import type { StoredContract } from '@/lib/store/contractStore';
 import EditCustomerInfo from './EditCustomerInfo';
 import DeleteCustomerButton from './DeleteCustomerButton';
+import CustomerHistory from './CustomerHistory';
 
 interface CustomerInfoProps {
   contract: StoredContract;
@@ -26,6 +27,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
   } : 'null');
   
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [currentContract, setCurrentContract] = useState<StoredContract>(contract);
   
   if (!currentContract?.customer) {
@@ -92,7 +94,18 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     Edit
                   </Button>
                   {currentContract?.customer?.dbxCustomerId && (
-                    <DeleteCustomerButton contract={currentContract} />
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setHistoryModalOpen(true)}
+                        className="gap-2"
+                      >
+                        <History className="h-4 w-4" />
+                        History
+                      </Button>
+                      <DeleteCustomerButton contract={currentContract} />
+                    </>
                   )}
                 </div>
               </div>
@@ -182,6 +195,13 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
       onOpenChange={setEditModalOpen}
       onSave={handleSave}
     />
+    {currentContract?.customer?.dbxCustomerId && (
+      <CustomerHistory
+        customerId={currentContract.customer.dbxCustomerId}
+        open={historyModalOpen}
+        onOpenChange={setHistoryModalOpen}
+      />
+    )}
     </>
   );
 }

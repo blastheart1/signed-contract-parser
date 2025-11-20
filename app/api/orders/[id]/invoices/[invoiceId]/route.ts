@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { invoices, orders } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus';
+import { logInvoiceChange, valueToString } from '@/lib/services/changeHistory';
 
 export async function GET(
   request: NextRequest,
@@ -70,6 +71,11 @@ export async function PATCH(
       );
     }
 
+    // Get order for customerId
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+    });
+
     // Update invoice
     const updateData: any = {
       updatedAt: new Date(),
@@ -81,6 +87,34 @@ export async function PATCH(
     if (body.paymentsReceived !== undefined) updateData.paymentsReceived = body.paymentsReceived;
     if (body.exclude !== undefined) updateData.exclude = body.exclude;
     if (body.rowIndex !== undefined) updateData.rowIndex = body.rowIndex;
+
+    // Log field changes
+    if (order) {
+      const fieldsToCompare = [
+        { name: 'invoiceNumber', old: invoice.invoiceNumber, new: body.invoiceNumber },
+        { name: 'invoiceDate', old: invoice.invoiceDate, new: body.invoiceDate },
+        { name: 'invoiceAmount', old: invoice.invoiceAmount, new: body.invoiceAmount },
+        { name: 'paymentsReceived', old: invoice.paymentsReceived, new: body.paymentsReceived },
+        { name: 'exclude', old: invoice.exclude, new: body.exclude },
+      ];
+
+      for (const field of fieldsToCompare) {
+        if (field.new !== undefined) {
+          const oldStr = valueToString(field.old);
+          const newStr = valueToString(field.new);
+          if (oldStr !== newStr) {
+            await logInvoiceChange(
+              'row_update',
+              field.name,
+              oldStr,
+              newStr,
+              orderId,
+              order.customerId
+            );
+          }
+        }
+      }
+    }
 
     const updatedInvoice = await db.update(invoices)
       .set(updateData)
@@ -126,6 +160,23 @@ export async function DELETE(
       return NextResponse.json(
         { error: 'Invoice does not belong to this order' },
         { status: 400 }
+      );
+    }
+
+    // Get order for customerId
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+    });
+
+    // Log invoice deletion
+    if (order) {
+      await logInvoiceChange(
+        'row_delete',
+        'invoice',
+        `Invoice ${invoice.invoiceNumber || invoice.id}`,
+        null,
+        orderId,
+        order.customerId
       );
     }
 

@@ -440,19 +440,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   
   // Update items when initialItems change (e.g., after save) and not editing
   useEffect(() => {
-    // Check if initialItems actually changed (by comparing length and content)
-    const itemsChanged = 
-      prevInitialItemsRef.current.length !== initialItems.length ||
-      prevInitialItemsRef.current.some((item, index) => {
-        const newItem = initialItems[index];
-        return !newItem || 
-               item.productService !== newItem.productService ||
-               item.qty !== newItem.qty ||
-               item.rate !== newItem.rate ||
-               item.amount !== newItem.amount;
-      });
-
-    if (itemsChanged && !isEditing) {
+    // Always update when initialItems change and we're not editing
+    // This ensures we get the latest data after a save
+    if (!isEditing) {
       setItems(
         initialItems.map((item, index) => ({
           ...item,
@@ -647,23 +637,12 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       if (data.success) {
         setIsEditing(false);
         setSaveError(null);
-        // Update items from initialItems to reflect saved state
-        setItems(
-          initialItems.map((item, index) => ({
-            ...item,
-            id: `item-${index}`,
-            progressOverallPct: item.progressOverallPct || '',
-            completedAmount: item.completedAmount || '',
-            previouslyInvoicedPct: item.previouslyInvoicedPct || '',
-            previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-            newProgressPct: item.newProgressPct || '',
-            thisBill: item.thisBill || '',
-          }))
-        );
-        // Notify parent to refresh contract data
+        // Notify parent to refresh contract data first
         if (onSaveSuccess) {
-          onSaveSuccess();
+          await onSaveSuccess();
         }
+        // Wait a bit for parent to refresh, then update items from refreshed initialItems
+        // The useEffect will handle updating items when initialItems prop changes
       } else {
         setSaveError(data.error || 'Failed to save changes');
       }

@@ -29,8 +29,8 @@ export default function CustomerDetailPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Refresh invoice summary when order items are saved
-  const handleOrderItemsSave = () => {
-    refreshContract();
+  const handleOrderItemsSave = async () => {
+    await refreshContract();
     setInvoiceRefreshTrigger(prev => prev + 1); // Also refresh invoice summary
   };
 

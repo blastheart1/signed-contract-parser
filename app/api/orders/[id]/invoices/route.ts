@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { invoices, orders } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus';
+import { logInvoiceChange, valueToString } from '@/lib/services/changeHistory';
 
 export async function GET(
   request: NextRequest,
@@ -91,6 +92,16 @@ export async function POST(
       exclude: body.exclude || false,
       rowIndex: nextRowIndex,
     }).returning();
+
+    // Log invoice creation
+    await logInvoiceChange(
+      'row_add',
+      'invoice',
+      null,
+      `Invoice ${body.invoiceNumber || 'New'}`,
+      orderId,
+      order.customerId
+    );
 
     // Trigger customer status recalculation
     await recalculateCustomerStatusForOrder(orderId);
