@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -61,6 +61,7 @@ export default function DashboardLayout({
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/dashboard/customers', label: 'Customers', icon: Users },
     { href: '/dashboard/timeline', label: 'Timeline', icon: Clock },
+    { href: '/dashboard/reports', label: 'Reports and Analytics', icon: BarChart3 },
   ];
 
   // Add admin link if user is admin

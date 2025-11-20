@@ -3,66 +3,105 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, FileText, TrendingUp, ArrowRight, RefreshCw, Trash2 } from 'lucide-react';
+import { Users, TrendingUp, ArrowRight, RefreshCw, Trash2, AlertCircle, CheckCircle2, Clock, FileText, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { contractStore } from '@/lib/store/contractStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { StoredContract } from '@/lib/store/contractStore';
 import UploadContractModal from '@/components/dashboard/UploadContractModal';
 
+interface DashboardStats {
+  totalCustomers: number;
+  pendingUpdates: number;
+  completed: number;
+  totalValue: number;
+  averageOrderValue: number;
+  recentActivity: number; // Changes in last 7 days
+  totalPaid: number;
+}
+
 export default function DashboardPage() {
   const [contracts, setContracts] = useState<StoredContract[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalCustomers: 0,
+    pendingUpdates: 0,
+    completed: 0,
+    totalValue: 0,
+    averageOrderValue: 0,
+    recentActivity: 0,
+    totalPaid: 0,
+  });
+  const [paidPeriod, setPaidPeriod] = useState<'day' | 'week' | 'month' | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
-  const fetchContracts = async () => {
+  const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Try API first
-      const res = await fetch('/api/contracts');
-      const data = await res.json();
+      // Fetch contracts
+      const contractsRes = await fetch('/api/contracts');
+      const contractsData = await contractsRes.json();
       
-      if (data.success) {
+      if (contractsData.success) {
         // Sort by latest to oldest (by parsedAt)
-        const sortedContracts = (data.contracts || []).sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
+        const sortedContracts = (contractsData.contracts || []).sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
           const dateA = a.parsedAt ? new Date(a.parsedAt).getTime() : 0;
           const dateB = b.parsedAt ? new Date(b.parsedAt).getTime() : 0;
           return dateB - dateA; // Latest first
         });
         setContracts(sortedContracts);
-        setLoading(false);
-        return;
       }
+
+      // Fetch customers for stats
+      const customersRes = await fetch('/api/customers?includeDeleted=false');
+      const customersData = await customersRes.json();
       
-      // Fallback to localStorage
-      try {
-        const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
-        const allContracts = LocalStorageStore.getAllContracts();
-        // Sort by latest to oldest
-        const sortedContracts = allContracts.sort((a, b) => {
-          const dateA = a.parsedAt ? new Date(a.parsedAt).getTime() : 0;
-          const dateB = b.parsedAt ? new Date(b.parsedAt).getTime() : 0;
-          return dateB - dateA; // Latest first
+      if (customersData.success) {
+        const customers = customersData.customers || [];
+        const totalCustomers = customers.length;
+        const pendingUpdates = customers.filter((c: any) => c.status === 'pending_updates').length;
+        const completed = customers.filter((c: any) => c.status === 'completed').length;
+        
+        // Calculate total value and average
+        const totalValue = contractsData.success 
+          ? contractsData.contracts.reduce((sum: number, c: StoredContract) => sum + (c.order.orderGrandTotal || 0), 0)
+          : 0;
+        const averageOrderValue = contractsData.success && contractsData.contracts.length > 0
+          ? totalValue / contractsData.contracts.length
+          : 0;
+
+        // Fetch recent activity (changes in last 7 days)
+        const timelineRes = await fetch('/api/timeline?period=week&limit=1');
+        const timelineData = await timelineRes.json();
+        const recentActivity = timelineData.success ? timelineData.total : 0;
+
+        // Fetch total paid for selected period
+        const statsRes = await fetch(`/api/dashboard/stats?period=${paidPeriod}`);
+        const statsData = await statsRes.json();
+        const totalPaid = statsData.success ? statsData.totalPaid : 0;
+
+        setStats({
+          totalCustomers,
+          pendingUpdates,
+          completed,
+          totalValue,
+          averageOrderValue,
+          recentActivity,
+          totalPaid,
         });
-        setContracts(sortedContracts);
-      } catch (localStorageError) {
-        console.warn('localStorage fallback failed:', localStorageError);
       }
       
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching contracts:', error);
+      console.error('Error fetching dashboard data:', error);
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchContracts();
-  }, []);
-
-  const customers = contractStore.getAllCustomers();
-  const totalValue = contracts.reduce((sum, c) => sum + (c.order.orderGrandTotal || 0), 0);
+    fetchDashboardData();
+  }, [paidPeriod]);
 
   if (loading) {
     return (
@@ -74,15 +113,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Overview of your contracts and customers
-        </p>
-      </div>
-
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -94,7 +126,7 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{customers.length}</div>
+              <div className="text-2xl font-bold">{stats.totalCustomers}</div>
               <p className="text-xs text-muted-foreground">
                 Active customers
               </p>
@@ -109,13 +141,13 @@ export default function DashboardPage() {
         >
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Contracts</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Pending Updates</CardTitle>
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{contracts.length}</div>
+              <div className="text-2xl font-bold text-yellow-600">{stats.pendingUpdates}</div>
               <p className="text-xs text-muted-foreground">
-                Parsed contracts
+                Need attention
               </p>
             </CardContent>
           </Card>
@@ -128,15 +160,111 @@ export default function DashboardPage() {
         >
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completed</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+              <p className="text-xs text-muted-foreground">
+                Completed orders
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Value</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${stats.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <p className="text-xs text-muted-foreground">
                 Combined order value
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Additional Stats Row */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.5 }}
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ${stats.averageOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Per order average
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.6 }}
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Paid</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-2xl font-bold">
+                  ${stats.totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <Select value={paidPeriod} onValueChange={(value) => setPaidPeriod(value as 'day' | 'week' | 'month' | 'all')}>
+                  <SelectTrigger className="w-24 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="month">Last 30 Days</SelectItem>
+                    <SelectItem value="week">Last 7 Days</SelectItem>
+                    <SelectItem value="day">Today</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Payments received
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.7 }}
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.recentActivity}</div>
+              <p className="text-xs text-muted-foreground">
+                Changes in last 7 days
               </p>
             </CardContent>
           </Card>
@@ -159,7 +287,7 @@ export default function DashboardPage() {
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={fetchContracts} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
                 <Button variant="outline" asChild>
