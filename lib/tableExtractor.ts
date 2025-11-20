@@ -9,6 +9,18 @@ export interface Location {
   zip: string;
   clientName?: string;
   dbxCustomerId?: string;
+  email?: string;
+  phone?: string;
+  orderDate?: string;
+  orderPO?: string;
+  orderDueDate?: string;
+  orderType?: string;
+  orderDelivered?: boolean;
+  quoteExpirationDate?: string;
+  orderGrandTotal?: number;
+  progressPayments?: string;
+  balanceDue?: number;
+  salesRep?: string;
 }
 
 export interface OrderItem {
@@ -19,6 +31,13 @@ export interface OrderItem {
   amount: number | string;
   mainCategory?: string | null;
   subCategory?: string | null;
+  // Progress payment fields (optional, for columns I-N)
+  progressOverallPct?: number | string;
+  completedAmount?: number | string;
+  previouslyInvoicedPct?: number | string;
+  previouslyInvoicedAmount?: number | string;
+  newProgressPct?: number | string;
+  thisBill?: number | string;
 }
 
 /**
@@ -43,48 +62,197 @@ export function extractLocation(text: string): Location {
   }
 
   // Normalize text: replace multiple spaces/newlines, handle quoted-printable remnants
-  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Also handle asterisk formatting (used in some email formats)
+  let normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
+  // Helper function to clean extracted values (remove asterisks, trim, handle empty values)
+  const cleanValue = (value: string | null): string | null => {
+    if (!value) return null;
+    
+    // Remove all asterisks from the value
+    let cleaned = value.replace(/\*/g, '').trim();
+    
+    // If value is empty or just whitespace after cleaning, return null
+    if (!cleaned || cleaned.length === 0) {
+      return null;
+    }
+    
+    return cleaned;
+  };
+  
+  // Helper function to extract value, handling both asterisk-formatted and regular formats
+  // Pattern handles: "*Label:*Value", "*Label: *Value", "Label:Value", "Label: Value"
+  // Note: In the EML file, format is *Label:*Value (asterisk before label, NO asterisk between label and colon, asterisk after colon)
+  // Example: *Order Id:*6400 has format *Label:*Value (not *Label*:*Value)
+  // Empty values like *Order Po:* should return null
+  const extractField = (pattern: string, text: string): string | null => {
+    // Try asterisk format: *Label:*Value (most common format in the EML file)
+    // Format: *Label:*Value where Label matches the pattern, no asterisk between label and colon, asterisk after colon
+    // Example: *Order Id:*6400 matches pattern "Order\s+[Ii][Dd]" -> *Order Id:*6400
+    // Use * instead of + to allow empty values (for cases like *Order Po:*)
+    const asteriskPattern = new RegExp(`\\*${pattern}[:：]\\*([^\\n\\r]*)`, 'i');
+    let match = text.match(asteriskPattern);
+    if (match) {
+      const cleaned = cleanValue(match[1]);
+      // If cleaned value is empty or null, return null (don't set empty strings)
+      return cleaned;
+    }
+    
+    // Try asterisk format without asterisk after colon: *Label:Value
+    const asteriskNoValueAsterisk = new RegExp(`\\*${pattern}[:：]\\s*([^\\n\\r]*)`, 'i');
+    match = text.match(asteriskNoValueAsterisk);
+    if (match) {
+      return cleanValue(match[1]);
+    }
+    
+    // Try asterisk format with asterisk around label: *Label*:Value
+    const asteriskLabelPattern = new RegExp(`\\*${pattern}\\*[:：]\\s*([^\\n\\r]*)`, 'i');
+    match = text.match(asteriskLabelPattern);
+    if (match) {
+      return cleanValue(match[1]);
+    }
+    
+    // Try asterisk format with space after colon: *Label: *Value
+    const asteriskSpacePattern = new RegExp(`\\*${pattern}[:：]\\s+([^\\n\\r]+)`, 'i');
+    match = text.match(asteriskSpacePattern);
+    if (match) {
+      return cleanValue(match[1]);
+    }
+    
+    // Fall back to regular format (no asterisks)
+    const regularPattern = new RegExp(`${pattern}[:：]\\s*([^\\n\\r]*)`, 'i');
+    match = text.match(regularPattern);
+    if (match) {
+      return cleanValue(match[1]);
+    }
+    
+    return null;
+  };
 
-  // Extract Order ID (flexible pattern: "Order Id:" or "Order ID:" or "OrderId:")
-  const orderIdMatch = normalizedText.match(/Order\s*[Ii][Dd][:：]\s*([^\n\r]+)/i);
-  if (orderIdMatch) {
-    location.orderNo = orderIdMatch[1].trim();
+  // Extract Order ID (handles both formats)
+  // Pattern needs to match "Order Id" or "Order ID" or "OrderId" with optional space
+  const orderIdValue = extractField('Order\\s+[Ii][Dd]', normalizedText);
+  if (orderIdValue) {
+    location.orderNo = orderIdValue;
   }
 
-  // Extract DBX Customer ID (flexible pattern)
-  const dbxCustomerIdMatch = normalizedText.match(/DBX\s+Customer\s+[Ii][Dd][:：]\s*([^\n\r]+)/i);
-  if (dbxCustomerIdMatch) {
-    location.dbxCustomerId = dbxCustomerIdMatch[1].trim();
+  // Extract DBX Customer ID (handles both formats)
+  const dbxCustomerIdValue = extractField('DBX\\s+Customer\\s+[Ii][Dd]', normalizedText);
+  if (dbxCustomerIdValue) {
+    location.dbxCustomerId = dbxCustomerIdValue;
   }
 
-  // Extract Client Name (flexible pattern: "Client:" or "Client :")
-  const clientMatch = normalizedText.match(/Client[:：]\s*([^\n\r]+)/i);
-  if (clientMatch) {
-    location.clientName = clientMatch[1].trim();
+  // Extract Client Name (handles both formats)
+  const clientValue = extractField('Client', normalizedText);
+  if (clientValue) {
+    location.clientName = clientValue;
   }
 
-  // Extract Street Address (flexible pattern: "Address:" or "Address :")
-  const addressMatch = normalizedText.match(/Address[:：]\s*([^\n\r]+)/i);
-  if (addressMatch) {
-    location.streetAddress = addressMatch[1].trim();
+  // Extract Street Address (handles both formats)
+  const addressValue = extractField('Address', normalizedText);
+  if (addressValue) {
+    location.streetAddress = addressValue;
   }
 
-  // Extract City
-  const cityMatch = normalizedText.match(/City[:：]\s*([^\n\r]+)/i);
-  if (cityMatch) {
-    location.city = cityMatch[1].trim();
+  // Extract City (handles both formats)
+  const cityValue = extractField('City', normalizedText);
+  if (cityValue) {
+    location.city = cityValue;
   }
 
-  // Extract State
-  const stateMatch = normalizedText.match(/State[:：]\s*([^\n\r]+)/i);
-  if (stateMatch) {
-    location.state = stateMatch[1].trim();
+  // Extract State (handles both formats)
+  const stateValue = extractField('State', normalizedText);
+  if (stateValue) {
+    location.state = stateValue;
   }
 
-  // Extract Zip
-  const zipMatch = normalizedText.match(/Zip[:：]\s*([^\n\r]+)/i);
-  if (zipMatch) {
-    location.zip = zipMatch[1].trim();
+  // Extract Zip (handles both formats)
+  const zipValue = extractField('Zip', normalizedText);
+  if (zipValue) {
+    location.zip = zipValue;
+  }
+
+  // Extract Email (handles both formats)
+  const emailValue = extractField('Email', normalizedText);
+  if (emailValue) {
+    location.email = emailValue;
+  }
+
+  // Extract Phone (handles both formats)
+  const phoneValue = extractField('Phone', normalizedText);
+  if (phoneValue) {
+    location.phone = phoneValue;
+  }
+
+  // Extract Order Date (handles both formats)
+  const orderDateValue = extractField('Order\\s+Date', normalizedText);
+  if (orderDateValue && orderDateValue !== '0') {
+    location.orderDate = orderDateValue;
+  }
+
+  // Extract Order PO (handles both formats)
+  const orderPOValue = extractField('Order\\s+Po', normalizedText);
+  if (orderPOValue) {
+    location.orderPO = orderPOValue;
+  }
+
+  // Extract Order Due Date (handles both formats)
+  const orderDueDateValue = extractField('Order\\s+Due\\s+Date', normalizedText);
+  if (orderDueDateValue && orderDueDateValue !== '0') {
+    location.orderDueDate = orderDueDateValue;
+  }
+
+  // Extract Order Type (handles both formats)
+  const orderTypeValue = extractField('Order\\s+Type', normalizedText);
+  if (orderTypeValue) {
+    location.orderType = orderTypeValue;
+  }
+
+  // Extract Order Delivered (handles both formats)
+  const orderDeliveredValue = extractField('Order\\s+Delivered', normalizedText);
+  if (orderDeliveredValue) {
+    const deliveredStr = orderDeliveredValue.toLowerCase();
+    location.orderDelivered = deliveredStr === '0' || deliveredStr === 'false' || deliveredStr === 'no' ? false : (deliveredStr === '1' || deliveredStr === 'true' || deliveredStr === 'yes' ? true : undefined);
+  }
+
+  // Extract Quote Expiration Date (handles both formats)
+  const quoteExpirationValue = extractField('Quote\\s+Expiration\\s+Date', normalizedText);
+  if (quoteExpirationValue && quoteExpirationValue !== '0') {
+    location.quoteExpirationDate = quoteExpirationValue;
+  }
+
+  // Extract Order Grand Total (handles both formats)
+  const orderGrandTotalValue = extractField('Order\\s+Grand\\s+Total', normalizedText);
+  if (orderGrandTotalValue) {
+    // Remove commas, dollar signs, and any remaining asterisks
+    const totalStr = orderGrandTotalValue.replace(/[$,*]/g, '').trim();
+    const parsed = parseFloat(totalStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      location.orderGrandTotal = parsed;
+    }
+  }
+
+  // Extract Progress Payments (handles both formats)
+  const progressPaymentsValue = extractField('Progress\\s+Payments', normalizedText);
+  if (progressPaymentsValue) {
+    location.progressPayments = progressPaymentsValue;
+  }
+
+  // Extract Balance Due (handles both formats)
+  const balanceDueValue = extractField('Balance\\s+Due', normalizedText);
+  if (balanceDueValue) {
+    // Remove commas, dollar signs, and any remaining asterisks
+    const balanceStr = balanceDueValue.replace(/[$,*]/g, '').trim();
+    const parsed = parseFloat(balanceStr);
+    if (!isNaN(parsed) && parsed >= 0) {
+      location.balanceDue = parsed;
+    }
+  }
+
+  // Extract Sales Rep (handles both formats)
+  const salesRepValue = extractField('Sales\\s+Rep', normalizedText);
+  if (salesRepValue) {
+    location.salesRep = salesRepValue || undefined;
   }
 
   // Debug: Log if key fields are missing
@@ -95,6 +263,58 @@ export function extractLocation(text: string): Location {
 
   return location;
 }
+
+/**
+ * Check if a value contains asterisks (indicating parsing issue)
+ * @param value - Value to check
+ * @returns true if value contains asterisks
+ */
+function hasAsterisks(value: string | undefined | null): boolean {
+  if (!value) return false;
+  return value.includes('*');
+}
+
+/**
+ * Check if location extraction was successful and accurate
+ * @param location - Location object to validate
+ * @returns true if key fields are present and accurate, false otherwise
+ */
+export function isLocationValid(location: Location): boolean {
+  // Check if we have at least the essential fields
+  const hasClientName = !!location.clientName && location.clientName.trim().length > 0;
+  const hasDbxCustomerId = !!location.dbxCustomerId && location.dbxCustomerId.trim().length > 0;
+  const hasAddress = !!location.streetAddress && location.streetAddress.trim().length > 0;
+  const hasOrderNo = !!location.orderNo && location.orderNo.trim().length > 0;
+  
+  // Check for parsing accuracy issues (asterisks in values indicate incomplete parsing)
+  const hasAsteriskIssues = 
+    hasAsterisks(location.clientName) ||
+    hasAsterisks(location.dbxCustomerId) ||
+    hasAsterisks(location.streetAddress) ||
+    hasAsterisks(location.city) ||
+    hasAsterisks(location.state) ||
+    hasAsterisks(location.zip) ||
+    hasAsterisks(location.orderNo) ||
+    hasAsterisks(location.email) ||
+    hasAsterisks(location.phone) ||
+    hasAsterisks(location.orderPO) ||
+    hasAsterisks(location.orderType) ||
+    hasAsterisks(location.progressPayments) ||
+    hasAsterisks(location.salesRep);
+  
+  // If there are asterisk issues, parsing is not accurate
+  if (hasAsteriskIssues) {
+    console.warn('[ExtractLocation] Parsing accuracy issue detected: values contain asterisks');
+    return false;
+  }
+  
+  // Consider valid if we have client name OR DBX Customer ID, AND address, AND order number
+  return (hasClientName || hasDbxCustomerId) && hasAddress && hasOrderNo;
+}
+
+// Validation functions moved to lib/orderItemsValidation.ts for client-side compatibility
+// Re-export for backward compatibility with server-side code
+export { calculateOrderItemsTotal, validateOrderItemsTotal } from './orderItemsValidation';
 
 /**
  * Extract numeric quantity from quantity string

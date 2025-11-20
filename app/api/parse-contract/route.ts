@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseEML } from '@/lib/emlParser';
-import { extractOrderItems, extractLocation, OrderItem } from '@/lib/tableExtractor';
+import { extractOrderItems, extractLocation, isLocationValid, validateOrderItemsTotal, OrderItem } from '@/lib/tableExtractor';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
 import { fetchAndParseAddendums, validateAddendumUrl, AddendumData, fetchAddendumHTML, parseOriginalContract, extractAddendumNumber } from '@/lib/addendumParser';
@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
       const includeMainCategories: boolean = body.includeMainCategories !== false;
       const includeSubcategories: boolean = body.includeSubcategories !== false;
       
+      // Extract returnData flag (optional, default: false) - if true, return JSON data instead of Excel
+      const returnData: boolean = body.returnData === true;
+      
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
         const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link));
@@ -90,8 +93,12 @@ export async function POST(request: NextRequest) {
       // Extract location
       const location = extractLocation(parsed.text);
       
+      // Validate location extraction
+      const isLocationParsed = isLocationValid(location);
+      
       // Debug: Log extracted location data
       console.log('[API] Extracted location:', JSON.stringify(location, null, 2));
+      console.log('[API] Location parsing valid:', isLocationParsed);
       
       // Initialize processing summary
       const processingSummary: {
@@ -233,6 +240,27 @@ export async function POST(request: NextRequest) {
       
       console.log(`[API] Filtered items: ${filteredItems.length} (from ${items.length} original)`);
       console.log(`[API] Filtered addendums: ${filteredAddendumData.length} addendums with filtered items`);
+      
+      // Validate order items total matches Order Grand Total
+      const orderItemsValidation = validateOrderItemsTotal(filteredItems, location.orderGrandTotal);
+      if (!orderItemsValidation.isValid) {
+        console.warn('[API] Order items total validation failed:', orderItemsValidation.message);
+      }
+
+      // If returnData is true, return JSON data instead of Excel file
+      if (returnData) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            location,
+            items: filteredItems,
+            addendums: filteredAddendumData,
+            isLocationParsed, // Include validation status
+            orderItemsValidation, // Include order items validation
+          },
+          processingSummary,
+        });
+      }
       
       // Generate spreadsheet with filtered data and deleteExtraRows option
       const spreadsheetBuffer = await generateSpreadsheet(filteredItems, location, filteredAddendumData, deleteExtraRows);

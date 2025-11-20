@@ -2,6 +2,9 @@ import ExcelJS from 'exceljs';
 import path from 'path';
 import { OrderItem, Location } from './tableExtractor';
 import { AddendumData } from './addendumParser';
+import { db } from '@/lib/db';
+import { invoices } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * Sanitize sheet name for Excel (max 31 chars, no invalid characters)
@@ -747,7 +750,8 @@ export async function generateSpreadsheet(
   items: OrderItem[], 
   location: Location, 
   addendumData: AddendumData[] = [],
-  deleteExtraRows: boolean = false
+  deleteExtraRows: boolean = false,
+  orderId?: string // Optional orderId to fetch invoices from database
 ): Promise<Buffer> {
   // Load Template-V2.xlsx template file
   const templatePath = path.join(process.cwd(), 'contract-parser', 'Template-V2.xlsx');
@@ -944,6 +948,9 @@ export async function generateSpreadsheet(
         const cellF = worksheet.getCell(row, 6);
         const cellG = worksheet.getCell(row, 7);
         const cellH = worksheet.getCell(row, 8);
+        const cellI = worksheet.getCell(row, 9);  // % Progress Overall (input)
+        const cellK = worksheet.getCell(row, 11); // % PREVIOUSLY INVOICED (input)
+        // Columns J, L, M, N are formula columns - don't populate, let template formulas handle them
         
         // Set Column A to "1 - Detail" for line items (plain value)
         cellA.value = '1 - Detail';
@@ -961,6 +968,29 @@ export async function generateSpreadsheet(
         cellF.value = qtyValue;
         cellG.value = rateValue;
         cellH.value = amountValue;
+        
+        // Populate only input columns I and K (progress payment input columns)
+        // Column I: % Progress Overall (as decimal, e.g., 0.5 for 50%)
+        // This is an input value - user enters the percentage
+        const progressOverallPct = item.progressOverallPct !== '' && item.progressOverallPct !== null && item.progressOverallPct !== undefined
+          ? (typeof item.progressOverallPct === 'number' ? item.progressOverallPct / 100 : parseFloat(String(item.progressOverallPct)) / 100 || 0)
+          : 0;
+        cellI.value = progressOverallPct;
+        
+        // Column J: $ Completed - DO NOT populate, let template formula handle it (J = I * H)
+        // The dashboard shows calculated values for viewing, but spreadsheet uses formulas
+        
+        // Column K: % PREVIOUSLY INVOICED (as decimal)
+        // This is an input value - user enters the percentage
+        const previouslyInvoicedPct = item.previouslyInvoicedPct !== '' && item.previouslyInvoicedPct !== null && item.previouslyInvoicedPct !== undefined
+          ? (typeof item.previouslyInvoicedPct === 'number' ? item.previouslyInvoicedPct / 100 : parseFloat(String(item.previouslyInvoicedPct)) / 100 || 0)
+          : 0;
+        cellK.value = previouslyInvoicedPct;
+        
+        // Column L: $ PREVIOUSLY INVOICED - DO NOT populate, let template formula handle it (L = H * K)
+        // Column M: % NEW PROGRESS - DO NOT populate, let template formula handle it (M = I - K)
+        // Column N: THIS BILL - DO NOT populate, let template formula handle it (N = M * H)
+        // The template formulas will automatically calculate these based on I, K, and H
         
         // Merge D:E
         try {
@@ -1215,6 +1245,9 @@ export async function generateSpreadsheet(
           const cellF = worksheet.getCell(row, 6);
           const cellG = worksheet.getCell(row, 7);
         const cellH = worksheet.getCell(row, 8);
+          const cellI = worksheet.getCell(row, 9);  // % Progress Overall (input)
+          const cellK = worksheet.getCell(row, 11); // % PREVIOUSLY INVOICED (input)
+          // Columns J, L, M, N are formula columns - don't populate, let template formulas handle them
           
           // Set Column A to "1 - Detail" for line items (plain value)
           cellA.value = '1 - Detail';
@@ -1232,6 +1265,29 @@ export async function generateSpreadsheet(
           cellF.value = qtyValue;
           cellG.value = null; // No rate for addendums - leave empty
           cellH.value = amountValue;
+          
+          // Populate only input columns I and K (progress payment input columns)
+          // Column I: % Progress Overall (as decimal, e.g., 0.5 for 50%)
+          // This is an input value - user enters the percentage
+          const progressOverallPct = item.progressOverallPct !== '' && item.progressOverallPct !== null && item.progressOverallPct !== undefined
+            ? (typeof item.progressOverallPct === 'number' ? item.progressOverallPct / 100 : parseFloat(String(item.progressOverallPct)) / 100 || 0)
+            : 0;
+          cellI.value = progressOverallPct;
+          
+          // Column J: $ Completed - DO NOT populate, let template formula handle it (J = I * H)
+          // The dashboard shows calculated values for viewing, but spreadsheet uses formulas
+          
+          // Column K: % PREVIOUSLY INVOICED (as decimal)
+          // This is an input value - user enters the percentage
+          const previouslyInvoicedPct = item.previouslyInvoicedPct !== '' && item.previouslyInvoicedPct !== null && item.previouslyInvoicedPct !== undefined
+            ? (typeof item.previouslyInvoicedPct === 'number' ? item.previouslyInvoicedPct / 100 : parseFloat(String(item.previouslyInvoicedPct)) / 100 || 0)
+            : 0;
+          cellK.value = previouslyInvoicedPct;
+          
+          // Column L: $ PREVIOUSLY INVOICED - DO NOT populate, let template formula handle it (L = H * K)
+          // Column M: % NEW PROGRESS - DO NOT populate, let template formula handle it (M = I - K)
+          // Column N: THIS BILL - DO NOT populate, let template formula handle it (N = M * H)
+          // The template formulas will automatically calculate these based on I, K, and H
           
           // Merge D:E
           try {
@@ -1312,6 +1368,90 @@ export async function generateSpreadsheet(
   }
   
   console.log(`[Data Population] Added ${bufferRows} buffer rows and end marker at row ${endMarkerRow}`);
+  
+  // Populate invoices (rows 354-391) if orderId is provided
+  if (orderId) {
+    try {
+      console.log(`[Data Population] Fetching invoices for order ${orderId}...`);
+      const invoiceList = await db.query.invoices.findMany({
+        where: eq(invoices.orderId, orderId),
+        orderBy: invoices.rowIndex,
+      });
+
+      console.log(`[Data Population] Found ${invoiceList.length} invoices to populate`);
+
+      // Populate invoice rows (354-391)
+      for (let i = 0; i < invoiceList.length && i < 38; i++) { // Max 38 invoices (354-391)
+        const invoice = invoiceList[i];
+        const row = 354 + i; // Start at row 354
+
+        // Get cells for invoice row
+        const cellA = worksheet.getCell(row, 1); // Status (formula - DO NOT POPULATE)
+        const cellB = worksheet.getCell(row, 2); // Exclude (value - POPULATE)
+        const cellD = worksheet.getCell(row, 4); // Invoice Number (value - POPULATE)
+        const cellE = worksheet.getCell(row, 5); // Invoice Date (value - POPULATE)
+        const cellF = worksheet.getCell(row, 6); // Invoice Amount (value - POPULATE)
+        const cellG = worksheet.getCell(row, 7); // Payments Received (value - POPULATE)
+        const cellH = worksheet.getCell(row, 8); // Open Balance (formula - DO NOT POPULATE)
+
+        // Check if cells have formulas before populating
+        // Column A: Status formula - DO NOT POPULATE
+        if (!cellA.formula) {
+          // If no formula exists, we might need to add it, but for now skip
+          console.warn(`[Data Population] Row ${row} Column A has no formula, skipping`);
+        }
+
+        // Column B: Exclude (value field - POPULATE)
+        if (!cellB.formula) {
+          cellB.value = invoice.exclude ? 'Exclude' : null;
+        }
+
+        // Column D: Invoice Number (value field - POPULATE)
+        if (!cellD.formula) {
+          cellD.value = invoice.invoiceNumber || null;
+        }
+
+        // Column E: Invoice Date (value field - POPULATE)
+        if (!cellE.formula) {
+          if (invoice.invoiceDate) {
+            cellE.value = new Date(invoice.invoiceDate);
+            cellE.numFmt = 'mm/dd/yyyy'; // Format as date
+          } else {
+            cellE.value = null;
+          }
+        }
+
+        // Column F: Invoice Amount (value field - POPULATE)
+        if (!cellF.formula) {
+          if (invoice.invoiceAmount) {
+            cellF.value = parseFloat(invoice.invoiceAmount.toString());
+          } else {
+            cellF.value = null;
+          }
+        }
+
+        // Column G: Payments Received (value field - POPULATE)
+        if (!cellG.formula) {
+          if (invoice.paymentsReceived) {
+            cellG.value = parseFloat(invoice.paymentsReceived.toString());
+          } else {
+            cellG.value = 0;
+          }
+        }
+
+        // Column H: Open Balance (formula - DO NOT POPULATE)
+        if (cellH.formula) {
+          // Formula exists, preserve it
+          console.log(`[Data Population] Row ${row} Column H has formula, preserving: ${cellH.formula}`);
+        }
+      }
+
+      console.log(`[Data Population] Populated ${Math.min(invoiceList.length, 38)} invoice rows`);
+    } catch (error) {
+      console.error(`[Data Population] Error populating invoices:`, error);
+      // Continue even if invoice population fails
+    }
+  }
   
   // Clean shared formulas from the deletion range (rows after marker up to 338)
   // This prevents issues during row deletion in Pass 2

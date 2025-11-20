@@ -92,6 +92,7 @@ export default function FileUpload() {
           
           setProcessingStage('parsing');
           
+          // Generate spreadsheet (original production behavior)
           const response = await fetch('/api/parse-contract', {
             method: 'POST',
             headers: {
@@ -365,19 +366,19 @@ export default function FileUpload() {
                   animate={{ scale: 1 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 15 }}
                 >
-                  <svg
+                <svg
                     className="w-10 h-10 sm:w-12 sm:h-12 text-green-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
                 </motion.div>
               </div>
               <p className="text-sm sm:text-base text-gray-700 font-medium">{file.name}</p>
@@ -444,7 +445,7 @@ export default function FileUpload() {
 
         {/* Error Message */}
         <AnimatePresence>
-          {error && (
+        {error && (
             <motion.div
               initial={{ opacity: 0, y: -10, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -459,7 +460,7 @@ export default function FileUpload() {
 
         {/* Success Message */}
         <AnimatePresence>
-          {success && (
+        {success && (
             <motion.div
               initial={{ opacity: 0, y: -10, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -576,14 +577,14 @@ export default function FileUpload() {
                   );
                   });
                 })()}
-              </div>
+          </div>
             </motion.div>
-          )}
+        )}
         </AnimatePresence>
 
         {/* Options */}
         <AnimatePresence>
-          {file && (
+        {file && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -596,15 +597,15 @@ export default function FileUpload() {
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-4">
                   {/* Row 1, Col 1: Add Addendum */}
                   <label className="flex items-center gap-2.5 cursor-pointer whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={addAddendum}
-                      onChange={(e) => {
-                        setAddAddendum(e.target.checked);
-                        if (!e.target.checked) {
-                          setAddendumLinks('');
-                        }
-                      }}
+                <input
+                  type="checkbox"
+                  checked={addAddendum}
+                  onChange={(e) => {
+                    setAddAddendum(e.target.checked);
+                    if (!e.target.checked) {
+                      setAddendumLinks('');
+                    }
+                  }}
                       className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
                     />
                     <span className="text-sm sm:text-base text-gray-700">Add Addendum</span>
@@ -641,13 +642,14 @@ export default function FileUpload() {
                       className="w-4 h-4 sm:w-5 sm:h-5 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer flex-shrink-0"
                     />
                     <span className="text-sm sm:text-base text-gray-700">Include Subcategories</span>
-                  </label>
+              </label>
+                  
                 </div>
-              </div>
-              
-              {/* Addendum Links Textarea */}
+            </div>
+            
+            {/* Addendum Links Textarea */}
               <AnimatePresence>
-                {addAddendum && (
+            {addAddendum && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
@@ -656,29 +658,29 @@ export default function FileUpload() {
                     className="mt-4 w-full max-w-2xl"
                   >
                     <label htmlFor="addendum-links" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                      Paste addendum links (one per line)
-                    </label>
-                    <textarea
-                      id="addendum-links"
-                      value={addendumLinks}
-                      onChange={(e) => setAddendumLinks(e.target.value)}
-                      placeholder="https://l1.prodbx.com/go/view/?35587.426.20251112100816&#10;https://l1.prodbx.com/go/view/?35279.426.20251020095021"
-                      rows={4}
+                  Paste addendum links (one per line)
+                </label>
+                <textarea
+                  id="addendum-links"
+                  value={addendumLinks}
+                  onChange={(e) => setAddendumLinks(e.target.value)}
+                  placeholder="https://l1.prodbx.com/go/view/?35587.426.20251112100816&#10;https://l1.prodbx.com/go/view/?35279.426.20251020095021"
+                  rows={4}
                       className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-vertical text-xs sm:text-sm text-gray-700 placeholder-gray-400 transition-colors"
-                    />
+                />
                     <p className="mt-1.5 text-xs text-gray-400">
-                      Enter one link per line. Links will be processed in order.
-                    </p>
+                  Enter one link per line. Links will be processed in order.
+                </p>
                   </motion.div>
-                )}
+            )}
               </AnimatePresence>
             </motion.div>
-          )}
+        )}
         </AnimatePresence>
 
         {/* Process Button */}
         <AnimatePresence>
-          {file && (
+        {file && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -686,26 +688,26 @@ export default function FileUpload() {
               transition={{ duration: 0.3 }}
               className="mt-6 sm:mt-8 flex justify-center"
             >
-              <button
-                onClick={handleUpload}
-                disabled={isProcessing}
+            <button
+              onClick={handleUpload}
+              disabled={isProcessing}
                 className={`px-8 sm:px-10 py-3 sm:py-3.5 rounded-lg font-medium transition-all duration-200 min-h-[44px] text-sm sm:text-base ${
-                  isProcessing
+                isProcessing
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98]'
                 }`}
-              >
-                {isProcessing ? (
+            >
+              {isProcessing ? (
                   <span className="flex items-center gap-2">
                     <motion.svg
                       animate={{ rotate: 360 }}
                       transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                       className="w-4 h-4 sm:w-5 sm:h-5"
-                      fill="none"
+                    fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
-                      <path
+                    <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
@@ -713,13 +715,13 @@ export default function FileUpload() {
                       />
                     </motion.svg>
                     {getProcessingText()}
-                  </span>
-                ) : (
-                  'Generate Spreadsheet'
-                )}
-              </button>
+                </span>
+              ) : (
+                'Generate Spreadsheet'
+              )}
+            </button>
             </motion.div>
-          )}
+        )}
         </AnimatePresence>
       </motion.div>
 
