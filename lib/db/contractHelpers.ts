@@ -86,13 +86,25 @@ export async function saveContractToDatabase(contract: StoredContract) {
 
   // Insert order items
   if (contract.items && contract.items.length > 0) {
-    const orderItemsToInsert = contract.items.map((item: OrderItem, index: number) => ({
-      orderId: order.id,
-      rowIndex: index,
-      columnALabel: item.type === 'maincategory' ? '1 - Header' : 
-                    item.type === 'subcategory' ? '1 - Subheader' : 
-                    '1 - Detail',
-      columnBLabel: 'Initial', // All email contracts are "Initial"
+    const orderItemsToInsert = contract.items.map((item: any, index: number) => {
+      // Determine column A label
+      let columnALabel = '1 - Detail';
+      if ((item as any).isBlankRow) {
+        columnALabel = '1 - Blank Row';
+      } else if ((item as any).isAddendumHeader || item.type === 'maincategory') {
+        columnALabel = '1 - Header';
+      } else if (item.type === 'subcategory') {
+        columnALabel = '1 - Subheader';
+      }
+      
+      // Get column B label from item (default to 'Initial' if not set)
+      const columnBLabel = (item as any).columnBLabel || 'Initial';
+      
+      return {
+        orderId: order.id,
+        rowIndex: index,
+        columnALabel,
+        columnBLabel,
       productService: item.productService || '',
       qty: item.qty ? (typeof item.qty === 'number' ? item.qty.toString() : item.qty) : null,
       rate: item.rate ? (typeof item.rate === 'number' ? item.rate.toString() : item.rate) : null,
@@ -106,7 +118,8 @@ export async function saveContractToDatabase(contract: StoredContract) {
       itemType: item.type,
       mainCategory: item.mainCategory || null,
       subCategory: item.subCategory || null,
-    }));
+      };
+    });
 
     await db.insert(schema.orderItems).values(orderItemsToInsert);
   }
@@ -122,24 +135,43 @@ export function convertDatabaseToStoredContract(
   order: typeof schema.orders.$inferSelect,
   orderItems: (typeof schema.orderItems.$inferSelect)[]
 ): StoredContract {
-  // Convert order items back to OrderItem format
-  const items: OrderItem[] = orderItems
+  // Convert order items back to OrderItem format, preserving addendum structure
+  const items: any[] = orderItems
     .sort((a, b) => a.rowIndex - b.rowIndex)
-    .map((item) => ({
-      type: item.itemType,
-      productService: item.productService,
-      qty: item.qty ? parseFloat(item.qty) : '',
-      rate: item.rate ? parseFloat(item.rate) : '',
-      amount: item.amount ? parseFloat(item.amount) : '',
-      mainCategory: item.mainCategory || undefined,
-      subCategory: item.subCategory || undefined,
-      progressOverallPct: item.progressOverallPct ? parseFloat(item.progressOverallPct) : undefined,
-      completedAmount: item.completedAmount ? parseFloat(item.completedAmount) : undefined,
-      previouslyInvoicedPct: item.previouslyInvoicedPct ? parseFloat(item.previouslyInvoicedPct) : undefined,
-      previouslyInvoicedAmount: item.previouslyInvoicedAmount ? parseFloat(item.previouslyInvoicedAmount) : undefined,
-      newProgressPct: item.newProgressPct ? parseFloat(item.newProgressPct) : undefined,
-      thisBill: item.thisBill ? parseFloat(item.thisBill) : undefined,
-    }));
+    .map((item) => {
+      const convertedItem: any = {
+        type: item.itemType,
+        productService: item.productService,
+        qty: item.qty ? parseFloat(item.qty) : '',
+        rate: item.rate ? parseFloat(item.rate) : '',
+        amount: item.amount ? parseFloat(item.amount) : '',
+        mainCategory: item.mainCategory || undefined,
+        subCategory: item.subCategory || undefined,
+        progressOverallPct: item.progressOverallPct ? parseFloat(item.progressOverallPct) : undefined,
+        completedAmount: item.completedAmount ? parseFloat(item.completedAmount) : undefined,
+        previouslyInvoicedPct: item.previouslyInvoicedPct ? parseFloat(item.previouslyInvoicedPct) : undefined,
+        previouslyInvoicedAmount: item.previouslyInvoicedAmount ? parseFloat(item.previouslyInvoicedAmount) : undefined,
+        newProgressPct: item.newProgressPct ? parseFloat(item.newProgressPct) : undefined,
+        thisBill: item.thisBill ? parseFloat(item.thisBill) : undefined,
+        columnBLabel: item.columnBLabel || 'Initial', // Preserve column B label
+      };
+      
+      // Preserve addendum header marker
+      if (item.columnALabel === '1 - Blank Row') {
+        convertedItem.isBlankRow = true;
+      } else if (item.columnBLabel === 'Addendum' && item.columnALabel === '1 - Header' && 
+                 item.productService && item.productService.startsWith('Addendum #')) {
+        convertedItem.isAddendumHeader = true;
+        // Extract addendum number and URL ID from header text
+        const match = item.productService.match(/Addendum #(\d+) \((\d+)\)/);
+        if (match) {
+          convertedItem.addendumNumber = match[1];
+          convertedItem.addendumUrlId = match[2];
+        }
+      }
+      
+      return convertedItem;
+    });
 
   return {
     id: order.id,

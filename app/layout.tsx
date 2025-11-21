@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Calimingo Contract Parser',
+  title: 'Contract Parser',
   description: 'Parse build contract .eml files and generate spreadsheets',
   icons: {
     icon: '/App.ico',

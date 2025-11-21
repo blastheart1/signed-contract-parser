@@ -832,8 +832,8 @@ export async function generateSpreadsheet(
       // Set Column A to "1 - Header" (plain value, not formula)
       cellA.value = '1 - Header';
       
-      // Set Column B to "Initial" for email items (plain value)
-      cellB.value = 'Initial';
+      // Set Column B to value from item if available, otherwise "Initial" (plain value)
+      cellB.value = (item as any).columnBLabel || 'Initial';
       
       // Set main category text in Column D (merged D-E)
       cellD.value = cleanedText;
@@ -889,8 +889,8 @@ export async function generateSpreadsheet(
       // Set Column A to "1 - Subheader" (plain value, not formula)
       cellA.value = '1 - Subheader';
       
-      // Set Column B to "Initial" for email items (plain value)
-      cellB.value = 'Initial';
+      // Set Column B to value from item if available, otherwise "Initial" (plain value)
+      cellB.value = (item as any).columnBLabel || 'Initial';
       
       // Merge D:E FIRST (before setting value)
       try {
@@ -955,8 +955,8 @@ export async function generateSpreadsheet(
         // Set Column A to "1 - Detail" for line items (plain value)
         cellA.value = '1 - Detail';
         
-        // Set Column B to "Initial" for email items (plain value)
-        cellB.value = 'Initial';
+        // Set Column B to value from item if available, otherwise "Initial" (plain value)
+        cellB.value = (item as any).columnBLabel || 'Initial';
         
         // Set values (plain values, no formulas)
         cellD.value = cleanedText;

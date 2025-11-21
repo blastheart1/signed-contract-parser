@@ -133,10 +133,65 @@ export default function DashboardFileUpload() {
           const { location, items, addendums, isLocationParsed, orderItemsValidation } = dataResult.data;
           const newContractId = `contract-${Date.now()}-${location.orderNo}`;
           
-          // Combine addendum items with main items
-          const allItems = [...items];
-          addendums.forEach((addendum: any) => {
-            allItems.push(...addendum.items);
+          // Combine items with addendum structure preserved
+          const allItems: any[] = [...items];
+          
+          // Add addendums with headers and markers
+          if (addendums && addendums.length > 0) {
+            // Add 2 blank rows separator before addendums
+            allItems.push({
+              type: 'item',
+              productService: '',
+              qty: '',
+              rate: '',
+              amount: '',
+              columnBLabel: 'Initial', // Blank rows use 'Initial'
+              isBlankRow: true,
+            });
+            allItems.push({
+              type: 'item',
+              productService: '',
+              qty: '',
+              rate: '',
+              amount: '',
+              columnBLabel: 'Initial', // Blank rows use 'Initial'
+              isBlankRow: true,
+            });
+            
+            // Process each addendum
+            addendums.forEach((addendum: any) => {
+              // Add addendum header item
+              const addendumNum = addendum.addendumNumber;
+              const urlId = addendum.urlId || addendum.addendumNumber;
+              const headerText = `Addendum #${addendumNum} (${urlId})`;
+              
+              allItems.push({
+                type: 'maincategory', // Use maincategory type for addendum headers
+                productService: headerText,
+                qty: '',
+                rate: '',
+                amount: '',
+                columnBLabel: 'Addendum',
+                isAddendumHeader: true,
+                addendumNumber: addendumNum,
+                addendumUrlId: urlId,
+              });
+              
+              // Add addendum items with 'Addendum' marker in column B
+              addendum.items.forEach((item: any) => {
+                allItems.push({
+                  ...item,
+                  columnBLabel: 'Addendum', // Mark all addendum items
+                });
+              });
+            });
+          }
+          
+          // Ensure all main items have 'Initial' marker (if not already set)
+          items.forEach((item: any, index: number) => {
+            if (allItems[index] && !allItems[index].columnBLabel) {
+              allItems[index].columnBLabel = 'Initial';
+            }
           });
 
           const contractData = {

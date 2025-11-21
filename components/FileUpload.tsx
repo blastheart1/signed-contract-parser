@@ -326,7 +326,7 @@ export default function FileUpload() {
           transition={{ duration: 0.4, delay: 0.2 }}
           className="text-2xl sm:text-3xl font-semibold text-gray-900 mb-3 sm:mb-4 text-center mt-8 sm:mt-0"
         >
-          Calimingo Contract Parser
+          Contract Parser
         </motion.h1>
         
         <motion.p

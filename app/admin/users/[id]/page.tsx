@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Save, Key } from 'lucide-react';
+import { ArrowLeft, Save, Key, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -223,6 +223,15 @@ export default function EditUserPage() {
             {success && (
               <Alert>
                 <AlertDescription>User saved successfully! Redirecting...</AlertDescription>
+              </Alert>
+            )}
+
+            {user?.status === 'pending' && (
+              <Alert className="bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+                  This user is pending approval. Assign a role and set status to "Active" to approve the registration.
+                </AlertDescription>
               </Alert>
             )}
 

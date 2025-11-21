@@ -4,6 +4,7 @@ import { convertDatabaseToStoredContract } from '@/lib/db/contractHelpers';
 import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
 import { Location, OrderItem } from '@/lib/tableExtractor';
+import { AddendumData } from '@/lib/addendumParser';
 import { eq } from 'drizzle-orm';
 
 export async function GET(
@@ -68,6 +69,57 @@ export async function GET(
 
     const contract = convertDatabaseToStoredContract(customer, order, orderItems);
     
+    // Separate items into main items and addendums
+    const mainItems: OrderItem[] = [];
+    const addendums: AddendumData[] = [];
+    let currentAddendum: AddendumData | null = null;
+    let blankRowCount = 0;
+    
+    for (const item of contract.items) {
+      const itemAny = item as any;
+      
+      // Skip blank rows (they're just separators)
+      if (itemAny.isBlankRow) {
+        blankRowCount++;
+        continue;
+      }
+      
+      // Check if this is an addendum header
+      if (itemAny.isAddendumHeader) {
+        // Save previous addendum if exists
+        if (currentAddendum) {
+          addendums.push(currentAddendum);
+        }
+        
+        // Start new addendum
+        currentAddendum = {
+          addendumNumber: itemAny.addendumNumber || '',
+          urlId: itemAny.addendumUrlId || itemAny.addendumNumber || '',
+          url: '', // URL not stored in database
+          items: [],
+        };
+        continue;
+      }
+      
+      // Check if we're inside an addendum (columnBLabel === 'Addendum')
+      if (itemAny.columnBLabel === 'Addendum' && currentAddendum) {
+        // Add to current addendum
+        currentAddendum.items.push(item);
+      } else if (itemAny.columnBLabel === 'Addendum' && !currentAddendum) {
+        // Item marked as addendum but no header found - skip or handle as error
+        console.warn('Found addendum item without header:', item);
+        continue;
+      } else {
+        // Regular item - add to main items
+        mainItems.push(item);
+      }
+    }
+    
+    // Don't forget the last addendum
+    if (currentAddendum && currentAddendum.items.length > 0) {
+      addendums.push(currentAddendum);
+    }
+    
     // Convert stored contract to Location format
     const location: Location = {
       orderNo: contract.order.orderNo,
@@ -91,8 +143,8 @@ export async function GET(
       salesRep: contract.order.salesRep,
     };
     
-    // Generate spreadsheet with invoices
-    const spreadsheetBuffer = await generateSpreadsheet(contract.items, location, [], false, order.id);
+    // Generate spreadsheet with invoices and reconstructed addendums
+    const spreadsheetBuffer = await generateSpreadsheet(mainItems, location, addendums, false, order.id);
     
     // Generate filename
     const filename = generateSpreadsheetFilename(location);
@@ -192,8 +244,59 @@ export async function POST(
       );
     }
     
-    // Use provided items if available, otherwise use contract items
-    const itemsToUse = items.length > 0 ? items : contract.items;
+    // Use provided items if available, otherwise reconstruct from contract items
+    let itemsToUse: OrderItem[] = [];
+    let addendumsToUse: AddendumData[] = [];
+    
+    if (items.length > 0) {
+      // Use provided items (already have addendums separated)
+      itemsToUse = items;
+    } else {
+      // Reconstruct from contract items (same logic as GET route)
+      let currentAddendum: AddendumData | null = null;
+      
+      for (const item of contract.items) {
+        const itemAny = item as any;
+        
+        // Skip blank rows
+        if (itemAny.isBlankRow) {
+          continue;
+        }
+        
+        // Check if this is an addendum header
+        if (itemAny.isAddendumHeader) {
+          // Save previous addendum if exists
+          if (currentAddendum) {
+            addendumsToUse.push(currentAddendum);
+          }
+          
+          // Start new addendum
+          currentAddendum = {
+            addendumNumber: itemAny.addendumNumber || '',
+            urlId: itemAny.addendumUrlId || itemAny.addendumNumber || '',
+            url: '',
+            items: [],
+          };
+          continue;
+        }
+        
+        // Check if we're inside an addendum
+        if (itemAny.columnBLabel === 'Addendum' && currentAddendum) {
+          currentAddendum.items.push(item);
+        } else if (itemAny.columnBLabel === 'Addendum' && !currentAddendum) {
+          console.warn('Found addendum item without header:', item);
+          continue;
+        } else {
+          // Regular item
+          itemsToUse.push(item);
+        }
+      }
+      
+      // Don't forget the last addendum
+      if (currentAddendum && currentAddendum.items.length > 0) {
+        addendumsToUse.push(currentAddendum);
+      }
+    }
     
     // Convert stored contract to Location format
     const location: Location = {
@@ -218,10 +321,9 @@ export async function POST(
       salesRep: contract.order.salesRep,
     };
     
-    // Generate spreadsheet with current items and invoices
-    // Pass order.id if available to populate invoices
+    // Generate spreadsheet with current items and reconstructed addendums
     const orderIdForInvoices = order?.id || contract.id;
-    const spreadsheetBuffer = await generateSpreadsheet(itemsToUse, location, [], false, orderIdForInvoices);
+    const spreadsheetBuffer = await generateSpreadsheet(itemsToUse, location, addendumsToUse, false, orderIdForInvoices);
     
     // Generate filename
     const filename = generateSpreadsheetFilename(location);
