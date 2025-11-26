@@ -159,6 +159,9 @@ export default function FileUpload() {
             }
           }
           
+          // Extract blob URL from header for Google Sheets import
+          const blobUrl = response.headers.get('X-Blob-Url');
+          
           // Create download link
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -168,6 +171,18 @@ export default function FileUpload() {
           a.click();
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
+          
+          // Auto-open Google Sheets in new tab if blob URL is available
+          if (blobUrl) {
+            // Google Sheets import URL - uses Google Drive import feature to convert Excel to Google Sheets
+            // Format: https://drive.google.com/drive/folders?action=import&url={file_url}
+            // This opens Google Drive's import dialog with the file URL pre-filled
+            const googleSheetsUrl = `https://drive.google.com/drive/folders?action=import&url=${encodeURIComponent(blobUrl)}`;
+            // Open in new tab after a short delay to ensure download starts first
+            setTimeout(() => {
+              window.open(googleSheetsUrl, '_blank', 'noopener,noreferrer');
+            }, 500);
+          }
 
           // Build success/warning/error message based on processing summary
           let message = 'Spreadsheet generated successfully! Download started.';
