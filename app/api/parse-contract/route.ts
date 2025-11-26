@@ -5,6 +5,7 @@ import { generateSpreadsheet } from '@/lib/spreadsheetGenerator';
 import { generateSpreadsheetFilename } from '@/lib/filenameGenerator';
 import { fetchAndParseAddendums, validateAddendumUrl, AddendumData, fetchAddendumHTML, parseOriginalContract, extractAddendumNumber } from '@/lib/addendumParser';
 import { extractContractLinks } from '@/lib/contractLinkExtractor';
+import { put } from '@vercel/blob';
 
 /**
  * Filter items based on category inclusion flags
@@ -26,6 +27,18 @@ function filterItems(
       return false;
     }
     return true;
+  });
+}
+
+// Handle CORS preflight requests
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
   });
 }
 
@@ -272,21 +285,43 @@ export async function POST(request: NextRequest) {
       // Debug: Log generated filename
       console.log('[API] Generated filename:', filename);
       
+      // Upload to Vercel Blob for Google Sheets import (temporary storage)
+      let blobUrl: string | null = null;
+      try {
+        const blob = await put(`${Date.now()}-${filename}`, spreadsheetBuffer, {
+          access: 'public',
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        blobUrl = blob.url;
+        console.log('[API] Uploaded to Vercel Blob:', blobUrl);
+      } catch (blobError) {
+        console.error('[API] Failed to upload to Vercel Blob:', blobError);
+        // Continue with download even if blob upload fails
+      }
+      
       // Encode filename for Content-Disposition header (RFC 5987)
       // Use both filename (fallback) and filename* (UTF-8 encoded) for maximum browser compatibility
       const encodedFilename = encodeURIComponent(filename);
       const contentDisposition = `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`;
       
-      // Return file as response with processing summary in header
+      // Prepare response headers
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': contentDisposition,
+        'Content-Length': spreadsheetBuffer.length.toString(),
+        'X-Content-Type-Options': 'nosniff',
+        'X-Processing-Summary': JSON.stringify(processingSummary),
+      };
+      
+      // Add blob URL to headers if available
+      if (blobUrl) {
+        headers['X-Blob-Url'] = blobUrl;
+      }
+      
+      // Return file as response with processing summary and blob URL in headers
       return new NextResponse(spreadsheetBuffer as any, {
         status: 200,
-        headers: {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': contentDisposition,
-          'Content-Length': spreadsheetBuffer.length.toString(),
-          'X-Content-Type-Options': 'nosniff',
-          'X-Processing-Summary': JSON.stringify(processingSummary),
-        },
+        headers,
       });
     } else {
       return NextResponse.json(
