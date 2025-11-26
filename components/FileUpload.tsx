@@ -195,10 +195,14 @@ export default function FileUpload() {
           
           // Extract blob URL from header for Google Sheets import
           const extractedBlobUrl = response.headers.get('X-Blob-Url');
+          console.log('[FileUpload] Extracted blob URL from header:', extractedBlobUrl);
           
           // Store blob URL in state for manual button
           if (extractedBlobUrl) {
             setBlobUrl(extractedBlobUrl);
+            console.log('[FileUpload] Blob URL set in state:', extractedBlobUrl);
+          } else {
+            console.warn('[FileUpload] No blob URL found in response headers');
           }
           
           // Create download link
@@ -662,6 +666,7 @@ export default function FileUpload() {
             <div className="mt-4 flex justify-center">
               <button
                 onClick={() => {
+                  console.log('[FileUpload] Opening Google Sheets with blob URL:', blobUrl);
                   const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(blobUrl)}`;
                   const newWindow = window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
                   if (!newWindow) {
@@ -678,6 +683,13 @@ export default function FileUpload() {
                 </svg>
                 Open with Google Sheets
               </button>
+            </div>
+          )}
+          
+          {/* Debug: Show blob URL status */}
+          {success && !blobUrl && successMessageType !== 'error' && (
+            <div className="mt-2 text-xs text-gray-500 text-center">
+              Note: Google Sheets option unavailable (blob upload may have failed)
             </div>
           )}
             </motion.div>
