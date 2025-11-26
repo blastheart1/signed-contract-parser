@@ -21,6 +21,7 @@ export default function FileUpload() {
   const [includeMainCategories, setIncludeMainCategories] = useState(true);
   const [includeSubcategories, setIncludeSubcategories] = useState(true);
   const [popupBlocked, setPopupBlocked] = useState<boolean | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check popup permission on component mount (non-intrusive check)
@@ -80,6 +81,7 @@ export default function FileUpload() {
       setSuccess(false);
       setSuccessMessage('Spreadsheet generated successfully! Download started.');
       setSuccessMessageType('success');
+      setBlobUrl(null); // Clear blob URL when selecting new file
     } else {
       setError('Please upload a .eml file');
     }
@@ -93,6 +95,7 @@ export default function FileUpload() {
       setSuccess(false);
       setSuccessMessage('Spreadsheet generated successfully! Download started.');
       setSuccessMessageType('success');
+      setBlobUrl(null); // Clear blob URL when selecting new file
     } else {
       setError('Please select a .eml file');
     }
@@ -108,6 +111,8 @@ export default function FileUpload() {
     setError(null);
     setSuccess(false);
     setSuccessMessage('Spreadsheet generated successfully! Download started.');
+    setSuccessMessageType('success');
+    setBlobUrl(null); // Clear blob URL when starting new upload
     setProcessingStage('uploading');
 
     try {
@@ -189,7 +194,12 @@ export default function FileUpload() {
           }
           
           // Extract blob URL from header for Google Sheets import
-          const blobUrl = response.headers.get('X-Blob-Url');
+          const extractedBlobUrl = response.headers.get('X-Blob-Url');
+          
+          // Store blob URL in state for manual button
+          if (extractedBlobUrl) {
+            setBlobUrl(extractedBlobUrl);
+          }
           
           // Create download link
           const url = window.URL.createObjectURL(blob);
@@ -202,17 +212,19 @@ export default function FileUpload() {
           document.body.removeChild(a);
           
           // Auto-open Google Drive viewer in new tab if blob URL is available
-          if (blobUrl) {
+          if (extractedBlobUrl) {
             // Google Drive viewer URL - opens Excel file in viewer, user can click "Open with Google Sheets"
             // Format: https://drive.google.com/viewerng/viewer?url={file_url}
-            const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(blobUrl)}`;
+            const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(extractedBlobUrl)}`;
             // Open in new tab after a short delay to ensure download starts first
             setTimeout(() => {
               const newWindow = window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
-              if (!newWindow) {
-                // Popup was blocked - show error message
-                setError('Popup was blocked. Please allow popups for this site to open the file in Google Drive viewer.');
+              // Only set popupBlocked to true if window.open actually returns null
+              // Don't show error if popup opens successfully
+              if (!newWindow && popupBlocked === null) {
                 setPopupBlocked(true);
+              } else if (newWindow) {
+                setPopupBlocked(false);
               }
             }, 500);
           }
@@ -310,6 +322,7 @@ export default function FileUpload() {
           setAddendumLinks('');
           setDeleteExtraRows(false);
           setProcessingStage('idle');
+          // Don't clear blobUrl - keep it for the manual button
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
           }
@@ -491,9 +504,9 @@ export default function FileUpload() {
           className="hidden"
         />
 
-        {/* Popup Blocked Warning */}
+        {/* Popup Blocked Warning - Only show if actually blocked and we have a blob URL */}
         <AnimatePresence>
-        {popupBlocked === true && (
+        {popupBlocked === true && blobUrl && (
             <motion.div
               initial={{ opacity: 0, y: -10, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -502,7 +515,7 @@ export default function FileUpload() {
               className="mt-4 sm:mt-5 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
             >
               <p className="text-yellow-800 text-xs sm:text-sm">
-                <strong>Popup blocked:</strong> Please allow popups for this site to automatically open the file in Google Drive viewer. You can enable popups in your browser settings.
+                <strong>Popup was blocked:</strong> The automatic popup was blocked, but you can use the "Open with Google Sheets" button below to open the file manually.
               </p>
             </motion.div>
           )}
@@ -643,6 +656,30 @@ export default function FileUpload() {
                   });
                 })()}
           </div>
+          
+          {/* Open with Google Sheets Button */}
+          {blobUrl && successMessageType !== 'error' && (
+            <div className="mt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(blobUrl)}`;
+                  const newWindow = window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
+                  if (!newWindow) {
+                    setError('Popup was blocked. Please allow popups for this site to open the file in Google Drive viewer.');
+                    setPopupBlocked(true);
+                  } else {
+                    setPopupBlocked(false);
+                  }
+                }}
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Open with Google Sheets
+              </button>
+            </div>
+          )}
             </motion.div>
         )}
         </AnimatePresence>
