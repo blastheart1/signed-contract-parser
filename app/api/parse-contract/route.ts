@@ -288,9 +288,9 @@ export async function POST(request: NextRequest) {
       // Upload to Vercel Blob for Google Sheets import (temporary storage)
       let blobUrl: string | null = null;
       try {
-        // Use clean filename without timestamp prefix for better readability
-        const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_'); // Sanitize filename for blob storage
-        const blob = await put(cleanFilename, spreadsheetBuffer, {
+        // Use the same filename format as the download (already sanitized by generateSpreadsheetFilename)
+        // Format: "N. Robinson - #10472 - 19 Augusta.xlsx"
+        const blob = await put(filename, spreadsheetBuffer, {
           access: 'public',
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         });
