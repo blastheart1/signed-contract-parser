@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PrivacyDisclaimer from './PrivacyDisclaimer';
 
@@ -20,37 +20,8 @@ export default function FileUpload() {
   const [deleteExtraRows, setDeleteExtraRows] = useState(false);
   const [includeMainCategories, setIncludeMainCategories] = useState(true);
   const [includeSubcategories, setIncludeSubcategories] = useState(true);
-  const [popupBlocked, setPopupBlocked] = useState<boolean | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check popup permission on component mount (non-intrusive check)
-  useEffect(() => {
-    const checkPopupPermission = () => {
-      // Only check if we haven't already determined the status
-      if (popupBlocked === null) {
-        try {
-          // Try to open a test popup (very small, will be closed immediately)
-          const testWindow = window.open('', '_blank', 'width=1,height=1,left=-1000,top=-1000');
-          if (testWindow) {
-            // Popup was allowed - close it immediately
-            testWindow.close();
-            setPopupBlocked(false);
-          } else {
-            // Popup was blocked
-            setPopupBlocked(true);
-          }
-        } catch (e) {
-          // Error opening popup - likely blocked
-          setPopupBlocked(true);
-        }
-      }
-    };
-
-    // Small delay to avoid interfering with page load
-    const timer = setTimeout(checkPopupPermission, 1000);
-    return () => clearTimeout(timer);
-  }, [popupBlocked]);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -214,24 +185,6 @@ export default function FileUpload() {
           a.click();
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
-          
-          // Auto-open Google Drive viewer in new tab if blob URL is available
-          if (extractedBlobUrl) {
-            // Google Drive viewer URL - opens Excel file in viewer, user can click "Open with Google Sheets"
-            // Format: https://drive.google.com/viewerng/viewer?url={file_url}
-            const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(extractedBlobUrl)}`;
-            // Open in new tab after a short delay to ensure download starts first
-            setTimeout(() => {
-              const newWindow = window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
-              // Only set popupBlocked to true if window.open actually returns null
-              // Don't show error if popup opens successfully
-              if (!newWindow && popupBlocked === null) {
-                setPopupBlocked(true);
-              } else if (newWindow) {
-                setPopupBlocked(false);
-              }
-            }, 500);
-          }
 
           // Build success/warning/error message based on processing summary
           let message = 'Spreadsheet generated successfully! Download started.';
@@ -508,23 +461,6 @@ export default function FileUpload() {
           className="hidden"
         />
 
-        {/* Popup Blocked Warning - Only show if actually blocked and we have a blob URL */}
-        <AnimatePresence>
-        {popupBlocked === true && blobUrl && (
-            <motion.div
-              initial={{ opacity: 0, y: -10, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -10, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mt-4 sm:mt-5 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
-            >
-              <p className="text-yellow-800 text-xs sm:text-sm">
-                <strong>Popup was blocked:</strong> The automatic popup was blocked, but you can use the "Open with Google Sheets" button below to open the file manually.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Error Message */}
         <AnimatePresence>
         {error && (
@@ -668,13 +604,7 @@ export default function FileUpload() {
                 onClick={() => {
                   console.log('[FileUpload] Opening Google Sheets with blob URL:', blobUrl);
                   const googleDriveViewerUrl = `https://drive.google.com/viewerng/viewer?url=${encodeURIComponent(blobUrl)}`;
-                  const newWindow = window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
-                  if (!newWindow) {
-                    setError('Popup was blocked. Please allow popups for this site to open the file in Google Drive viewer.');
-                    setPopupBlocked(true);
-                  } else {
-                    setPopupBlocked(false);
-                  }
+                  window.open(googleDriveViewerUrl, '_blank', 'noopener,noreferrer');
                 }}
                 className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
