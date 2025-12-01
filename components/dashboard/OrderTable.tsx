@@ -28,6 +28,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 import type { OrderItem } from '@/lib/tableExtractor';
 
 interface OrderTableProps {
@@ -421,6 +423,7 @@ function SortableRow({
 }
 
 export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess }: OrderTableProps) {
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [items, setItems] = useState<EditableOrderItem[]>(() => 
     initialItems.map((item, index) => ({
@@ -637,6 +640,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       if (data.success) {
         setIsEditing(false);
         setSaveError(null);
+        // Show success toast
+        toast({
+          title: 'Changes saved successfully',
+          description: 'Order items have been updated.',
+        });
         // Notify parent to refresh contract data first
         if (onSaveSuccess) {
           await onSaveSuccess();
@@ -644,15 +652,64 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         // Wait a bit for parent to refresh, then update items from refreshed initialItems
         // The useEffect will handle updating items when initialItems prop changes
       } else {
-        setSaveError(data.error || 'Failed to save changes');
+        const errorMessage = data.error || 'Failed to save changes';
+        setSaveError(errorMessage);
+        toast({
+          title: 'Failed to save changes',
+          description: errorMessage,
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Error saving order items:', error);
-      setSaveError('Failed to save changes. Please try again.');
+      const errorMessage = 'Failed to save changes. Please check your connection and try again.';
+      setSaveError(errorMessage);
+      toast({
+        title: 'Error saving changes',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S or Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && isEditing) {
+        e.preventDefault();
+        if (!saving) {
+          handleSave();
+        }
+      }
+      // Ctrl+E or Cmd+E to edit
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing) {
+        e.preventDefault();
+        setIsEditing(true);
+      }
+      // Esc to cancel
+      if (e.key === 'Escape' && isEditing) {
+        e.preventDefault();
+        setIsEditing(false);
+        setSaveError(null);
+        setItems(initialItems.map((item, index) => ({
+          ...item,
+          id: `item-${index}`,
+          progressOverallPct: item.progressOverallPct || '',
+          completedAmount: item.completedAmount || '',
+          previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+          previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+          newProgressPct: item.newProgressPct || '',
+          thisBill: item.thisBill || '',
+        })));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, saving, initialItems]);
 
   // Track item row numbers for alternating colors (excluding headers)
   const itemRowIndices = useMemo(() => {
@@ -676,48 +733,75 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             </CardDescription>
           </div>
           {!isEditing ? (
-            <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-              <Edit2 className="mr-2 h-4 w-4" />
-              Edit Table
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                    <Edit2 className="mr-2 h-4 w-4" />
+                    Edit Table
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit order items (Ctrl+E)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
             <div className="flex gap-2">
-              <Button onClick={handleSave} size="sm" disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                  </>
-                )}
-              </Button>
-              <Button 
-                onClick={() => {
-                  setIsEditing(false);
-                  setSaveError(null);
-                  // Reset items to initial state on cancel
-                  setItems(initialItems.map((item, index) => ({
-                    ...item,
-                    id: `item-${index}`,
-                    progressOverallPct: item.progressOverallPct || '',
-                    completedAmount: item.completedAmount || '',
-                    previouslyInvoicedPct: item.previouslyInvoicedPct || '',
-                    previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-                    newProgressPct: item.newProgressPct || '',
-                    thisBill: item.thisBill || '',
-                  })));
-                }} 
-                variant="outline" 
-                size="sm"
-                disabled={saving}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Cancel
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={handleSave} size="sm" disabled={saving}>
+                      {saving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Save changes (Ctrl+S)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={() => {
+                        setIsEditing(false);
+                        setSaveError(null);
+                        // Reset items to initial state on cancel
+                        setItems(initialItems.map((item, index) => ({
+                          ...item,
+                          id: `item-${index}`,
+                          progressOverallPct: item.progressOverallPct || '',
+                          completedAmount: item.completedAmount || '',
+                          previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+                          previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+                          newProgressPct: item.newProgressPct || '',
+                          thisBill: item.thisBill || '',
+                        })));
+                      }} 
+                      variant="outline" 
+                      size="sm"
+                      disabled={saving}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Cancel
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Cancel editing (Esc)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
         </div>

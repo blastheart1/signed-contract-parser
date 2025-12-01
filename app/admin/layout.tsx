@@ -3,8 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, Users, LogOut, Settings } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Users, 
+  LogOut, 
+  Settings, 
+  FileText,
+  FileSearch,
+  Database,
+  BarChart3,
+  Menu,
+  X
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface User {
   id: string;
@@ -22,10 +35,16 @@ export default function AdminLayout({
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     checkSession();
   }, []);
+
+  // Close sidebar when route changes on mobile
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
 
   const checkSession = async () => {
     try {
@@ -73,53 +92,150 @@ export default function AdminLayout({
   const navItems = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard, exact: true },
     { href: '/admin/users', label: 'Users', icon: Users },
+    { href: '/dashboard', label: 'Dashboard', icon: FileText },
+    { href: '/admin/settings', label: 'Settings', icon: Settings },
+    { href: '/admin/audit-logs', label: 'Audit Logs', icon: FileSearch },
+    { href: '/admin/data-management', label: 'Data Management', icon: Database },
+    { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="border-b">
-        <div className="container mx-auto px-4">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center space-x-8">
-              <Link href="/admin" className="font-bold text-xl">
-                Admin Panel
-              </Link>
-              <nav className="flex space-x-4">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = item.exact
-                    ? pathname === item.href
-                    : pathname?.startsWith(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-muted'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">
-                {user.username}
-              </span>
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* Mobile Header with Hamburger */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 border-b bg-card h-16 flex items-center justify-between px-4">
+        <Link href="/admin" className="font-bold text-xl">
+          Admin Panel
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="h-11 w-11"
+        >
+          {sidebarOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
+        </Button>
       </div>
-      <main>{children}</main>
+
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            />
+            {/* Sidebar */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              className="fixed left-0 top-0 h-full w-64 border-r bg-card z-50 lg:hidden"
+            >
+              <SidebarContent
+                navItems={navItems}
+                pathname={pathname}
+                user={user}
+                handleLogout={handleLogout}
+              />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:block fixed left-0 top-0 h-full w-64 border-r bg-card">
+        <SidebarContent
+          navItems={navItems}
+          pathname={pathname}
+          user={user}
+          handleLogout={handleLogout}
+        />
+      </aside>
+
+      {/* Main Content */}
+      <main className="lg:ml-64 pt-16 lg:pt-0">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="p-4 sm:p-6 lg:p-8"
+        >
+          {children}
+        </motion.div>
+      </main>
+    </div>
+  );
+}
+
+function SidebarContent({
+  navItems,
+  pathname,
+  user,
+  handleLogout,
+}: {
+  navItems: Array<{ href: string; label: string; icon: any; exact?: boolean }>;
+  pathname: string | null;
+  user: User;
+  handleLogout: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="p-6 border-b">
+        <Link href="/admin" className="flex items-center gap-2">
+          <Settings className="h-6 w-6 text-primary flex-shrink-0" />
+          <div>
+            <h1 className="text-l font-bold">Admin Panel</h1>
+            <p className="text-sm text-muted-foreground mt-1">System Management</p>
+          </div>
+        </Link>
+      </div>
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = item.exact
+            ? pathname === item.href
+            : pathname?.startsWith(item.href);
+          const Icon = item.icon;
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors min-h-[44px]",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5 flex-shrink-0" />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="p-4 border-t">
+        <div className="mb-2 px-3 py-2 text-sm">
+          <p className="font-medium">{user.username}</p>
+          <p className="text-xs text-muted-foreground">{user.role || 'No role'}</p>
+        </div>
+        <Button
+          variant="ghost"
+          className="w-full justify-start min-h-[44px]"
+          onClick={handleLogout}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </Button>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 
 interface Invoice {
   id: string;
@@ -26,6 +28,7 @@ interface InvoiceTableProps {
 }
 
 export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableProps) {
+  const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -117,16 +120,33 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
         await fetchInvoices(); // Refresh list
         setEditingId(null);
         setEditingInvoice({});
+        // Show success toast
+        toast({
+          title: isNew ? 'Invoice created' : 'Invoice updated',
+          description: isNew ? 'New invoice has been added.' : 'Invoice has been updated.',
+        });
         // Notify parent to refresh invoice summary
         if (onInvoiceChange) {
           onInvoiceChange();
         }
       } else {
-        setError(data.error || 'Failed to save invoice');
+        const errorMessage = data.error || 'Failed to save invoice';
+        setError(errorMessage);
+        toast({
+          title: 'Failed to save invoice',
+          description: errorMessage,
+          variant: 'destructive',
+        });
       }
     } catch (err) {
       console.error('Error saving invoice:', err);
-      setError('Failed to save invoice');
+      const errorMessage = 'Failed to save invoice. Please check your connection and try again.';
+      setError(errorMessage);
+      toast({
+        title: 'Error saving invoice',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     } finally {
       setSaving(null);
     }
@@ -149,16 +169,33 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
 
       if (data.success) {
         await fetchInvoices(); // Refresh list
+        // Show success toast
+        toast({
+          title: 'Invoice deleted',
+          description: 'Invoice has been removed.',
+        });
         // Notify parent to refresh invoice summary
         if (onInvoiceChange) {
           onInvoiceChange();
         }
       } else {
-        setError(data.error || 'Failed to delete invoice');
+        const errorMessage = data.error || 'Failed to delete invoice';
+        setError(errorMessage);
+        toast({
+          title: 'Failed to delete invoice',
+          description: errorMessage,
+          variant: 'destructive',
+        });
       }
     } catch (err) {
       console.error('Error deleting invoice:', err);
-      setError('Failed to delete invoice');
+      const errorMessage = 'Failed to delete invoice. Please try again.';
+      setError(errorMessage);
+      toast({
+        title: 'Error deleting invoice',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     } finally {
       setSaving(null);
     }
@@ -183,8 +220,14 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="space-y-3">
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-4 bg-muted rounded w-3/4 mx-auto animate-pulse" />
+              <div className="h-4 bg-muted rounded w-1/2 mx-auto animate-pulse" />
+            </div>
           </div>
         </CardContent>
       </Card>

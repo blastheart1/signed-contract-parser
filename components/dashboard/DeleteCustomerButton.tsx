@@ -13,6 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import type { StoredContract } from '@/lib/store/contractStore';
 
@@ -22,6 +24,7 @@ interface DeleteCustomerButtonProps {
 }
 
 export default function DeleteCustomerButton({ contract, onDelete }: DeleteCustomerButtonProps) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +60,12 @@ export default function DeleteCustomerButton({ contract, onDelete }: DeleteCusto
       // Mark as deleted and show success message
       setDeleted(true);
       
+      // Show success toast
+      toast({
+        title: 'Customer deleted',
+        description: `${contract?.customer?.clientName || 'Customer'} has been moved to trash.`,
+      });
+      
       // Call onDelete callback if provided
       if (onDelete) {
         onDelete();
@@ -68,7 +77,13 @@ export default function DeleteCustomerButton({ contract, onDelete }: DeleteCusto
       }, 1500);
     } catch (err) {
       console.error('[DeleteCustomerButton] Error deleting customer:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete customer');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete customer. Please try again.';
+      setError(errorMessage);
+      toast({
+        title: 'Failed to delete customer',
+        description: errorMessage,
+        variant: 'destructive',
+      });
       setDeleting(false);
       // Don't close dialog on error so user can see the error message
     }
@@ -76,24 +91,32 @@ export default function DeleteCustomerButton({ contract, onDelete }: DeleteCusto
 
   return (
     <>
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => {
-          setOpen(true);
-          setError(null);
-          setDeleted(false);
-        }}
-        className="w-8 p-0"
-        title="Delete Customer"
-        disabled={deleting || deleted}
-      >
-        {deleting || deleted ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setOpen(true);
+                setError(null);
+                setDeleted(false);
+              }}
+              className="w-8 p-0"
+              disabled={deleting || deleted}
+            >
+              {deleting || deleted ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Delete customer (moves to trash)</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <AlertDialog open={open} onOpenChange={(isOpen) => {
         if (!deleting && !deleted) {

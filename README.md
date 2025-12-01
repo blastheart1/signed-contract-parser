@@ -12,6 +12,7 @@ A comprehensive Next.js web application for managing build contracts, parsing EM
 - [Database Schema](#database-schema)
 - [API Endpoints](#api-endpoints)
 - [Deployment](#deployment)
+- [Documentation](#documentation)
 - [Next Steps](#next-steps)
 
 ## Features
@@ -27,10 +28,20 @@ A comprehensive Next.js web application for managing build contracts, parsing EM
   - `viewer`: Read-only access
   - `vendor`: Limited access
 - **Admin Dashboard**: 
-  - Approve/reject user registrations
+  - Comprehensive admin panel with sidebar navigation
+  - Approve/reject user registrations with alert notifications
   - Assign roles to users
   - Reset user passwords
   - Manage user status (active/suspended)
+  - Quick actions panel for common tasks
+  - Pending items overview with quick approve actions
+  - Recent activity feed
+  - Admin notes, to-do list, and maintenance calendar (database-synced)
+  - Audit logs with filtering and pagination
+  - Data management tools (trash cleanup, database stats)
+  - Reports and analytics dashboard
+  - System settings management
+  - Mobile-optimized responsive design
 - **Session Management**: Secure cookie-based sessions with automatic expiration
 
 ### 2. Contract Parsing & Generation
@@ -141,8 +152,13 @@ graph TB
         F --> G[Order Items Tab]
         F --> H[Invoices Tab]
         F --> I[History Tab]
-        C --> J[Admin Dashboard]
-        J --> K[User Management]
+    C --> J[Admin Dashboard]
+    J --> K[User Management]
+    J --> L[Admin Overview]
+    J --> M[Audit Logs]
+    J --> N[Data Management]
+    J --> O[Reports & Analytics]
+    J --> P[System Settings]
     end
 
     subgraph "API Layer"
@@ -164,13 +180,14 @@ graph TB
     end
 
     subgraph "Data Layer"
-        AH[(PostgreSQL Database)]
-        AH --> AI[Users Table]
-        AH --> AJ[Customers Table]
-        AH --> AK[Orders Table]
-        AH --> AL[Order Items Table]
-        AH --> AM[Invoices Table]
-        AH --> AN[Change History Table]
+    AH[(PostgreSQL Database)]
+    AH --> AI[Users Table]
+    AH --> AJ[Customers Table]
+    AH --> AK[Orders Table]
+    AH --> AL[Order Items Table]
+    AH --> AM[Invoices Table]
+    AH --> AN[Change History Table]
+    AH --> AO[Admin Preferences Table]
     end
 
     subgraph "External Services"
@@ -333,6 +350,17 @@ erDiagram
         uuid changed_by FK
         timestamp changed_at
     }
+
+    ADMIN_PREFERENCES {
+        uuid id PK
+        uuid user_id FK
+        string preference_type
+        string title
+        text content
+        jsonb metadata
+        timestamp created_at
+        timestamp updated_at
+    }
 ```
 
 ## Getting Started
@@ -485,6 +513,7 @@ Navigate to `http://localhost:3000`
 4. **order_items**: Individual line items in orders
 5. **invoices**: Invoice records for orders
 6. **change_history**: Audit trail of all changes
+7. **admin_preferences**: Admin notes, todos, and maintenance items (user-specific)
 
 ### Key Relationships
 
@@ -540,6 +569,10 @@ Navigate to `http://localhost:3000`
 - `POST /api/admin/users` - Create user
 - `PATCH /api/admin/users/[id]` - Update user
 - `POST /api/admin/users/[id]/reset-password` - Reset password
+- `GET /api/admin/preferences` - Get admin preferences (notes, todos, maintenance)
+- `POST /api/admin/preferences` - Create admin preference
+- `PATCH /api/admin/preferences/[id]` - Update admin preference
+- `DELETE /api/admin/preferences/[id]` - Delete admin preference
 
 ### Parsing
 - `POST /api/parse-contract` - Parse EML file (returns JSON or Excel)
@@ -581,6 +614,15 @@ The `next.config.js` is configured to:
 - Mark server-only modules as external (`exceljs`, `mailparser`, `cheerio`)
 - Provide fallbacks for Node.js core modules
 - Exclude `lib/` modules from client-side bundling
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** - Detailed system architecture, technology stack, and design decisions
+- **[Maintainability Guide](docs/MAINTAINABILITY.md)** - Code organization, patterns, best practices, and maintenance procedures
+- **[Scalability Guide](docs/SCALABILITY.md)** - Scaling strategies, performance optimization, and future considerations
+- **[Trash Cleanup Documentation](docs/TRASH_CLEANUP.md)** - Data cleanup procedures and policies
 
 ## Next Steps
 
@@ -711,7 +753,22 @@ For issues or questions:
 
 ## Changelog
 
-### Version 2.0.0 (Current - Full Management System)
+### Version 2.1.0 (Current - Enhanced Admin Panel)
+- Redesigned admin panel with sidebar navigation (mobile-responsive)
+- Added admin overview dashboard with quick actions
+- Added pending items section with alert notifications
+- Added recent activity feed
+- Added admin notes widget (database-synced)
+- Added to-do list widget (database-synced)
+- Added maintenance calendar widget (database-synced)
+- Added audit logs page with filtering and pagination
+- Added data management page with trash cleanup tools
+- Added reports and analytics dashboard
+- Added system settings page
+- Implemented database sync for admin preferences
+- Enhanced mobile optimization for emergency access
+
+### Version 2.0.0 (Full Management System)
 - Added user authentication and role-based access control
 - Added admin dashboard for user management
 - Added unified dashboard with customer management

@@ -27,3 +27,7 @@ Thumbs.db
 
 # Testing
 test-output.xlsx
+
+# Archived files (not tracked)
+archive/
+docs/archive/

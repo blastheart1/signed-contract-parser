@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
@@ -115,6 +115,18 @@ export const changeHistory = pgTable('change_history', {
   changedAt: timestamp('changed_at').notNull().defaultNow(),
 });
 
+// Admin Preferences Table (for notes, todos, maintenance)
+export const adminPreferences = pgTable('admin_preferences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  preferenceType: varchar('preference_type', { length: 50 }).notNull(), // 'note', 'todo', 'maintenance'
+  title: varchar('title', { length: 255 }),
+  content: text('content'),
+  metadata: jsonb('metadata'), // For additional fields (dueDate, completed, recurring, etc.)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -128,4 +140,6 @@ export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 export type ChangeHistory = typeof changeHistory.$inferSelect;
 export type NewChangeHistory = typeof changeHistory.$inferInsert;
+export type AdminPreference = typeof adminPreferences.$inferSelect;
+export type NewAdminPreference = typeof adminPreferences.$inferInsert;
 
