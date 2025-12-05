@@ -261,10 +261,32 @@ export default function CustomerDetailPage() {
       
       if (response.ok) {
         const blob = await response.blob();
+        
+        // Extract filename from Content-Disposition header (same logic as landing page)
+        let filename = `contract-${Date.now()}.xlsx`;
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            let extractedFilename = filenameMatch[1].replace(/['"]/g, '');
+            const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/i);
+            if (filenameStarMatch && filenameStarMatch[1]) {
+              try {
+                extractedFilename = decodeURIComponent(filenameStarMatch[1]);
+              } catch (e) {
+                console.warn('Failed to decode filename from Content-Disposition header:', e);
+              }
+            }
+            if (extractedFilename) {
+              filename = extractedFilename;
+            }
+          }
+        }
+        
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'contract.xlsx';
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
