@@ -36,6 +36,13 @@
       "when": 1764624822057,
       "tag": "0004_unusual_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1764978601108,
+      "tag": "0005_wealthy_zaran",
+      "breakpoints": true
     }
   ]
 }

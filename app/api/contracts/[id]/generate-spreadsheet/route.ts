@@ -143,8 +143,17 @@ export async function GET(
       salesRep: contract.order.salesRep,
     };
     
+    // Get project status fields from order
+    const projectStatus = {
+      stage: order.stage || undefined,
+      contractDate: order.contractDate || undefined,
+      firstBuildInvoiceDate: order.firstBuildInvoiceDate || undefined,
+      projectStartDate: order.projectStartDate || undefined,
+      projectEndDate: order.projectEndDate || undefined,
+    };
+    
     // Generate spreadsheet with invoices and reconstructed addendums
-    const spreadsheetBuffer = await generateSpreadsheet(mainItems, location, addendums, false, order.id);
+    const spreadsheetBuffer = await generateSpreadsheet(mainItems, location, addendums, false, order.id, projectStatus);
     
     // Generate filename
     const filename = generateSpreadsheetFilename(location);
@@ -321,9 +330,24 @@ export async function POST(
       salesRep: contract.order.salesRep,
     };
     
+    // Get project status fields from order or contract
+    const projectStatus = order ? {
+      stage: order.stage || undefined,
+      contractDate: order.contractDate || undefined,
+      firstBuildInvoiceDate: order.firstBuildInvoiceDate || undefined,
+      projectStartDate: order.projectStartDate || undefined,
+      projectEndDate: order.projectEndDate || undefined,
+    } : (contract.order as any) ? {
+      stage: (contract.order as any).stage || undefined,
+      contractDate: (contract.order as any).contractDate || undefined,
+      firstBuildInvoiceDate: (contract.order as any).firstBuildInvoiceDate || undefined,
+      projectStartDate: (contract.order as any).projectStartDate || undefined,
+      projectEndDate: (contract.order as any).projectEndDate || undefined,
+    } : undefined;
+    
     // Generate spreadsheet with current items and reconstructed addendums
     const orderIdForInvoices = order?.id || contract.id;
-    const spreadsheetBuffer = await generateSpreadsheet(itemsToUse, location, addendumsToUse, false, orderIdForInvoices);
+    const spreadsheetBuffer = await generateSpreadsheet(itemsToUse, location, addendumsToUse, false, orderIdForInvoices, projectStatus);
     
     // Generate filename
     const filename = generateSpreadsheetFilename(location);

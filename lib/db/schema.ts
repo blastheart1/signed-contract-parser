@@ -54,6 +54,11 @@ export const orders = pgTable('orders', {
   balanceDue: decimal('balance_due', { precision: 15, scale: 2 }).notNull(),
   salesRep: varchar('sales_rep', { length: 255 }),
   status: orderStatusEnum('status').default('pending_updates'),
+  stage: varchar('stage', { length: 50 }), // 'waiting_for_permit', 'active', 'completed'
+  contractDate: varchar('contract_date', { length: 20 }), // MM/DD/YYYY format as string
+  firstBuildInvoiceDate: varchar('first_build_invoice_date', { length: 20 }), // MM/DD/YYYY format as string
+  projectStartDate: varchar('project_start_date', { length: 20 }), // MM/DD/YYYY format as string
+  projectEndDate: varchar('project_end_date', { length: 20 }), // MM/DD/YYYY format as string
   emlBlobUrl: varchar('eml_blob_url', { length: 500 }), // For future Vercel Blob implementation
   emlFilename: varchar('eml_filename', { length: 255 }), // For future Vercel Blob implementation
   createdAt: timestamp('created_at').notNull().defaultNow(),

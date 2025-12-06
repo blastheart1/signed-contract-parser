@@ -751,7 +751,8 @@ export async function generateSpreadsheet(
   location: Location, 
   addendumData: AddendumData[] = [],
   deleteExtraRows: boolean = false,
-  orderId?: string // Optional orderId to fetch invoices from database
+  orderId?: string, // Optional orderId to fetch invoices from database
+  projectStatus?: { stage?: string, contractDate?: string, firstBuildInvoiceDate?: string, projectStartDate?: string, projectEndDate?: string }
 ): Promise<Buffer> {
   // Load Template-V2.xlsx template file
   const templatePath = path.join(process.cwd(), 'contract-parser', 'Template-V2.xlsx');
@@ -1460,6 +1461,51 @@ export async function generateSpreadsheet(
   if (deletionStartRow <= deletionEndRow) {
     console.log(`[Data Population] Cleaning shared formulas in deletion range (rows ${deletionStartRow}-${deletionEndRow})...`);
     cleanSharedFormulasFromRange(worksheet, deletionStartRow, deletionEndRow);
+  }
+  
+  // Write project status fields to Q9:Q13 (Column Q = 17, rows 9-13)
+  if (projectStatus) {
+    console.log(`[Data Population] Writing project status fields to Q9:Q13...`);
+    const columnQ = 17; // Column Q is the 17th column (A=1, B=2, ..., Q=17)
+    
+    // Map stage values to display format
+    const stageMap: Record<string, string> = {
+      'waiting_for_permit': 'Waiting for Permit',
+      'active': 'Active',
+      'completed': 'Completed',
+    };
+    
+    // Q9: STAGE
+    if (projectStatus.stage) {
+      const cellQ9 = worksheet.getCell(9, columnQ);
+      cellQ9.value = stageMap[projectStatus.stage] || projectStatus.stage;
+    }
+    
+    // Q10: Contract Date (DBX)
+    if (projectStatus.contractDate) {
+      const cellQ10 = worksheet.getCell(10, columnQ);
+      cellQ10.value = projectStatus.contractDate; // Keep as MM/DD/YYYY string
+    }
+    
+    // Q11: First Build Invoice Date
+    if (projectStatus.firstBuildInvoiceDate) {
+      const cellQ11 = worksheet.getCell(11, columnQ);
+      cellQ11.value = projectStatus.firstBuildInvoiceDate; // Keep as MM/DD/YYYY string
+    }
+    
+    // Q12: Project Start Date
+    if (projectStatus.projectStartDate) {
+      const cellQ12 = worksheet.getCell(12, columnQ);
+      cellQ12.value = projectStatus.projectStartDate; // Keep as MM/DD/YYYY string
+    }
+    
+    // Q13: Project End Date
+    if (projectStatus.projectEndDate) {
+      const cellQ13 = worksheet.getCell(13, columnQ);
+      cellQ13.value = projectStatus.projectEndDate; // Keep as MM/DD/YYYY string
+    }
+    
+    console.log(`[Data Population] Project status fields written to Q9:Q13`);
   }
   
   // Generate buffer with data populated and end marker set

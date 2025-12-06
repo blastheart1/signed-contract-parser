@@ -197,7 +197,7 @@ function SortableRow({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: index * 0.02 }}
-        className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem ? 'hover:bg-muted/70 dark:hover:bg-muted/50' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+        className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem ? 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:shadow-sm transition-colors duration-150 cursor-pointer' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
       >
       <TableCell className="font-medium">
         <div className="flex items-center gap-2">
@@ -276,19 +276,28 @@ function SortableRow({
       </TableCell>
       <TableCell className="text-right">
         {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.progressOverallPct || ''}
-            onChange={(e) => {
-              const value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
-              onCellChange(item.id, 'progressOverallPct', value);
-            }}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value={item.progressOverallPct || ''}
+              onChange={(e) => {
+                let value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
+                // Clamp value between 0 and 100
+                if (value !== '' && typeof value === 'number') {
+                  value = Math.max(0, Math.min(100, value));
+                }
+                onCellChange(item.id, 'progressOverallPct', value);
+              }}
+              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              placeholder="0"
+              disabled={!isItem}
+              readOnly={!isItem}
+            />
+            <span className="text-muted-foreground text-sm">%</span>
+          </div>
         ) : (
           isItem && item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>
         )}
@@ -312,19 +321,28 @@ function SortableRow({
       </TableCell>
       <TableCell className="text-right">
         {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.previouslyInvoicedPct || ''}
-            onChange={(e) => {
-              const value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
-              onCellChange(item.id, 'previouslyInvoicedPct', value);
-            }}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value={item.previouslyInvoicedPct || ''}
+              onChange={(e) => {
+                let value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
+                // Clamp value between 0 and 100
+                if (value !== '' && typeof value === 'number') {
+                  value = Math.max(0, Math.min(100, value));
+                }
+                onCellChange(item.id, 'previouslyInvoicedPct', value);
+              }}
+              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              placeholder="0"
+              disabled={!isItem}
+              readOnly={!isItem}
+            />
+            <span className="text-muted-foreground text-sm">%</span>
+          </div>
         ) : (
           isItem && item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>
         )}
@@ -722,6 +740,16 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     return indices;
   }, [items]);
 
+  // Calculate total of all line item amounts
+  const totalAmount = useMemo(() => {
+    return items
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+        return sum + amount;
+      }, 0);
+  }, [items]);
+
   return (
     <Card>
       <CardHeader>
@@ -827,9 +855,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                   <TableHead className="text-right">QTY</TableHead>
                   <TableHead className="text-right">RATE</TableHead>
                   <TableHead className="text-right">AMOUNT</TableHead>
-                  <TableHead className="text-right">% Progress Overall</TableHead>
+                  <TableHead className="text-right font-bold text-primary dark:text-primary/90">% Progress Overall</TableHead>
                   <TableHead className="text-right">$ Completed</TableHead>
-                  <TableHead className="text-right">% PREVIOUSLY INVOICED</TableHead>
+                  <TableHead className="text-right font-bold text-primary dark:text-primary/90">% PREVIOUSLY INVOICED</TableHead>
                   <TableHead className="text-right">$ PREVIOUSLY INVOICED</TableHead>
                   <TableHead className="text-right">% NEW PROGRESS</TableHead>
                   <TableHead className="text-right">THIS BILL</TableHead>
@@ -932,6 +960,16 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       </TableCell>
                     </motion.tr>
                   )}
+                  {/* Total row */}
+                  <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
+                    <TableCell colSpan={isEditing ? 4 : 3} className="font-bold text-right">
+                      Total
+                    </TableCell>
+                    <TableCell className="text-right font-bold">
+                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell colSpan={isEditing ? 6 : 5}></TableCell>
+                  </TableRow>
                 </SortableContext>
               </TableBody>
             </Table>
