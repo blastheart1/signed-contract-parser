@@ -24,6 +24,11 @@ export interface StoredContract {
     progressPayments?: string;
     balanceDue: number;
     salesRep?: string;
+    stage?: string;
+    contractDate?: string;
+    firstBuildInvoiceDate?: string;
+    projectStartDate?: string;
+    projectEndDate?: string;
   };
   items: OrderItem[];
   parsedAt: Date;
