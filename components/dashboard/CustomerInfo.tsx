@@ -5,21 +5,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Edit, Trash2, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, Edit, Trash2, History, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { StoredContract } from '@/lib/store/contractStore';
 import EditCustomerInfo from './EditCustomerInfo';
 import DeleteCustomerButton from './DeleteCustomerButton';
 import CustomerHistory from './CustomerHistory';
+import RestoreContractDialog from './RestoreContractDialog';
 
 interface CustomerInfoProps {
   contract: StoredContract;
+  isDeleted?: boolean;
   onContractUpdate?: (updatedContract: StoredContract) => void;
 }
 
-export default function CustomerInfo({ contract, onContractUpdate }: CustomerInfoProps) {
+export default function CustomerInfo({ contract, isDeleted = false, onContractUpdate }: CustomerInfoProps) {
   console.log('[CustomerInfo] ===== Component Render =====');
   console.log('[CustomerInfo] contract:', contract ? {
     hasId: !!contract.id,
@@ -40,6 +43,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
   const [projectEndDate, setProjectEndDate] = useState<string>((contract.order as any)?.projectEndDate || '');
   const [saving, setSaving] = useState(false);
   const [isEditingProjectStatus, setIsEditingProjectStatus] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   
   if (!currentContract?.customer) {
     console.error('[CustomerInfo] Contract missing customer data');
@@ -196,26 +200,44 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                 <h1 className="text-4xl font-bold tracking-tight">{currentContract.customer.clientName || 'Customer'}</h1>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setEditModalOpen(true)}
-                  className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
-                  aria-label="Edit customer"
-                >
-                  <Edit className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                </button>
-                {currentContract?.customer?.dbxCustomerId && (
+                {!isDeleted && (
                   <>
                     <button
                       type="button"
-                      onClick={() => setHistoryModalOpen(true)}
+                      onClick={() => setEditModalOpen(true)}
                       className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
-                      aria-label="View history"
+                      aria-label="Edit customer"
                     >
-                      <History className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                      <Edit className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                     </button>
-                    <DeleteCustomerButton contract={currentContract} />
+                    {currentContract?.customer?.dbxCustomerId && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryModalOpen(true)}
+                          className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
+                          aria-label="View history"
+                        >
+                          <History className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        </button>
+                        <DeleteCustomerButton contract={currentContract} />
+                      </>
+                    )}
                   </>
+                )}
+                {isDeleted && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-1 opacity-50 cursor-not-allowed">
+                          <Edit className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Restore first before editing</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             </div>
@@ -294,14 +316,34 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                   <div className="flex items-center gap-2 mb-3">
                     <h4 className="text-sm font-semibold">Project Status</h4>
                     {!isEditingProjectStatus ? (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingProjectStatus(true)}
-                        className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
-                        aria-label="Edit project status"
-                      >
-                        <Edit className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                      </button>
+                      isDeleted ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="p-1 opacity-50 cursor-not-allowed">
+                                <Edit className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Restore first before editing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isDeleted) {
+                              setIsEditingProjectStatus(true);
+                            }
+                          }}
+                          className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
+                          aria-label="Edit project status"
+                          disabled={isDeleted}
+                        >
+                          <Edit className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        </button>
+                      )
                     ) : (
                       <button
                         type="button"
@@ -326,7 +368,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     {/* Row 1: STAGE */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="stage" className="text-sm font-medium min-w-[180px]">STAGE:</Label>
-                      {isEditingProjectStatus ? (
+                      {isEditingProjectStatus && !isDeleted ? (
                         <Select value={stage} onValueChange={setStage}>
                           <SelectTrigger id="stage" className="flex-1">
                             <SelectValue placeholder="Select stage" />
@@ -362,7 +404,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     {/* Row 2: Contract Date */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="contractDate" className="text-sm font-medium min-w-[180px]">Contract Date: (DBX)</Label>
-                      {isEditingProjectStatus ? (
+                      {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="contractDate"
                           type="text"
@@ -390,7 +432,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     {/* Row 3: First Build Invoice Date */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="firstBuildInvoiceDate" className="text-sm font-medium min-w-[180px]">First Build Invoice Date:</Label>
-                      {isEditingProjectStatus ? (
+                      {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="firstBuildInvoiceDate"
                           type="text"
@@ -418,7 +460,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     {/* Row 4: Project Start Date */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="projectStartDate" className="text-sm font-medium min-w-[180px]">Project Start Date:</Label>
-                      {isEditingProjectStatus ? (
+                      {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="projectStartDate"
                           type="text"
@@ -446,7 +488,7 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                     {/* Row 5: Project End Date */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="projectEndDate" className="text-sm font-medium min-w-[180px]">Project End Date:</Label>
-                      {isEditingProjectStatus ? (
+                      {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="projectEndDate"
                           type="text"
@@ -471,8 +513,8 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
                         <div className="flex-1 text-sm text-foreground">{projectEndDate || '-'}</div>
                       )}
                     </div>
-                    {/* Save Button - Only show when editing */}
-                    {isEditingProjectStatus && (
+                    {/* Save Button - Only show when editing and not deleted */}
+                    {isEditingProjectStatus && !isDeleted && (
                       <div className="flex justify-end pt-2">
                         <Button
                           onClick={handleSaveProjectStatus}
@@ -501,16 +543,28 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
         <Card className="h-full flex flex-col">
           <CardContent className="space-y-1 pt-6 flex-1">
             <div className="pb-3">
-              <h3 className="text-lg font-semibold leading-none tracking-tight">Job Information</h3>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Order #{currentContract.order.orderNo || 'details and financial information'}
-              </p>
-            </div>
-            <div className="flex justify-between items-center py-1">
-              <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Order Id</dt>
-              <dd className="text-sm text-foreground font-medium text-right flex-1">
-                {currentContract.order.orderNo || '-'}
-              </dd>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold leading-none tracking-tight">Job Information</h3>
+                  {isDeleted && (
+                    <Badge variant="secondary" className="mt-1.5 gap-1">
+                      <Trash2 className="h-3 w-3" />
+                      Deleted Contract
+                    </Badge>
+                  )}
+                </div>
+                {isDeleted && currentContract?.customer?.dbxCustomerId && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setRestoreDialogOpen(true)}
+                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Restore Contract
+                  </Button>
+                )}
+              </div>
             </div>
             <InfoRow label="Order Date" value={currentContract.order.orderDate} />
             <InfoRow label="Order PO" value={currentContract.order.orderPO} />
@@ -538,11 +592,21 @@ export default function CustomerInfo({ contract, onContractUpdate }: CustomerInf
       onSave={handleSave}
     />
     {currentContract?.customer?.dbxCustomerId && (
-      <CustomerHistory
-        customerId={currentContract.customer.dbxCustomerId}
-        open={historyModalOpen}
-        onOpenChange={setHistoryModalOpen}
-      />
+      <>
+        <CustomerHistory
+          customerId={currentContract.customer.dbxCustomerId}
+          open={historyModalOpen}
+          onOpenChange={setHistoryModalOpen}
+        />
+        {isDeleted && (
+          <RestoreContractDialog
+            open={restoreDialogOpen}
+            onOpenChange={setRestoreDialogOpen}
+            customerId={currentContract.customer.dbxCustomerId}
+            customerName={currentContract.customer.clientName}
+          />
+        )}
+      </>
     )}
     </>
   );

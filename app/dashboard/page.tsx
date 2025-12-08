@@ -365,35 +365,61 @@ export default function DashboardPage() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.3, delay: 0.5 + index * 0.1 }}
                     >
-                      <Link
-                        href={`/dashboard/customers/${contract.id}`}
-                        className={`block p-4 border rounded-lg hover:bg-accent transition-colors ${isDeleted ? 'opacity-60' : ''}`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold">{contract.customer.clientName}</h3>
-                              {isDeleted && (
+                      {isDeleted ? (
+                        <div
+                          className="block p-4 border rounded-lg opacity-60 cursor-not-allowed pointer-events-none"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold">{contract.customer.clientName}</h3>
                                 <Badge variant="secondary" className="gap-1">
                                   <Trash2 className="h-3 w-3" />
                                   Deleted
                                 </Badge>
-                              )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Order #{contract.order.orderNo} • {contract.customer.streetAddress}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1 italic">
+                                View details in Trash section
+                              </p>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              Order #{contract.order.orderNo} • {contract.customer.streetAddress}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">
-                              ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(contract.parsedAt).toLocaleDateString()}
-                            </p>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(contract.parsedAt).toLocaleDateString()}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </Link>
+                      ) : (
+                        <Link
+                          href={`/dashboard/customers/${contract.id}`}
+                          className="block p-4 border rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold">{contract.customer.clientName}</h3>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Order #{contract.order.orderNo} • {contract.customer.streetAddress}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(contract.parsedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </Link>
+                      )}
                     </motion.div>
                   );
                 })}

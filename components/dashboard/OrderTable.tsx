@@ -37,6 +37,7 @@ interface OrderTableProps {
   onItemsChange?: (items: OrderItem[]) => void;
   orderId?: string; // Order ID for saving to database
   onSaveSuccess?: () => void; // Callback after successful save
+  isDeleted?: boolean; // Whether the contract is deleted
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -62,6 +63,7 @@ function SortableRow({
   overId,
   insertPosition,
   isFirstRow,
+  isDeleted,
 }: {
   item: EditableOrderItem;
   index: number;
@@ -71,6 +73,7 @@ function SortableRow({
   onDeleteRow: (itemId: string) => void;
   isEvenRow: boolean;
   activeId: string | null;
+  isDeleted?: boolean;
   overId: string | null;
   insertPosition: 'above' | 'below' | null;
   isFirstRow: boolean;
@@ -282,9 +285,10 @@ function SortableRow({
               min="0"
               max="100"
               step="5"
-              value={item.progressOverallPct || ''}
+              value={item.progressOverallPct ?? ''}
               onChange={(e) => {
-                let value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
+                const parsed = parseFloat(e.target.value);
+                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
                 // Clamp value between 0 and 100
                 if (value !== '' && typeof value === 'number') {
                   value = Math.max(0, Math.min(100, value));
@@ -327,9 +331,10 @@ function SortableRow({
               min="0"
               max="100"
               step="5"
-              value={item.previouslyInvoicedPct || ''}
+              value={item.previouslyInvoicedPct ?? ''}
               onChange={(e) => {
-                let value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
+                const parsed = parseFloat(e.target.value);
+                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
                 // Clamp value between 0 and 100
                 if (value !== '' && typeof value === 'number') {
                   value = Math.max(0, Math.min(100, value));
@@ -401,24 +406,42 @@ function SortableRow({
       {isEditing && (
         <TableCell>
           <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onAddRow(index)}
-              className="h-7 w-7 p-0"
-              title="Add row below"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDeleteRow(item.id)}
-              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-              title="Delete row"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => !isDeleted && onAddRow(index)}
+                    disabled={isDeleted}
+                    className={`h-7 w-7 p-0 ${isDeleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isDeleted ? 'Restore first before editing' : 'Add row below'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => !isDeleted && onDeleteRow(item.id)}
+                    disabled={isDeleted}
+                    className={`h-7 w-7 p-0 text-destructive hover:text-destructive ${isDeleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isDeleted ? 'Restore first before editing' : 'Delete row'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </TableCell>
       )}
@@ -440,7 +463,7 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess }: OrderTableProps) {
+export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [items, setItems] = useState<EditableOrderItem[]>(() => 
@@ -703,7 +726,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         }
       }
       // Ctrl+E or Cmd+E to edit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !isDeleted) {
         e.preventDefault();
         setIsEditing(true);
       }
@@ -764,13 +787,20 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                    <Edit2 className="mr-2 h-4 w-4" />
-                    Edit Table
-                  </Button>
+                  {isDeleted ? (
+                    <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
+                      <Edit2 className="mr-2 h-4 w-4" />
+                      Edit Table
+                    </Button>
+                  ) : (
+                    <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                      <Edit2 className="mr-2 h-4 w-4" />
+                      Edit Table
+                    </Button>
+                  )}
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Edit order items (Ctrl+E)</p>
+                  <p>{isDeleted ? 'Restore first before editing' : 'Edit order items (Ctrl+E)'}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -842,11 +872,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         )}
         <div className="rounded-md border overflow-x-auto">
           <DndContext
-            sensors={sensors}
+            sensors={isDeleted ? [] : sensors}
             collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
+            onDragStart={isDeleted ? undefined : handleDragStart}
+            onDragOver={isDeleted ? undefined : handleDragOver}
+            onDragEnd={isDeleted ? undefined : handleDragEnd}
           >
             <Table>
               <TableHeader>
@@ -877,7 +907,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'maincategory')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'maincategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Folder className="mr-2 h-4 w-4" />
                             Add Main Category
@@ -885,7 +917,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'subcategory')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'subcategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <FolderOpen className="mr-2 h-4 w-4" />
                             Add Subcategory
@@ -893,7 +927,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'item')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'item')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Row at Top
@@ -921,6 +957,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         overId={overId}
                         insertPosition={insertPosition}
                         isFirstRow={index === 0}
+                        isDeleted={isDeleted}
                       />
                     );
                   })}
@@ -935,7 +972,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'maincategory')}
+                            onClick={() => !isDeleted && handleAddRow(items.length - 1, 'maincategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Folder className="mr-2 h-4 w-4" />
                             Add Main Category
@@ -943,7 +982,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'subcategory')}
+                            onClick={() => !isDeleted && handleAddRow(items.length - 1, 'subcategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <FolderOpen className="mr-2 h-4 w-4" />
                             Add Subcategory
@@ -951,7 +992,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'item')}
+                            onClick={() => !isDeleted && handleAddRow(items.length - 1, 'item')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Row at Bottom
@@ -968,7 +1011,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     <TableCell className="text-right font-bold">
                       ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell colSpan={isEditing ? 6 : 5}></TableCell>
+                    <TableCell colSpan={isEditing ? 6 : 6}></TableCell>
                   </TableRow>
                 </SortableContext>
               </TableBody>

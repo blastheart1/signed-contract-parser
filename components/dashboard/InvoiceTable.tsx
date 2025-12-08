@@ -25,9 +25,10 @@ interface Invoice {
 interface InvoiceTableProps {
   orderId: string;
   onInvoiceChange?: () => void; // Callback to notify parent when invoices change
+  isDeleted?: boolean; // Whether the contract is deleted
 }
 
-export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableProps) {
+export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = false }: InvoiceTableProps) {
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,10 +243,28 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
             <CardTitle>Invoices</CardTitle>
             <CardDescription>Manage invoices for this order (Rows 354-391)</CardDescription>
           </div>
-          <Button onClick={handleAddInvoice} size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Invoice
-          </Button>
+          {isDeleted ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button onClick={() => {}} size="sm" disabled className="opacity-50 cursor-not-allowed">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Invoice
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Restore first before editing</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button onClick={handleAddInvoice} size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Invoice
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -392,25 +411,71 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEdit(invoice)}
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDelete(invoice.id)}
-                              disabled={isSaving}
-                            >
-                              {isSaving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
+                            {isDeleted ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {}}
+                                        disabled
+                                        className="opacity-50 cursor-not-allowed"
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Restore first before editing</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEdit(invoice)}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {isDeleted ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {}}
+                                        disabled
+                                        className="opacity-50 cursor-not-allowed"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Restore first before editing</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDelete(invoice.id)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         )}
                       </TableCell>

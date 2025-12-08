@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock, BarChart3, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -15,12 +15,61 @@ interface User {
   role: string | null;
 }
 
+function NavigationItems() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
+  const navItems = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { href: '/dashboard/customers', label: 'Customers', icon: Users },
+    { href: '/dashboard/timeline', label: 'Timeline', icon: Clock },
+    { href: '/dashboard/reports', label: 'Reports and Analytics', icon: BarChart3 },
+    { href: '/dashboard/trash', label: 'Trash', icon: Trash2 },
+  ];
+
+  return (
+    <>
+      {navItems.map((item) => {
+        // Special handling: if viewing a customer detail page with from=trash query param, highlight Trash instead of Customers
+        const fromTrash = searchParams.get('from') === 'trash';
+        const isViewingCustomerDetail = pathname?.startsWith('/dashboard/customers/');
+        
+        let isActive = item.exact
+          ? pathname === item.href
+          : pathname?.startsWith(item.href);
+        
+        // Override: if viewing customer detail from trash, highlight Trash instead of Customers
+        if (isViewingCustomerDetail && fromTrash) {
+          isActive = item.href === '/dashboard/trash';
+        }
+        
+        const Icon = item.icon;
+        
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <Icon className="h-5 w-5" />
+            <span className="font-medium">{item.label}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,18 +106,6 @@ export default function DashboardLayout({
     }
   };
 
-  const navItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-    { href: '/dashboard/customers', label: 'Customers', icon: Users },
-    { href: '/dashboard/timeline', label: 'Timeline', icon: Clock },
-    { href: '/dashboard/reports', label: 'Reports and Analytics', icon: BarChart3 },
-  ];
-
-  // Add admin link if user is admin
-  if (user?.role === 'admin') {
-    navItems.push({ href: '/admin', label: 'Admin', icon: Settings });
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -99,28 +136,21 @@ export default function DashboardLayout({
             </Link>
           </div>
           <nav className="flex-1 p-4 space-y-1">
-            {navItems.map((item) => {
-              const isActive = item.exact
-                ? pathname === item.href
-                : pathname?.startsWith(item.href);
-              const Icon = item.icon;
-              
-              return (
+            <Suspense fallback={<div className="space-y-1"><div className="h-10 bg-muted animate-pulse rounded-lg" /><div className="h-10 bg-muted animate-pulse rounded-lg" /></div>}>
+              <NavigationItems />
+              {user?.role === 'admin' && (
                 <Link
-                  key={item.href}
-                  href={item.href}
+                  href="/admin"
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                 >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
+                  <Settings className="h-5 w-5" />
+                  <span className="font-medium">Admin</span>
                 </Link>
-              );
-            })}
+              )}
+            </Suspense>
           </nav>
           <div className="p-4 border-t">
             <div className="mb-2 px-3 py-2 text-sm">

@@ -122,6 +122,10 @@ export async function GET(
     console.log(`[GET /api/contracts/${params.id}] Found ${orderItems.length} order items`);
     const contract = convertDatabaseToStoredContract(customer, order, orderItems);
     
+    // Add deleted status to contract (same pattern as /api/contracts)
+    (contract as any).isDeleted = !!customer.deletedAt;
+    (contract as any).deletedAt = customer.deletedAt;
+    
     console.log(`[GET /api/contracts/${params.id}] Successfully returning contract`);
     return NextResponse.json({ success: true, contract });
   } catch (error) {

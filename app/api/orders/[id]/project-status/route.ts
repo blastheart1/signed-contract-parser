@@ -9,30 +9,13 @@ export async function PATCH(
 ) {
   try {
     // Check authentication
-    let session;
-    try {
-      session = await getSession();
-      console.log('[PATCH /api/orders/[id]/project-status] Session check:', { 
-        hasSession: !!session, 
-        sessionId: session?.id,
-        sessionUsername: session?.username 
-      });
-    } catch (sessionError) {
-      console.error('[PATCH /api/orders/[id]/project-status] Error getting session:', sessionError);
-      // For now, allow the request to proceed if session check fails
-      // This helps debug if the issue is with session retrieval
-      session = null;
-    }
+    const session = await getSession();
     
-    // Temporarily allow requests without session for debugging
-    // TODO: Re-enable authentication once session issue is resolved
     if (!session || !session.id) {
-      console.warn('[PATCH /api/orders/[id]/project-status] No session found, but allowing request for debugging');
-      // Uncomment below to re-enable authentication
-      // return NextResponse.json(
-      //   { success: false, error: 'Unauthorized' },
-      //   { status: 401 }
-      // );
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
@@ -85,10 +68,10 @@ export async function PATCH(
     // Build update object with only provided fields
     const updateData: any = {
       updatedAt: new Date(),
-      updatedBy: session?.id || null,
+      updatedBy: session.id,
     };
 
-    if (stage !== undefined) updateData.stage = stage;
+    if (stage !== undefined) updateData.stage = stage || null;
     if (contractDate !== undefined) updateData.contractDate = contractDate || null;
     if (firstBuildInvoiceDate !== undefined) updateData.firstBuildInvoiceDate = firstBuildInvoiceDate || null;
     if (projectStartDate !== undefined) updateData.projectStartDate = projectStartDate || null;
