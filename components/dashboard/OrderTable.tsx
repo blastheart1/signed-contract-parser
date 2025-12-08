@@ -200,7 +200,7 @@ function SortableRow({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: index * 0.02 }}
-        className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem ? 'hover:bg-green-50 dark:hover:bg-green-900/20 hover:shadow-sm transition-colors duration-150 cursor-pointer' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+        className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150 cursor-pointer' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
       >
       <TableCell className="font-medium">
         <div className="flex items-center gap-2">
@@ -242,7 +242,7 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -258,7 +258,7 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right font-medium">
@@ -274,7 +274,7 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -303,7 +303,7 @@ function SortableRow({
             <span className="text-muted-foreground text-sm">%</span>
           </div>
         ) : (
-          isItem && item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -320,7 +320,7 @@ function SortableRow({
             title={isItem ? "Calculated: % Progress Overall × Amount" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -349,7 +349,7 @@ function SortableRow({
             <span className="text-muted-foreground text-sm">%</span>
           </div>
         ) : (
-          isItem && item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -366,7 +366,7 @@ function SortableRow({
             title={isItem ? "Calculated: Amount × % Previously Invoiced" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -383,7 +383,7 @@ function SortableRow({
             title={isItem ? "Calculated: % Progress Overall - % Previously Invoiced" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -400,7 +400,7 @@ function SortableRow({
             title={isItem ? "Calculated: % New Progress × Amount" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       {isEditing && (

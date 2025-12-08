@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { desc, and, gte, eq, count } from 'drizzle-orm';
+import { desc, and, gte, eq, count, or, ilike } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,6 +9,12 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
+    
+    // Additional filters
+    const changeType = searchParams.get('changeType');
+    const userId = searchParams.get('userId');
+    const customerId = searchParams.get('customerId');
+    const search = searchParams.get('search');
 
     // Calculate date filter based on period
     let dateFilter: Date | null = null;
@@ -25,6 +31,21 @@ export async function GET(request: NextRequest) {
     const whereConditions = [];
     if (dateFilter) {
       whereConditions.push(gte(schema.changeHistory.changedAt, dateFilter));
+    }
+    if (changeType) {
+      whereConditions.push(eq(schema.changeHistory.changeType, changeType as any));
+    }
+    if (userId) {
+      whereConditions.push(eq(schema.changeHistory.changedBy, userId));
+    }
+    if (customerId) {
+      // Trim and use case-insensitive partial matching for customer ID
+      const trimmedCustomerId = customerId.trim();
+      whereConditions.push(ilike(schema.changeHistory.customerId, `%${trimmedCustomerId}%`));
+    }
+    if (search) {
+      // Search in fieldName (case-insensitive)
+      whereConditions.push(ilike(schema.changeHistory.fieldName, `%${search}%`));
     }
 
     // Fetch changes with pagination

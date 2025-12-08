@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 const REMEMBER_ME_KEY = 'remembered_username';
@@ -90,9 +90,40 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative"
+      style={{
+        backgroundImage: 'url(/calimingo-pattern-bg.png)',
+        backgroundSize: 'auto',
+        backgroundPosition: '50% 0%',
+        backgroundRepeat: 'repeat',
+        backgroundAttachment: 'scroll',
+        backgroundColor: 'rgb(35, 47, 71)'
+      }}
+    >
+      {/* Go Back Button */}
+      <Link 
+        href="/" 
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20"
+      >
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="gap-2 bg-white/80 hover:bg-white/90 backdrop-blur-sm border border-[rgb(36,47,71)]/30"
+            style={{ fontFamily: 'Poppins, sans-serif' }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Go back
+          </Button>
+        </motion.div>
+      </Link>
+
       {/* Logo */}
-      <div className="mb-8">
+      <div className="mb-8 z-10">
         <Image
           src="/cali-logo.svg"
           alt="Calimingo Pools"
@@ -107,17 +138,28 @@ export default function LoginPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md z-10"
       >
-        <Card>
+        <Card className="bg-white/95 backdrop-blur-sm">
           <CardHeader className="space-y-1">
             <div className="flex items-center justify-center mb-4">
               <div className="rounded-full bg-primary p-3">
                 <Lock className="h-6 w-6 text-primary-foreground" />
               </div>
             </div>
-            <CardTitle className="text-2xl text-center">Sign in to your account</CardTitle>
-            <CardDescription className="text-center">
+            <CardTitle 
+              className="text-2xl text-center font-bold uppercase" 
+              style={{ 
+                fontFamily: 'Oswald, sans-serif',
+                color: 'rgb(36, 47, 71)'
+              }}
+            >
+              Sign in to your account
+            </CardTitle>
+            <CardDescription 
+              className="text-center"
+              style={{ fontFamily: 'Poppins, sans-serif' }}
+            >
               Enter your username and password to access the dashboard
             </CardDescription>
           </CardHeader>
@@ -134,7 +176,7 @@ export default function LoginPage() {
               )}
               
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username" style={{ fontFamily: 'Poppins, sans-serif' }}>Username</Label>
                 <Input
                   id="username"
                   name="username"
@@ -146,11 +188,12 @@ export default function LoginPage() {
                   disabled={loading}
                   autoFocus
                   autoComplete="username"
+                  style={{ fontFamily: 'Poppins, sans-serif' }}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" style={{ fontFamily: 'Poppins, sans-serif' }}>Password</Label>
                 <Input
                   id="password"
                   name="password"
@@ -161,6 +204,7 @@ export default function LoginPage() {
                   required
                   disabled={loading}
                   autoComplete="current-password"
+                  style={{ fontFamily: 'Poppins, sans-serif' }}
                 />
               </div>
 
@@ -174,6 +218,7 @@ export default function LoginPage() {
                 <Label
                   htmlFor="remember-me"
                   className="text-sm font-normal cursor-pointer"
+                  style={{ fontFamily: 'Poppins, sans-serif' }}
                 >
                   Remember me
                 </Label>
@@ -183,6 +228,7 @@ export default function LoginPage() {
                 type="submit"
                 className="w-full"
                 disabled={loading}
+                style={{ fontFamily: 'Poppins, sans-serif' }}
               >
                 {loading ? (
                   <>
@@ -194,7 +240,10 @@ export default function LoginPage() {
                 )}
               </Button>
 
-              <div className="text-center text-sm text-muted-foreground">
+              <div 
+                className="text-center text-sm text-muted-foreground"
+                style={{ fontFamily: 'Poppins, sans-serif' }}
+              >
                 Don't have an account?{' '}
                 <Link href="/register" className="text-primary hover:underline">
                   Register

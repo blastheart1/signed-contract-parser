@@ -334,7 +334,7 @@ export default function DashboardPage() {
                 <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button variant="outline" asChild>
+                <Button variant="outline" size="sm" asChild>
                   <Link href="/dashboard/customers">
                     View All
                     <ArrowRight className="ml-2 h-4 w-4" />

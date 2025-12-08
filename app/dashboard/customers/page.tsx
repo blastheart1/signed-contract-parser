@@ -128,10 +128,7 @@ export default function CustomersPage() {
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setShowTrash(true)}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                View Trash
-              </Button>
+              
               <Button onClick={() => setUploadModalOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Upload Contract

@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock, BarChart3, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, LogOut, Settings, Clock, BarChart3, Trash2, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -134,22 +134,24 @@ export default function DashboardLayout({
                 <p className="text-sm text-muted-foreground mt-1">Build Contracts</p>
               </div>
             </Link>
+            {/* Toggle to Admin View (for admin users only) */}
+            {user?.role === 'admin' && (
+              <div className="mt-4 flex justify-center">
+                <Link href="/admin">
+                  <Button
+                    variant="outline"
+                    className="w-32 justify-center gap-2 border-2 hover:bg-accent"
+                  >
+                    <Repeat className="h-4 w-4" />
+                    <span className="font-medium">Admin</span>
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
           <nav className="flex-1 p-4 space-y-1">
             <Suspense fallback={<div className="space-y-1"><div className="h-10 bg-muted animate-pulse rounded-lg" /><div className="h-10 bg-muted animate-pulse rounded-lg" /></div>}>
               <NavigationItems />
-              {user?.role === 'admin' && (
-                <Link
-                  href="/admin"
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
-                    "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <Settings className="h-5 w-5" />
-                  <span className="font-medium">Admin</span>
-                </Link>
-              )}
             </Suspense>
           </nav>
           <div className="p-4 border-t">
