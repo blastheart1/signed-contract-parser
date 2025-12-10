@@ -83,11 +83,9 @@ export async function POST(
     } catch (error) {
       if (isTableNotExistError(error)) {
         console.warn(`[Acknowledge] alert_acknowledgments table does not exist, skipping acknowledgment for customer ${customerId}, alertType ${alertType}`);
-        // Return success anyway - feature gracefully degrades
-        // User can still hide alerts, just won't persist across sessions
         return NextResponse.json({
           success: true,
-          message: 'Alert hidden (note: table not available, change will not persist)',
+          message: 'Alert acknowledged (table not available, change will not persist)',
           warning: 'alert_acknowledgments table not found in database'
         });
       }

@@ -217,6 +217,7 @@ export async function GET(request: NextRequest) {
               hasValidationIssues = true;
               validationIssues.push(`Order ${order.orderNo}: Items total mismatch`);
             }
+            // If acknowledged, don't mark as validation issue (icon should disappear)
           }
         }
 
