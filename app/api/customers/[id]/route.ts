@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { logCustomerDelete } from '@/lib/services/changeHistory';
 
 export async function GET(
   request: NextRequest,
@@ -59,6 +60,9 @@ export async function DELETE(
         { status: 400 }
       );
     }
+
+    // Log customer deletion before soft-deleting
+    await logCustomerDelete(customerId, customer.clientName || 'Unknown Customer');
 
     // Soft delete: set deletedAt timestamp
     await db.update(schema.customers)

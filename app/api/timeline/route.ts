@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { desc, and, gte, eq, count, or, ilike, inArray } from 'drizzle-orm';
+import { desc, and, gte, eq, count, or, ilike } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,13 +27,33 @@ export async function GET(request: NextRequest) {
       dateFilter = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
+    // Valid change types from the enum
+    type ChangeType = 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit' | 'contract_add' | 'stage_update' | 'customer_delete' | 'customer_restore';
+    const validChangeTypes: ChangeType[] = [
+      'cell_edit',
+      'row_add',
+      'row_delete',
+      'row_update',
+      'customer_edit',
+      'order_edit',
+      'contract_add',
+      'stage_update',
+      'customer_delete',
+      'customer_restore',
+    ];
+
+    // Type guard function to validate changeType
+    const isValidChangeType = (value: string | null): value is ChangeType => {
+      return value !== null && validChangeTypes.includes(value as ChangeType);
+    };
+
     // Build where clause
     const whereConditions = [];
     if (dateFilter) {
       whereConditions.push(gte(schema.changeHistory.changedAt, dateFilter));
     }
-    if (changeType) {
-      whereConditions.push(eq(schema.changeHistory.changeType, changeType as any));
+    if (isValidChangeType(changeType)) {
+      whereConditions.push(eq(schema.changeHistory.changeType, changeType));
     }
     if (userId) {
       whereConditions.push(eq(schema.changeHistory.changedBy, userId));
@@ -64,89 +84,57 @@ export async function GET(request: NextRequest) {
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
     const totalCount = Number(totalCountResult[0]?.count || 0);
 
-    // Extract unique IDs for batch fetching
-    const userIds = [...new Set(allChanges.map(c => c.changedBy).filter((id): id is string => !!id))];
-    const customerIds = [...new Set(allChanges.map(c => c.customerId).filter((id): id is string => !!id))];
-    const orderIds = [...new Set(allChanges.map(c => c.orderId).filter((id): id is string => !!id))];
+    // Fetch related data for each change
+    const formattedChanges = await Promise.all(
+      allChanges.map(async (change) => {
+        // Fetch user
+        const user = change.changedBy
+          ? await db.query.users.findFirst({
+              where: eq(schema.users.id, change.changedBy),
+            })
+          : null;
 
-    // Batch fetch all related data in parallel
-    const [allUsers, allCustomers, allOrders] = await Promise.all([
-      // Fetch users
-      userIds.length > 0
-        ? db
-            .select()
-            .from(schema.users)
-            .where(inArray(schema.users.id, userIds))
-        : [],
-      // Fetch customers
-      customerIds.length > 0
-        ? db
-            .select()
-            .from(schema.customers)
-            .where(inArray(schema.customers.dbxCustomerId, customerIds))
-        : [],
-      // Fetch orders
-      orderIds.length > 0
-        ? db
-            .select()
-            .from(schema.orders)
-            .where(inArray(schema.orders.id, orderIds))
-        : [],
-    ]);
+        // Fetch customer
+        const customer = change.customerId
+          ? await db.query.customers.findFirst({
+              where: eq(schema.customers.dbxCustomerId, change.customerId),
+            })
+          : null;
 
-    // Create lookup maps for O(1) access
-    const usersMap = new Map<string, typeof schema.users.$inferSelect>();
-    for (const user of allUsers) {
-      usersMap.set(user.id, user);
-    }
+        // Fetch order
+        const order = change.orderId
+          ? await db.query.orders.findFirst({
+              where: eq(schema.orders.id, change.orderId),
+            })
+          : null;
 
-    const customersMap = new Map<string, typeof schema.customers.$inferSelect>();
-    for (const customer of allCustomers) {
-      customersMap.set(customer.dbxCustomerId, customer);
-    }
-
-    const ordersMap = new Map<string, typeof schema.orders.$inferSelect>();
-    for (const order of allOrders) {
-      ordersMap.set(order.id, order);
-    }
-
-    // Format changes using lookup maps
-    const formattedChanges = allChanges.map((change) => {
-      // Get user from map
-      const user = change.changedBy ? usersMap.get(change.changedBy) : null;
-
-      // Get customer from map
-      const customer = change.customerId ? customersMap.get(change.customerId) : null;
-
-      // Get order from map
-      const order = change.orderId ? ordersMap.get(change.orderId) : null;
-
-      return {
-        id: change.id,
-        changeType: change.changeType,
-        fieldName: change.fieldName,
-        oldValue: change.oldValue,
-        newValue: change.newValue,
-        rowIndex: change.rowIndex,
-        changedAt: change.changedAt,
-        changedBy: {
-          id: user?.id || null,
-          username: user?.username || 'Unknown',
-        },
-        customer: customer
-          ? {
-              dbxCustomerId: customer.dbxCustomerId,
-              clientName: customer.clientName,
-            }
-          : null,
-        order: order
-          ? {
-              id: order.id,
-              orderNo: order.orderNo,
-            }
-          : null,
-      };
-    });
+        return {
+          id: change.id,
+          changeType: change.changeType,
+          fieldName: change.fieldName,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+          rowIndex: change.rowIndex,
+          changedAt: change.changedAt,
+          changedBy: {
+            id: user?.id || null,
+            username: user?.username || 'Unknown',
+          },
+          customer: customer
+            ? {
+                dbxCustomerId: customer.dbxCustomerId,
+                clientName: customer.clientName,
+              }
+            : null,
+          order: order
+            ? {
+                id: order.id,
+                orderNo: order.orderNo,
+              }
+            : null,
+        };
+      })
+    );
 
     const hasMore = offset + limit < totalCount;
 
@@ -157,10 +145,6 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       hasMore,
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
-      }
     });
   } catch (error) {
     console.error('Error fetching timeline:', error);

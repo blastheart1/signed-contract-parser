@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { logCustomerRestore } from '@/lib/services/changeHistory';
 
 export async function POST(
   request: NextRequest,
@@ -29,6 +30,9 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Log customer restoration before restoring
+    await logCustomerRestore(customerId, customer.clientName || 'Unknown Customer');
 
     // Recover: clear deletedAt timestamp
     await db.update(schema.customers)
