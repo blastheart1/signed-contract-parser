@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
+import { isTableNotExistError } from '@/lib/db/errorHelpers';
 
 export async function GET(
   request: NextRequest,
@@ -25,10 +26,24 @@ export async function GET(
     }
 
     // Fetch all acknowledgments for this customer
-    const acknowledgments = await db
-      .select()
-      .from(schema.alertAcknowledgments)
-      .where(eq(schema.alertAcknowledgments.customerId, customerId));
+    let acknowledgments = [];
+    try {
+      acknowledgments = await db
+        .select()
+        .from(schema.alertAcknowledgments)
+        .where(eq(schema.alertAcknowledgments.customerId, customerId));
+    } catch (error) {
+      // If table doesn't exist (error code 42P01), return empty array
+      if (isTableNotExistError(error)) {
+        console.warn(`[Alerts] alert_acknowledgments table does not exist, returning empty acknowledgments for customer ${customerId}`);
+        return NextResponse.json({
+          success: true,
+          acknowledgments: [],
+        });
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     // Fetch user details for each acknowledgment
     const acknowledgmentsWithUsers = await Promise.all(

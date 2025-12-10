@@ -5,6 +5,7 @@ import { validateOrderItemsTotal } from '@/lib/orderItemsValidation';
 import { updateCustomerStatus } from '@/lib/services/customerStatus';
 import type { OrderItem } from '@/lib/tableExtractor';
 import type { AlertAcknowledgment } from '@/lib/db/schema';
+import { isTableNotExistError } from '@/lib/db/errorHelpers';
 
 export async function GET(request: NextRequest) {
   try {
@@ -107,32 +108,42 @@ export async function GET(request: NextRequest) {
           .where(inArray(schema.alertAcknowledgments.customerId, customerIds));
         console.log(`[Customers] Successfully fetched ${allAcknowledgments.length} acknowledgments via batch query`);
       } catch (batchError) {
-        console.error('[Customers] Batch query failed, falling back to individual queries');
-        console.error('[Customers] Batch error:', batchError instanceof Error ? batchError.message : String(batchError));
-        console.error('[Customers] Customer IDs count:', customerIds.length);
-        
-        // Fallback: Query acknowledgments individually per customer
-        // This is less efficient but more reliable if batch query has issues
-        try {
-          const acknowledgmentPromises = customerIds.map(customerId =>
-            db
-              .select()
-              .from(schema.alertAcknowledgments)
-              .where(eq(schema.alertAcknowledgments.customerId, customerId))
-              .then(rows => ({ customerId, rows }))
-              .catch(err => {
-                console.error(`[Customers] Error fetching acknowledgments for customer ${customerId}:`, err);
-                return { customerId, rows: [] }; // Return empty for failed queries
-              })
-          );
-          
-          const acknowledgmentResults = await Promise.all(acknowledgmentPromises);
-          allAcknowledgments = acknowledgmentResults.flatMap(result => result.rows);
-          console.log(`[Customers] Fallback: Successfully fetched ${allAcknowledgments.length} acknowledgments via individual queries`);
-        } catch (fallbackError) {
-          console.error('[Customers] Fallback query also failed:', fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
-          // Continue with empty array - customers will still load, just without acknowledgment filtering
+        // If table doesn't exist, skip fallback entirely
+        if (isTableNotExistError(batchError)) {
+          console.warn('[Customers] alert_acknowledgments table does not exist, skipping acknowledgment queries');
           allAcknowledgments = [];
+        } else {
+          console.error('[Customers] Batch query failed, falling back to individual queries');
+          console.error('[Customers] Batch error:', batchError instanceof Error ? batchError.message : String(batchError));
+          console.error('[Customers] Customer IDs count:', customerIds.length);
+          
+          // Fallback: Query acknowledgments individually per customer
+          // This is less efficient but more reliable if batch query has issues
+          try {
+            const acknowledgmentPromises = customerIds.map(customerId =>
+              db
+                .select()
+                .from(schema.alertAcknowledgments)
+                .where(eq(schema.alertAcknowledgments.customerId, customerId))
+                .then(rows => ({ customerId, rows }))
+                .catch(err => {
+                  // Skip if table doesn't exist for individual queries too
+                  if (isTableNotExistError(err)) {
+                    return { customerId, rows: [] };
+                  }
+                  console.error(`[Customers] Error fetching acknowledgments for customer ${customerId}:`, err);
+                  return { customerId, rows: [] }; // Return empty for failed queries
+                })
+            );
+            
+            const acknowledgmentResults = await Promise.all(acknowledgmentPromises);
+            allAcknowledgments = acknowledgmentResults.flatMap(result => result.rows);
+            console.log(`[Customers] Fallback: Successfully fetched ${allAcknowledgments.length} acknowledgments via individual queries`);
+          } catch (fallbackError) {
+            console.error('[Customers] Fallback query also failed:', fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+            // Continue with empty array - customers will still load, just without acknowledgment filtering
+            allAcknowledgments = [];
+          }
         }
       }
     }
