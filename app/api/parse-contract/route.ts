@@ -46,11 +46,150 @@ export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type') || '';
     
-    let fileContent: Buffer;
-    
     if (contentType.includes('application/json')) {
-      // JSON with base64 encoded file
       const body = await request.json();
+      
+      // Extract mode (optional, defaults to 'eml' for backward compatibility)
+      const mode: 'links' | 'eml' = body.mode === 'links' ? 'links' : 'eml';
+      
+      // Extract common options (same for both modes)
+      const deleteExtraRows: boolean = body.deleteExtraRows === true;
+      const includeMainCategories: boolean = body.includeMainCategories !== false;
+      const includeSubcategories: boolean = body.includeSubcategories !== false;
+      const returnData: boolean = body.returnData === true;
+      
+      // LINKS-ONLY MODE: Process without .eml file
+      if (mode === 'links') {
+        const originalContractUrl: string = body.originalContractUrl || '';
+        const addendumLinks: string[] = body.addendumLinks || [];
+        
+        if (!originalContractUrl || !validateAddendumUrl(originalContractUrl)) {
+          return NextResponse.json(
+            { error: 'Valid originalContractUrl is required for links-only mode' },
+            { status: 400 }
+          );
+        }
+        
+        // Validate addendum links format if provided
+        if (addendumLinks.length > 0) {
+          const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link));
+          if (invalidLinks.length > 0) {
+            return NextResponse.json(
+              { 
+                error: 'Invalid addendum URL format',
+                message: `The following links are invalid: ${invalidLinks.join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
+              },
+              { status: 400 }
+            );
+          }
+        }
+        
+        // Process links-only mode
+        const processingSummary: {
+          originalContract: { url: string | null; status: 'success' | 'failed' | 'not_found'; error?: string };
+          addendums: Array<{ url: string; status: 'success' | 'failed'; error?: string }>;
+          summary: { totalLinks: number; successful: number; failed: number };
+        } = {
+          originalContract: { url: originalContractUrl, status: 'not_found' },
+          addendums: [],
+          summary: { totalLinks: 0, successful: 0, failed: 0 },
+        };
+        
+        let items: ReturnType<typeof extractOrderItems> = [];
+        let addendumData: AddendumData[] = [];
+        let location: ReturnType<typeof extractLocation> = {
+          orderNo: '',
+          streetAddress: '',
+          city: '',
+          state: '',
+          zip: '',
+        };
+        
+        // Process Original Contract
+        try {
+          const originalContractHTML = await fetchAddendumHTML(originalContractUrl);
+          const contractId = extractAddendumNumber(originalContractUrl);
+          
+          // Parse items from Original Contract HTML using existing function
+          items = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
+          
+          // Try to extract location from contract HTML text using existing function
+          try {
+            // extractLocation expects email text, but we can try with HTML text
+            // If it doesn't work, location will be mostly empty (acceptable per requirements)
+            const locationText = originalContractHTML; // Use HTML as text, extractLocation will try to parse it
+            const extractedLocation = extractLocation(locationText);
+            if (extractedLocation.orderNo || extractedLocation.streetAddress) {
+              location = extractedLocation;
+            }
+          } catch (locError) {
+            console.warn('[API] Could not extract location from contract HTML, location will be incomplete');
+            // Location remains with empty/default values - acceptable per requirements
+          }
+          
+          processingSummary.originalContract.status = 'success';
+          processingSummary.summary.successful++;
+          processingSummary.summary.totalLinks++;
+        } catch (error) {
+          processingSummary.originalContract.status = 'failed';
+          processingSummary.originalContract.error = error instanceof Error ? error.message : 'Unknown error';
+          processingSummary.summary.failed++;
+          processingSummary.summary.totalLinks++;
+          throw new Error(`Failed to process Original Contract: ${processingSummary.originalContract.error}`);
+        }
+        
+        // Process Addendums
+        if (addendumLinks.length > 0) {
+          processingSummary.summary.totalLinks += addendumLinks.length;
+          
+          for (const url of addendumLinks) {
+            try {
+              const addendumResult = await fetchAndParseAddendums([url]);
+              if (addendumResult.length > 0) {
+                addendumData.push(...addendumResult);
+                processingSummary.addendums.push({ url, status: 'success' });
+                processingSummary.summary.successful++;
+              } else {
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.summary.failed++;
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              processingSummary.addendums.push({ url, status: 'failed', error: errorMessage });
+              processingSummary.summary.failed++;
+            }
+          }
+        }
+        
+        // Apply filtering
+        const filteredItems = filterItems(items, includeMainCategories, includeSubcategories);
+        const filteredAddendumData = addendumData.map(addendum => ({
+          ...addendum,
+          items: filterItems(addendum.items, includeMainCategories, includeSubcategories),
+        }));
+        
+        // Validate order items (if orderGrandTotal is available in location)
+        const orderItemsValidation = validateOrderItemsTotal(
+          filteredItems, 
+          location.orderGrandTotal || 0
+        );
+        
+        // Return data (same structure as EML mode)
+        return NextResponse.json({
+          success: true,
+          data: {
+            location,
+            items: filteredItems,
+            addendums: filteredAddendumData,
+            isLocationParsed: isLocationValid(location),
+            orderItemsValidation,
+          },
+          processingSummary,
+        });
+      }
+      
+      // EML MODE: Existing behavior (unchanged)
+      let fileContent: Buffer;
       
       if (body && body.file) {
         fileContent = Buffer.from(body.file, 'base64');
@@ -70,21 +209,13 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Extract addAddendum flag (optional, default: false)
+      // Extract addAddendum flag (optional, default: false) - for backward compatibility
       const addAddendum: boolean = body.addAddendum === true;
       
       // Extract addendumLinks array (optional, only used when addAddendum is true)
+      // OR use originalContractUrl and addendumLinks from EML mode Step 2 selection
       const addendumLinks: string[] = body.addendumLinks || [];
-      
-      // Extract deleteExtraRows option (optional, default: false)
-      const deleteExtraRows: boolean = body.deleteExtraRows === true;
-      
-      // Extract category inclusion flags (optional, default: true)
-      const includeMainCategories: boolean = body.includeMainCategories !== false;
-      const includeSubcategories: boolean = body.includeSubcategories !== false;
-      
-      // Extract returnData flag (optional, default: false) - if true, return JSON data instead of Excel
-      const returnData: boolean = body.returnData === true;
+      const originalContractUrlFromBody: string | undefined = body.originalContractUrl;
       
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
@@ -127,8 +258,58 @@ export async function POST(request: NextRequest) {
       let items: ReturnType<typeof extractOrderItems> = [];
       let addendumData: AddendumData[] = [];
       
-      // Auto-detect links if addAddendum checkbox is unchecked
-      if (!addAddendum) {
+      // NEW FLOW: If originalContractUrl is provided in body, use it (from Step 2 selection)
+      if (originalContractUrlFromBody) {
+        processingSummary.originalContract.url = originalContractUrlFromBody;
+        console.log(`[API] Using provided Original Contract link: ${originalContractUrlFromBody}`);
+        
+        try {
+          const originalContractHTML = await fetchAddendumHTML(originalContractUrlFromBody);
+          const contractId = extractAddendumNumber(originalContractUrlFromBody);
+          items = parseOriginalContract(originalContractHTML, contractId, originalContractUrlFromBody);
+          processingSummary.originalContract.status = 'success';
+          processingSummary.summary.successful++;
+          processingSummary.summary.totalLinks++;
+          console.log(`[API] Successfully processed Original Contract: ${items.length} items`);
+        } catch (error) {
+          processingSummary.originalContract.status = 'failed';
+          processingSummary.originalContract.error = error instanceof Error ? error.message : 'Unknown error';
+          processingSummary.summary.failed++;
+          processingSummary.summary.totalLinks++;
+          console.warn(`[API] Failed to process Original Contract: ${processingSummary.originalContract.error}`);
+          // Fallback to email HTML
+          try {
+            items = extractOrderItems(parsed.html);
+            console.log('[API] Falling back to email HTML for main contract items');
+          } catch (emailError) {
+            items = [];
+          }
+        }
+        
+        // Process provided addendum links
+        if (addendumLinks.length > 0) {
+          processingSummary.summary.totalLinks += addendumLinks.length;
+          for (const url of addendumLinks) {
+            try {
+              const addendumResult = await fetchAndParseAddendums([url]);
+              if (addendumResult.length > 0) {
+                addendumData.push(...addendumResult);
+                processingSummary.addendums.push({ url, status: 'success' });
+                processingSummary.summary.successful++;
+              } else {
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.summary.failed++;
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              processingSummary.addendums.push({ url, status: 'failed', error: errorMessage });
+              processingSummary.summary.failed++;
+            }
+          }
+        }
+      }
+      // OLD FLOW: Auto-detect links if addAddendum checkbox is unchecked (backward compatibility)
+      else if (!addAddendum) {
         console.log('[API] Auto-detecting contract links from email...');
         const extractedLinks = extractContractLinks(parsed);
         console.log(`[API] Extracted links - Original Contract: ${extractedLinks.originalContractUrl || 'not found'}, Addendums: ${extractedLinks.addendumUrls.length}`);
@@ -208,7 +389,7 @@ export async function POST(request: NextRequest) {
           console.log('[API] No addendum links found in email');
         }
       } else {
-        // Manual addendum links provided (existing behavior)
+        // Manual addendum links provided (existing behavior - backward compatibility)
         items = extractOrderItems(parsed.html);
         
         if (addendumLinks.length > 0) {
