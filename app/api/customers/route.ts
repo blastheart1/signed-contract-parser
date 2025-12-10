@@ -4,6 +4,7 @@ import { eq, isNull, and, or, isNotNull, desc, inArray } from 'drizzle-orm';
 import { validateOrderItemsTotal } from '@/lib/orderItemsValidation';
 import { updateCustomerStatus } from '@/lib/services/customerStatus';
 import type { OrderItem } from '@/lib/tableExtractor';
+import type { AlertAcknowledgment } from '@/lib/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,7 +53,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Batch fetch all related data to avoid N+1 queries
-    const customerIds = customers.map(c => c.dbxCustomerId);
+    // Ensure customerIds are strings (defensive type safety)
+    const customerIds = customers.map(c => String(c.dbxCustomerId));
 
     // Fetch all orders for all customers in one query (only if we have customerIds)
     const allOrders = customerIds.length > 0
@@ -93,13 +95,47 @@ export async function GET(request: NextRequest) {
       orderItemsByOrderId.get(item.orderId)!.push(item);
     }
 
-    // Batch fetch all alert acknowledgments (only if we have customerIds)
-    const allAcknowledgments = customerIds.length > 0
-      ? await db
+    // Batch fetch all alert acknowledgments with fallback strategy
+    let allAcknowledgments: AlertAcknowledgment[] = [];
+    if (customerIds.length > 0) {
+      try {
+        // Attempt batch query first (most efficient)
+        console.log(`[Customers] Fetching acknowledgments for ${customerIds.length} customers (batch query)`);
+        allAcknowledgments = await db
           .select()
           .from(schema.alertAcknowledgments)
-          .where(inArray(schema.alertAcknowledgments.customerId, customerIds))
-      : [];
+          .where(inArray(schema.alertAcknowledgments.customerId, customerIds));
+        console.log(`[Customers] Successfully fetched ${allAcknowledgments.length} acknowledgments via batch query`);
+      } catch (batchError) {
+        console.error('[Customers] Batch query failed, falling back to individual queries');
+        console.error('[Customers] Batch error:', batchError instanceof Error ? batchError.message : String(batchError));
+        console.error('[Customers] Customer IDs count:', customerIds.length);
+        
+        // Fallback: Query acknowledgments individually per customer
+        // This is less efficient but more reliable if batch query has issues
+        try {
+          const acknowledgmentPromises = customerIds.map(customerId =>
+            db
+              .select()
+              .from(schema.alertAcknowledgments)
+              .where(eq(schema.alertAcknowledgments.customerId, customerId))
+              .then(rows => ({ customerId, rows }))
+              .catch(err => {
+                console.error(`[Customers] Error fetching acknowledgments for customer ${customerId}:`, err);
+                return { customerId, rows: [] }; // Return empty for failed queries
+              })
+          );
+          
+          const acknowledgmentResults = await Promise.all(acknowledgmentPromises);
+          allAcknowledgments = acknowledgmentResults.flatMap(result => result.rows);
+          console.log(`[Customers] Fallback: Successfully fetched ${allAcknowledgments.length} acknowledgments via individual queries`);
+        } catch (fallbackError) {
+          console.error('[Customers] Fallback query also failed:', fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+          // Continue with empty array - customers will still load, just without acknowledgment filtering
+          allAcknowledgments = [];
+        }
+      }
+    }
 
     // Group acknowledgments by customerId
     const acknowledgmentsByCustomerId = new Map<string, typeof allAcknowledgments>();
