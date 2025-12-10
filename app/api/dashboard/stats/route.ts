@@ -43,6 +43,10 @@ export async function GET(request: NextRequest) {
       success: true,
       totalPaid,
       period,
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
+      }
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);

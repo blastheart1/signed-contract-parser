@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination } from '@/components/ui/pagination';
 import type { StoredContract } from '@/lib/store/contractStore';
 import UploadContractModal from '@/components/dashboard/UploadContractModal';
 
@@ -36,17 +37,38 @@ export default function DashboardPage() {
   const [paidPeriod, setPaidPeriod] = useState<'day' | 'week' | 'month' | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch contracts
-      const contractsRes = await fetch('/api/contracts');
-      const contractsData = await contractsRes.json();
+      // Parallelize all API calls for better performance
+      const [contractsRes, customersRes, timelineRes, statsRes] = await Promise.all([
+        // Fetch only recent contracts (limit to 50 for dashboard, but API will handle pagination)
+        fetch('/api/contracts?limit=50'),
+        // Fetch customers for stats
+        fetch('/api/customers?includeDeleted=false'),
+        // Fetch recent activity count (changes in last 7 days)
+        fetch('/api/timeline?period=week&limit=1'),
+        // Fetch total paid for selected period
+        fetch(`/api/dashboard/stats?period=${paidPeriod}`),
+      ]);
+
+      // Parse all responses in parallel
+      const [contractsData, customersData, timelineData, statsData] = await Promise.all([
+        contractsRes.json(),
+        customersRes.json(),
+        timelineRes.json(),
+        statsRes.json(),
+      ]);
       
+      // Process contracts - API already sorts by createdAt descending, which matches parsedAt
       if (contractsData.success) {
-        // Sort by latest to oldest (by parsedAt)
-        const sortedContracts = (contractsData.contracts || []).sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
+        const contracts = contractsData.contracts || [];
+        // Sort by parsedAt as fallback (in case parsedAt differs from createdAt)
+        // This ensures consistent sorting even if API sorting differs
+        const sortedContracts = contracts.sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
           const dateA = a.parsedAt ? new Date(a.parsedAt).getTime() : 0;
           const dateB = b.parsedAt ? new Date(b.parsedAt).getTime() : 0;
           return dateB - dateA; // Latest first
@@ -54,32 +76,22 @@ export default function DashboardPage() {
         setContracts(sortedContracts);
       }
 
-      // Fetch customers for stats
-      const customersRes = await fetch('/api/customers?includeDeleted=false');
-      const customersData = await customersRes.json();
-      
+      // Process customers and calculate stats
       if (customersData.success) {
         const customers = customersData.customers || [];
         const totalCustomers = customers.length;
         const pendingUpdates = customers.filter((c: any) => c.status === 'pending_updates').length;
         const completed = customers.filter((c: any) => c.status === 'completed').length;
         
-        // Calculate total value and average
+        // Calculate total value and average from contracts
         const totalValue = contractsData.success 
-          ? contractsData.contracts.reduce((sum: number, c: StoredContract) => sum + (c.order.orderGrandTotal || 0), 0)
+          ? contractsData.contracts.reduce((sum: number, c: StoredContract) => sum + (parseFloat(c.order.orderGrandTotal?.toString() || '0') || 0), 0)
           : 0;
         const averageOrderValue = contractsData.success && contractsData.contracts.length > 0
           ? totalValue / contractsData.contracts.length
           : 0;
 
-        // Fetch recent activity (changes in last 7 days)
-        const timelineRes = await fetch('/api/timeline?period=week&limit=1');
-        const timelineData = await timelineRes.json();
         const recentActivity = timelineData.success ? timelineData.total : 0;
-
-        // Fetch total paid for selected period
-        const statsRes = await fetch(`/api/dashboard/stats?period=${paidPeriod}`);
-        const statsData = await statsRes.json();
         const totalPaid = statsData.success ? statsData.totalPaid : 0;
 
         setStats({
@@ -103,6 +115,12 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData();
   }, [paidPeriod]);
+
+  // Calculate pagination for contracts
+  const effectivePageSize = pageSize === 'all' ? contracts.length : pageSize;
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
+  const paginatedContracts = contracts.slice(startIndex, endIndex);
 
   if (loading) {
     return (
@@ -353,8 +371,9 @@ export default function DashboardPage() {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {contracts.slice(0, 5).map((contract, index) => {
+              <>
+                <div className="space-y-4">
+                  {paginatedContracts.map((contract, index) => {
                   const contractWithDeleted = contract as StoredContract & { isDeleted?: boolean; deletedAt?: Date | null };
                   const isDeleted = contractWithDeleted.isDeleted || false;
                   
@@ -423,7 +442,23 @@ export default function DashboardPage() {
                     </motion.div>
                   );
                 })}
-              </div>
+                </div>
+                
+                {/* Pagination */}
+                {contracts.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={contracts.length}
+                    pageSize={pageSize}
+                    onPageChange={setCurrentPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    }}
+                    pageSizeOptions={[10, 30, 50]}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>
