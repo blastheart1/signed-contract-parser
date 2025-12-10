@@ -6,5 +6,7 @@ import * as schema from './schema';
 export const db = drizzle(sql, { schema });
 
 // Export schema for use in queries
+// Re-export everything from schema to ensure all tables are accessible
 export { schema };
+export * from './schema';
 
