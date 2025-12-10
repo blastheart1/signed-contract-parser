@@ -11,9 +11,10 @@ import { eq, and, sql, inArray } from 'drizzle-orm';
 export async function calculateCustomerStatus(dbxCustomerId: string): Promise<'pending_updates' | 'completed'> {
   try {
     // Get all orders for this customer
-    const customerOrders = await db.query.orders.findMany({
-      where: eq(orders.customerId, dbxCustomerId),
-    });
+    const customerOrders = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.customerId, dbxCustomerId));
 
     if (customerOrders.length === 0) {
       // No orders, default to pending
@@ -50,9 +51,10 @@ export async function calculateCustomerStatus(dbxCustomerId: string): Promise<'p
     }
 
     // Get all invoices for these orders
-    const allInvoices = await db.query.invoices.findMany({
-      where: inArray(invoices.orderId, orderIds),
-    });
+    const allInvoices = await db
+      .select()
+      .from(invoices)
+      .where(inArray(invoices.orderId, orderIds));
 
     // Check if any invoice has open_balance > 0
     // open_balance = invoice_amount - payments_received
@@ -101,9 +103,12 @@ export async function updateCustomerStatus(dbxCustomerId: string): Promise<void>
  */
 export async function recalculateCustomerStatusForOrder(orderId: string): Promise<void> {
   try {
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
 
     if (!order) {
       console.warn(`Order ${orderId} not found for status recalculation`);

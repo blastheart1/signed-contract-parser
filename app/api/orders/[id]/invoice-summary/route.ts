@@ -12,9 +12,12 @@ export async function GET(
     const orderId = params.id;
 
     // Get order
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
 
     if (!order) {
       return NextResponse.json(

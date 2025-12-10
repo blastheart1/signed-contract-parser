@@ -26,12 +26,13 @@ export async function POST(request: NextRequest) {
     console.log(`[CLEANUP] Starting cleanup of customers deleted before ${thirtyDaysAgo.toISOString()}`);
 
     // Find customers deleted more than 30 days ago
-    const customersToDelete = await db.query.customers.findMany({
-      where: and(
+    const customersToDelete = await db
+      .select()
+      .from(schema.customers)
+      .where(and(
         isNotNull(schema.customers.deletedAt),
         lt(schema.customers.deletedAt, thirtyDaysAgo)
-      ),
-    });
+      ));
 
     console.log(`[CLEANUP] Found ${customersToDelete.length} customers to permanently delete`);
 
@@ -41,9 +42,10 @@ export async function POST(request: NextRequest) {
     for (const customer of customersToDelete) {
       try {
         // Get all orders for this customer
-        const orders = await db.query.orders.findMany({
-          where: eq(schema.orders.customerId, customer.dbxCustomerId),
-        });
+        const orders = await db
+          .select()
+          .from(schema.orders)
+          .where(eq(schema.orders.customerId, customer.dbxCustomerId));
 
         // Delete all related data in order:
         // 1. Invoices (via orders)

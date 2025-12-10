@@ -12,9 +12,12 @@ export async function GET(
   try {
     const { id: orderId, invoiceId } = params;
 
-    const invoice = await db.query.invoices.findFirst({
-      where: eq(invoices.id, invoiceId),
-    });
+    const invoiceRows = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+    const invoice = invoiceRows[0];
 
     if (!invoice) {
       return NextResponse.json(
@@ -53,9 +56,12 @@ export async function PATCH(
     const body = await request.json();
 
     // Verify invoice exists and belongs to order
-    const invoice = await db.query.invoices.findFirst({
-      where: eq(invoices.id, invoiceId),
-    });
+    const invoiceRows = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+    const invoice = invoiceRows[0];
 
     if (!invoice) {
       return NextResponse.json(
@@ -72,9 +78,12 @@ export async function PATCH(
     }
 
     // Get order for customerId
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0] || null;
 
     // Update invoice
     const updateData: any = {
@@ -145,9 +154,12 @@ export async function DELETE(
     const { id: orderId, invoiceId } = params;
 
     // Verify invoice exists and belongs to order
-    const invoice = await db.query.invoices.findFirst({
-      where: eq(invoices.id, invoiceId),
-    });
+    const invoiceRows = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+    const invoice = invoiceRows[0];
 
     if (!invoice) {
       return NextResponse.json(
@@ -164,9 +176,12 @@ export async function DELETE(
     }
 
     // Get order for customerId
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0] || null;
 
     // Log invoice deletion
     if (order) {

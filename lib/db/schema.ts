@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique, index } from 'drizzle-orm/pg-core';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
@@ -36,7 +36,11 @@ export const customers = pgTable('customers', {
   deletedAt: timestamp('deleted_at'), // Soft delete: when customer was deleted (null = not deleted)
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  deletedAtIdx: index('customers_deleted_at_idx').on(table.deletedAt),
+  updatedAtIdx: index('customers_updated_at_idx').on(table.updatedAt),
+  statusIdx: index('customers_status_idx').on(table.status),
+}));
 
 // Orders Table
 export const orders = pgTable('orders', {
@@ -65,7 +69,10 @@ export const orders = pgTable('orders', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   createdBy: uuid('created_by').references(() => users.id),
   updatedBy: uuid('updated_by').references(() => users.id),
-});
+}, (table) => ({
+  customerIdIdx: index('orders_customer_id_idx').on(table.customerId),
+  createdAtIdx: index('orders_created_at_idx').on(table.createdAt),
+}));
 
 // Order Items Table
 export const orderItems = pgTable('order_items', {
@@ -89,7 +96,9 @@ export const orderItems = pgTable('order_items', {
   subCategory: varchar('sub_category', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  orderIdIdx: index('order_items_order_id_idx').on(table.orderId),
+}));
 
 // Invoices Table
 export const invoices = pgTable('invoices', {
@@ -103,7 +112,10 @@ export const invoices = pgTable('invoices', {
   rowIndex: integer('row_index'), // Position in table (354-391)
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  orderIdIdx: index('invoices_order_id_idx').on(table.orderId),
+  updatedAtIdx: index('invoices_updated_at_idx').on(table.updatedAt),
+}));
 
 // Change History Table
 export const changeHistory = pgTable('change_history', {
@@ -118,7 +130,11 @@ export const changeHistory = pgTable('change_history', {
   rowIndex: integer('row_index'),
   changedBy: uuid('changed_by').notNull().references(() => users.id),
   changedAt: timestamp('changed_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  customerIdIdx: index('change_history_customer_id_idx').on(table.customerId),
+  orderIdIdx: index('change_history_order_id_idx').on(table.orderId),
+  changedAtIdx: index('change_history_changed_at_idx').on(table.changedAt),
+}));
 
 // Admin Preferences Table (for notes, todos, maintenance)
 export const adminPreferences = pgTable('admin_preferences', {
@@ -142,6 +158,7 @@ export const alertAcknowledgments = pgTable('alert_acknowledgments', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
   customerAlertUnique: unique().on(table.customerId, table.alertType),
+  customerIdIdx: index('alert_acknowledgments_customer_id_idx').on(table.customerId),
 }));
 
 // Type exports for use in application

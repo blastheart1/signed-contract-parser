@@ -13,9 +13,12 @@ export async function GET(
     const orderId = params.id;
 
     // Verify order exists
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
 
     if (!order) {
       return NextResponse.json(
@@ -25,10 +28,11 @@ export async function GET(
     }
 
     // Get all invoices for this order, sorted by row_index
-    const invoiceList = await db.query.invoices.findMany({
-      where: eq(invoices.orderId, orderId),
-      orderBy: invoices.rowIndex,
-    });
+    const invoiceList = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.orderId, orderId))
+      .orderBy(invoices.rowIndex);
 
     return NextResponse.json({ success: true, invoices: invoiceList });
   } catch (error) {
@@ -52,9 +56,12 @@ export async function POST(
     const body = await request.json();
 
     // Verify order exists
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
 
     if (!order) {
       return NextResponse.json(
@@ -64,10 +71,11 @@ export async function POST(
     }
 
     // Get current max row_index to determine next position
-    const existingInvoices = await db.query.invoices.findMany({
-      where: eq(invoices.orderId, orderId),
-      orderBy: invoices.rowIndex,
-    });
+    const existingInvoices = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.orderId, orderId))
+      .orderBy(invoices.rowIndex);
 
     // Calculate next row_index (start at 354, increment by 1)
     const nextRowIndex = existingInvoices.length > 0

@@ -1374,10 +1374,11 @@ export async function generateSpreadsheet(
   if (orderId) {
     try {
       console.log(`[Data Population] Fetching invoices for order ${orderId}...`);
-      const invoiceList = await db.query.invoices.findMany({
-        where: eq(invoices.orderId, orderId),
-        orderBy: invoices.rowIndex,
-      });
+      const invoiceList = await db
+        .select()
+        .from(invoices)
+        .where(eq(invoices.orderId, orderId))
+        .orderBy(invoices.rowIndex);
 
       console.log(`[Data Population] Found ${invoiceList.length} invoices to populate`);
 

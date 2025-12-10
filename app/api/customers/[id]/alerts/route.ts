@@ -10,9 +10,12 @@ export async function GET(
     const customerId = params.id;
 
     // Verify customer exists
-    const customer = await db.query.customers.findFirst({
-      where: eq(schema.customers.dbxCustomerId, customerId),
-    });
+    const customerRows = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.dbxCustomerId, customerId))
+      .limit(1);
+    const customer = customerRows[0];
 
     if (!customer) {
       return NextResponse.json(
@@ -22,16 +25,20 @@ export async function GET(
     }
 
     // Fetch all acknowledgments for this customer
-    const acknowledgments = await db.query.alertAcknowledgments.findMany({
-      where: eq(schema.alertAcknowledgments.customerId, customerId),
-    });
+    const acknowledgments = await db
+      .select()
+      .from(schema.alertAcknowledgments)
+      .where(eq(schema.alertAcknowledgments.customerId, customerId));
 
     // Fetch user details for each acknowledgment
     const acknowledgmentsWithUsers = await Promise.all(
       acknowledgments.map(async (ack) => {
-        const user = await db.query.users.findFirst({
-          where: eq(schema.users.id, ack.acknowledgedBy),
-        });
+        const userRows = await db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.id, ack.acknowledgedBy))
+          .limit(1);
+        const user = userRows[0] || null;
 
         return {
           alertType: ack.alertType,

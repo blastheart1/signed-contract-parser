@@ -38,7 +38,6 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
   const [acknowledgmentInfo, setAcknowledgmentInfo] = useState<AcknowledgmentInfo | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAcknowledgeDialog, setShowAcknowledgeDialog] = useState(false);
-  const [showHideDialog, setShowHideDialog] = useState(false);
   const [isAcknowledging, setIsAcknowledging] = useState(false);
 
   const customerDbxId = customerId || contract.customer?.dbxCustomerId;
@@ -125,45 +124,9 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
     }
   };
 
-  const handleHide = async () => {
-    if (!customerDbxId) return;
-
-    setIsAcknowledging(true);
-    try {
-      const response = await fetch(`/api/customers/${customerDbxId}/alerts/acknowledge`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ alertType }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Fetch updated acknowledgment info
-        const ackResponse = await fetch(`/api/customers/${customerDbxId}/alerts`);
-        const ackData = await ackResponse.json();
-
-        if (ackData.success && ackData.acknowledgments) {
-          const acknowledgment = ackData.acknowledgments.find(
-            (ack: AcknowledgmentInfo) => ack.alertType === alertType
-          );
-
-          if (acknowledgment) {
-            setIsAcknowledged(true);
-            setAcknowledgmentInfo(acknowledgment);
-            setIsExpanded(false);
-          }
-        }
-
-        setShowHideDialog(false);
-      }
-    } catch (error) {
-      console.error('Error hiding alert:', error);
-    } finally {
-      setIsAcknowledging(false);
-    }
+  const handleToggleHide = () => {
+    // Toggle expanded state to minimize/maximize the alert
+    setIsExpanded(!isExpanded);
   };
 
   const formatDate = (dateString: string) => {
@@ -228,22 +191,6 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={showHideDialog} onOpenChange={setShowHideDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Hide Notification</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will hide this alert for this customer. You can still view the validation details in the Order Items table. Are you sure?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleHide} disabled={isAcknowledging}>
-                {isAcknowledging ? 'Hiding...' : 'Hide Notification'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </>
     );
   }
@@ -285,8 +232,8 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
               </div>
             </div>
 
-            {!isAcknowledged && (
-              <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-2">
+              {!isAcknowledged && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -295,54 +242,37 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
                 >
                   Acknowledge
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowHideDialog(true)}
-                  className="min-w-[140px]"
-                >
-                  Hide Notification
-                </Button>
-              </div>
-            )}
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggleHide}
+                className="min-w-[140px]"
+              >
+                {isExpanded ? 'Hide Notification' : 'Show Details'}
+              </Button>
+            </div>
           </div>
         </AlertDescription>
       </Alert>
 
-      {/* Confirmation Dialogs */}
-      <AlertDialog open={showAcknowledgeDialog} onOpenChange={setShowAcknowledgeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Acknowledge Alert</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will mark this alert as acknowledged. You can still view the validation details by expanding the alert. Are you sure?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAcknowledge} disabled={isAcknowledging}>
-              {isAcknowledging ? 'Acknowledging...' : 'Acknowledge'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showHideDialog} onOpenChange={setShowHideDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hide Notification</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will hide this alert for this customer. You can still view the validation details in the Order Items table. Are you sure?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleHide} disabled={isAcknowledging}>
-              {isAcknowledging ? 'Hiding...' : 'Hide Notification'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Confirmation Dialog */}
+        <AlertDialog open={showAcknowledgeDialog} onOpenChange={setShowAcknowledgeDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Acknowledge Alert</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will mark this alert as acknowledged. You can still view the validation details by expanding the alert. Are you sure?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleAcknowledge} disabled={isAcknowledging}>
+                {isAcknowledging ? 'Acknowledging...' : 'Acknowledge'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </>
   );
 }

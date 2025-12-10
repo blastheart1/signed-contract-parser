@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull, and, or, isNotNull, desc } from 'drizzle-orm';
+import { eq, isNull, and, or, isNotNull, desc, inArray } from 'drizzle-orm';
 import { validateOrderItemsTotal } from '@/lib/orderItemsValidation';
 import { updateCustomerStatus } from '@/lib/services/customerStatus';
 import type { OrderItem } from '@/lib/tableExtractor';
@@ -42,16 +42,71 @@ export async function GET(request: NextRequest) {
       .where(whereClause)
       .orderBy(desc(schema.customers.updatedAt));
 
-    // For each customer, get order count, stage, and check for validation issues
+    if (customers.length === 0) {
+      return NextResponse.json({ success: true, customers: [] });
+    }
+
+    // Batch fetch all related data to avoid N+1 queries
+    const customerIds = customers.map(c => c.dbxCustomerId);
+
+    // Fetch all orders for all customers in one query
+    const allOrders = await db
+      .select()
+      .from(schema.orders)
+      .where(inArray(schema.orders.customerId, customerIds))
+      .orderBy(desc(schema.orders.createdAt));
+
+    // Group orders by customerId
+    const ordersByCustomerId = new Map<string, typeof allOrders>();
+    for (const order of allOrders) {
+      if (!ordersByCustomerId.has(order.customerId)) {
+        ordersByCustomerId.set(order.customerId, []);
+      }
+      ordersByCustomerId.get(order.customerId)!.push(order);
+    }
+
+    // Get all order IDs for batch fetching order items
+    const allOrderIds = allOrders.map(o => o.id);
+
+    // Batch fetch all order items for all orders
+    const allOrderItems = allOrderIds.length > 0
+      ? await db
+          .select()
+          .from(schema.orderItems)
+          .where(inArray(schema.orderItems.orderId, allOrderIds))
+          .orderBy(schema.orderItems.rowIndex)
+      : [];
+
+    // Group order items by orderId
+    const orderItemsByOrderId = new Map<string, typeof allOrderItems>();
+    for (const item of allOrderItems) {
+      if (!orderItemsByOrderId.has(item.orderId)) {
+        orderItemsByOrderId.set(item.orderId, []);
+      }
+      orderItemsByOrderId.get(item.orderId)!.push(item);
+    }
+
+    // Batch fetch all alert acknowledgments
+    const allAcknowledgments = customerIds.length > 0
+      ? await db
+          .select()
+          .from(schema.alertAcknowledgments)
+          .where(inArray(schema.alertAcknowledgments.customerId, customerIds))
+      : [];
+
+    // Group acknowledgments by customerId
+    const acknowledgmentsByCustomerId = new Map<string, typeof allAcknowledgments>();
+    for (const ack of allAcknowledgments) {
+      if (!acknowledgmentsByCustomerId.has(ack.customerId)) {
+        acknowledgmentsByCustomerId.set(ack.customerId, []);
+      }
+      acknowledgmentsByCustomerId.get(ack.customerId)!.push(ack);
+    }
+
+    // Process customers with batched data
     const customersWithCounts = await Promise.all(
       customers.map(async (customer) => {
-        const ordersList = await db
-          .select()
-          .from(schema.orders)
-          .where(eq(schema.orders.customerId, customer.dbxCustomerId))
-          .orderBy(desc(schema.orders.createdAt));
-        
-        const orders = ordersList;
+        const orders = ordersByCustomerId.get(customer.dbxCustomerId) || [];
 
         // Get stage from most recent order
         const mostRecentOrder = orders.length > 0 ? orders[0] : null;
@@ -62,9 +117,12 @@ export async function GET(request: NextRequest) {
           try {
             await updateCustomerStatus(customer.dbxCustomerId);
             // Refresh customer to get updated status
-            const updatedCustomer = await db.query.customers.findFirst({
-              where: eq(schema.customers.dbxCustomerId, customer.dbxCustomerId),
-            });
+            const updatedCustomerRows = await db
+              .select()
+              .from(schema.customers)
+              .where(eq(schema.customers.dbxCustomerId, customer.dbxCustomerId))
+              .limit(1);
+            const updatedCustomer = updatedCustomerRows[0];
             if (updatedCustomer) {
               customer.status = updatedCustomer.status;
             }
@@ -77,18 +135,13 @@ export async function GET(request: NextRequest) {
         let hasValidationIssues = false;
         const validationIssues: string[] = [];
 
-        // Check if alerts are acknowledged
-        const acknowledgments = await db.query.alertAcknowledgments.findMany({
-          where: eq(schema.alertAcknowledgments.customerId, customer.dbxCustomerId),
-        });
+        // Get acknowledgments for this customer
+        const acknowledgments = acknowledgmentsByCustomerId.get(customer.dbxCustomerId) || [];
         const acknowledgedAlertTypes = new Set(acknowledgments.map(ack => ack.alertType));
 
         for (const order of orders) {
-          // Get order items for this order
-          const orderItems = await db.query.orderItems.findMany({
-            where: eq(schema.orderItems.orderId, order.id),
-            orderBy: schema.orderItems.rowIndex,
-          });
+          // Get order items for this order from the batched data
+          const orderItems = orderItemsByOrderId.get(order.id) || [];
 
           // Convert to OrderItem format for validation
           const items: OrderItem[] = orderItems.map((item) => ({

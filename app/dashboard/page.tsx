@@ -43,9 +43,20 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch contracts
-      const contractsRes = await fetch('/api/contracts');
-      const contractsData = await contractsRes.json();
+      // Fetch all data in parallel for better performance
+      const [contractsRes, customersRes, timelineRes, statsRes] = await Promise.all([
+        fetch('/api/contracts'),
+        fetch('/api/customers?includeDeleted=false'),
+        fetch('/api/timeline?period=week&limit=1'),
+        fetch(`/api/dashboard/stats?period=${paidPeriod}`)
+      ]);
+
+      const [contractsData, customersData, timelineData, statsData] = await Promise.all([
+        contractsRes.json(),
+        customersRes.json(),
+        timelineRes.json(),
+        statsRes.json()
+      ]);
       
       if (contractsData.success) {
         // Sort by latest to oldest (by parsedAt)
@@ -56,10 +67,6 @@ export default function DashboardPage() {
         });
         setContracts(sortedContracts);
       }
-
-      // Fetch customers for stats
-      const customersRes = await fetch('/api/customers?includeDeleted=false');
-      const customersData = await customersRes.json();
       
       if (customersData.success) {
         const customers = customersData.customers || [];
@@ -75,14 +82,7 @@ export default function DashboardPage() {
           ? totalValue / contractsData.contracts.length
           : 0;
 
-        // Fetch recent activity (changes in last 7 days)
-        const timelineRes = await fetch('/api/timeline?period=week&limit=1');
-        const timelineData = await timelineRes.json();
         const recentActivity = timelineData.success ? timelineData.total : 0;
-
-        // Fetch total paid for selected period
-        const statsRes = await fetch(`/api/dashboard/stats?period=${paidPeriod}`);
-        const statsData = await statsRes.json();
         const totalPaid = statsData.success ? statsData.totalPaid : 0;
 
         setStats({

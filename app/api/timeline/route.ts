@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { desc, and, gte, eq, count, or, ilike } from 'drizzle-orm';
+import { desc, and, gte, eq, count, or, ilike, inArray } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -84,57 +84,70 @@ export async function GET(request: NextRequest) {
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
     const totalCount = Number(totalCountResult[0]?.count || 0);
 
-    // Fetch related data for each change
-    const formattedChanges = await Promise.all(
-      allChanges.map(async (change) => {
-        // Fetch user
-        const user = change.changedBy
-          ? await db.query.users.findFirst({
-              where: eq(schema.users.id, change.changedBy),
-            })
-          : null;
+    // Batch fetch all related data to avoid N+1 queries
+    const userIds = [...new Set(allChanges.map(c => c.changedBy).filter(Boolean) as string[])];
+    const customerIds = [...new Set(allChanges.map(c => c.customerId).filter(Boolean) as string[])];
+    const orderIds = [...new Set(allChanges.map(c => c.orderId).filter(Boolean) as string[])];
 
-        // Fetch customer
-        const customer = change.customerId
-          ? await db.query.customers.findFirst({
-              where: eq(schema.customers.dbxCustomerId, change.customerId),
-            })
-          : null;
+    // Batch fetch users
+    const users = userIds.length > 0
+      ? await db
+          .select()
+          .from(schema.users)
+          .where(inArray(schema.users.id, userIds))
+      : [];
+    const usersMap = new Map(users.map(u => [u.id, u]));
 
-        // Fetch order
-        const order = change.orderId
-          ? await db.query.orders.findFirst({
-              where: eq(schema.orders.id, change.orderId),
-            })
-          : null;
+    // Batch fetch customers
+    const customers = customerIds.length > 0
+      ? await db
+          .select()
+          .from(schema.customers)
+          .where(inArray(schema.customers.dbxCustomerId, customerIds))
+      : [];
+    const customersMap = new Map(customers.map(c => [c.dbxCustomerId, c]));
 
-        return {
-          id: change.id,
-          changeType: change.changeType,
-          fieldName: change.fieldName,
-          oldValue: change.oldValue,
-          newValue: change.newValue,
-          rowIndex: change.rowIndex,
-          changedAt: change.changedAt,
-          changedBy: {
-            id: user?.id || null,
-            username: user?.username || 'Unknown',
-          },
-          customer: customer
-            ? {
-                dbxCustomerId: customer.dbxCustomerId,
-                clientName: customer.clientName,
-              }
-            : null,
-          order: order
-            ? {
-                id: order.id,
-                orderNo: order.orderNo,
-              }
-            : null,
-        };
-      })
-    );
+    // Batch fetch orders
+    const orders = orderIds.length > 0
+      ? await db
+          .select()
+          .from(schema.orders)
+          .where(inArray(schema.orders.id, orderIds))
+      : [];
+    const ordersMap = new Map(orders.map(o => [o.id, o]));
+
+    // Format changes using batched data
+    const formattedChanges = allChanges.map((change) => {
+      const user = change.changedBy ? usersMap.get(change.changedBy) || null : null;
+      const customer = change.customerId ? customersMap.get(change.customerId) || null : null;
+      const order = change.orderId ? ordersMap.get(change.orderId) || null : null;
+
+      return {
+        id: change.id,
+        changeType: change.changeType,
+        fieldName: change.fieldName,
+        oldValue: change.oldValue,
+        newValue: change.newValue,
+        rowIndex: change.rowIndex,
+        changedAt: change.changedAt,
+        changedBy: {
+          id: user?.id || null,
+          username: user?.username || 'Unknown',
+        },
+        customer: customer
+          ? {
+              dbxCustomerId: customer.dbxCustomerId,
+              clientName: customer.clientName,
+            }
+          : null,
+        order: order
+          ? {
+              id: order.id,
+              orderNo: order.orderNo,
+            }
+          : null,
+      };
+    });
 
     const hasMore = offset + limit < totalCount;
 

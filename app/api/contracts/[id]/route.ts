@@ -177,13 +177,19 @@ export async function PUT(
       );
     }
     
-    const existingCustomer = await db.query.customers.findFirst({
-      where: eq(schema.customers.dbxCustomerId, customerId),
-    });
+    const existingCustomerRows = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.dbxCustomerId, customerId))
+      .limit(1);
+    const existingCustomer = existingCustomerRows[0] || null;
 
-    const existingOrder = await db.query.orders.findFirst({
-      where: eq(schema.orders.orderNo, contract.order.orderNo),
-    });
+    const existingOrderRows = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.orderNo, contract.order.orderNo))
+      .limit(1);
+    const existingOrder = existingOrderRows[0] || null;
 
     // Check if this is a new contract (order didn't exist before)
     const isNewContract = !existingOrder;

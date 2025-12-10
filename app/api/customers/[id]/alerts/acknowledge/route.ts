@@ -30,9 +30,12 @@ export async function POST(
     }
 
     // Verify customer exists
-    const customer = await db.query.customers.findFirst({
-      where: eq(schema.customers.dbxCustomerId, customerId),
-    });
+    const customerRows = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.dbxCustomerId, customerId))
+      .limit(1);
+    const customer = customerRows[0];
 
     if (!customer) {
       return NextResponse.json(
@@ -42,12 +45,15 @@ export async function POST(
     }
 
     // Check if acknowledgment already exists
-    const existingAcknowledgment = await db.query.alertAcknowledgments.findFirst({
-      where: and(
+    const existingAcknowledgmentRows = await db
+      .select()
+      .from(schema.alertAcknowledgments)
+      .where(and(
         eq(schema.alertAcknowledgments.customerId, customerId),
         eq(schema.alertAcknowledgments.alertType, alertType)
-      ),
-    });
+      ))
+      .limit(1);
+    const existingAcknowledgment = existingAcknowledgmentRows[0] || null;
 
     if (existingAcknowledgment) {
       // Update existing acknowledgment

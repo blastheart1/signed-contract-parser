@@ -67,9 +67,12 @@ export async function PATCH(
     }
 
     // Fetch existing order to compare values for logging
-    const existingOrder = await db.query.orders.findFirst({
-      where: eq(schema.orders.id, params.id),
-    });
+    const existingOrderRows = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, params.id))
+      .limit(1);
+    const existingOrder = existingOrderRows[0];
 
     if (!existingOrder) {
       return NextResponse.json(
@@ -151,9 +154,12 @@ export async function PATCH(
 
     // If stage is set to 'completed', automatically set customer status to 'completed'
     if (stage === 'completed') {
-      const existingCustomer = await db.query.customers.findFirst({
-        where: eq(schema.customers.dbxCustomerId, existingOrder.customerId),
-      });
+      const existingCustomerRows = await db
+        .select()
+        .from(schema.customers)
+        .where(eq(schema.customers.dbxCustomerId, existingOrder.customerId))
+        .limit(1);
+      const existingCustomer = existingCustomerRows[0] || null;
 
       if (existingCustomer && existingCustomer.status !== 'completed') {
         // Log the customer status change
