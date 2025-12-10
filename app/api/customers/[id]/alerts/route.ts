@@ -28,14 +28,27 @@ export async function GET(
     // Fetch all acknowledgments for this customer
     let acknowledgments = [];
     try {
+      // Try querying with explicit schema qualification
       acknowledgments = await db
         .select()
         .from(schema.alertAcknowledgments)
         .where(eq(schema.alertAcknowledgments.customerId, customerId));
     } catch (error) {
+      // Log full error details for debugging
+      console.error(`[Alerts] Error fetching acknowledgments for customer ${customerId}:`, error);
+      if (error instanceof Error && 'cause' in error) {
+        const cause = (error as any).cause;
+        if (cause && typeof cause === 'object') {
+          console.error(`[Alerts] Error code:`, cause.code);
+          console.error(`[Alerts] Error message:`, cause.message);
+          console.error(`[Alerts] Error detail:`, cause.detail);
+          console.error(`[Alerts] Error hint:`, cause.hint);
+        }
+      }
+      
       // If table doesn't exist (error code 42P01), return empty array gracefully
       if (isTableNotExistError(error)) {
-        console.warn(`[Alerts] alert_acknowledgments table does not exist, returning empty acknowledgments for customer ${customerId}`);
+        console.warn(`[Alerts] alert_acknowledgments table does not exist (error code 42P01), returning empty acknowledgments for customer ${customerId}`);
         return NextResponse.json({
           success: true,
           acknowledgments: [],
