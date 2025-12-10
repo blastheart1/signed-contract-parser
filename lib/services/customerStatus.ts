@@ -6,6 +6,7 @@ import { eq, and, sql, inArray } from 'drizzle-orm';
  * Calculate customer status based on orders and invoices
  * - "pending_updates": Any order has status 'pending_updates' OR any invoice has open_balance > 0
  * - "completed": All orders are 'completed' AND all invoices are paid (open_balance = 0)
+ *   OR any order has stage 'completed' (stage completion overrides other checks)
  */
 export async function calculateCustomerStatus(dbxCustomerId: string): Promise<'pending_updates' | 'completed'> {
   try {
@@ -17,6 +18,12 @@ export async function calculateCustomerStatus(dbxCustomerId: string): Promise<'p
     if (customerOrders.length === 0) {
       // No orders, default to pending
       return 'pending_updates';
+    }
+
+    // Check if any order has stage 'completed' - this overrides everything
+    const hasCompletedStage = customerOrders.some(order => order.stage === 'completed');
+    if (hasCompletedStage) {
+      return 'completed';
     }
 
     // Check if any order has status 'pending_updates'

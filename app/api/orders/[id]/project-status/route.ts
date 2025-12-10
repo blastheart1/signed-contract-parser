@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth/session';
+import { logStageUpdate, logOrderEdit, logCustomerEdit, valueToString } from '@/lib/services/changeHistory';
 
 export async function PATCH(
   request: NextRequest,
@@ -65,6 +66,18 @@ export async function PATCH(
       );
     }
 
+    // Fetch existing order to compare values for logging
+    const existingOrder = await db.query.orders.findFirst({
+      where: eq(schema.orders.id, params.id),
+    });
+
+    if (!existingOrder) {
+      return NextResponse.json(
+        { success: false, error: 'Order not found' },
+        { status: 404 }
+      );
+    }
+
     // Build update object with only provided fields
     const updateData: any = {
       updatedAt: new Date(),
@@ -101,6 +114,66 @@ export async function PATCH(
       projectStartDate: updatedOrder[0].projectStartDate,
       projectEndDate: updatedOrder[0].projectEndDate,
     });
+
+    // Log stage changes
+    if (stage !== undefined && existingOrder.stage !== stage) {
+      await logStageUpdate(
+        existingOrder.stage,
+        stage || null,
+        params.id,
+        existingOrder.customerId
+      );
+    }
+
+    // Log project date changes
+    const dateFields = [
+      { name: 'contractDate', old: existingOrder.contractDate, new: contractDate },
+      { name: 'firstBuildInvoiceDate', old: existingOrder.firstBuildInvoiceDate, new: firstBuildInvoiceDate },
+      { name: 'projectStartDate', old: existingOrder.projectStartDate, new: projectStartDate },
+      { name: 'projectEndDate', old: existingOrder.projectEndDate, new: projectEndDate },
+    ];
+
+    for (const field of dateFields) {
+      if (field.new !== undefined) {
+        const oldStr = valueToString(field.old);
+        const newStr = valueToString(field.new);
+        if (oldStr !== newStr) {
+          await logOrderEdit(
+            field.name,
+            oldStr,
+            newStr,
+            params.id,
+            existingOrder.customerId
+          );
+        }
+      }
+    }
+
+    // If stage is set to 'completed', automatically set customer status to 'completed'
+    if (stage === 'completed') {
+      const existingCustomer = await db.query.customers.findFirst({
+        where: eq(schema.customers.dbxCustomerId, existingOrder.customerId),
+      });
+
+      if (existingCustomer && existingCustomer.status !== 'completed') {
+        // Log the customer status change
+        await logCustomerEdit(
+          'status',
+          valueToString(existingCustomer.status),
+          'completed',
+          existingOrder.customerId
+        );
+
+        await db.update(schema.customers)
+          .set({
+            status: 'completed',
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.customers.dbxCustomerId, existingOrder.customerId));
+        
+        console.log(`[PATCH /api/orders/[id]/project-status] Updated customer ${existingOrder.customerId} status to 'completed' because stage is 'completed'`);
+      }
+    }
 
     return NextResponse.json({
       success: true,

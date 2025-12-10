@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull, and, or, isNotNull, desc, inArray } from 'drizzle-orm';
+import { eq, isNull, and, or, isNotNull, desc } from 'drizzle-orm';
 import { validateOrderItemsTotal } from '@/lib/orderItemsValidation';
 import { updateCustomerStatus } from '@/lib/services/customerStatus';
 import type { OrderItem } from '@/lib/tableExtractor';
@@ -11,8 +11,6 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const includeDeleted = searchParams.get('includeDeleted') === 'true';
     const trashOnly = searchParams.get('trashOnly') === 'true';
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '1000', 10); // Default high limit for backward compatibility
 
     // Build where clause based on filters
     let whereClause;
@@ -38,91 +36,22 @@ export async function GET(request: NextRequest) {
 
     // Fetch customers with filters, sorted by latest modified (updatedAt descending)
     // NOTE: If you get an error about 'deleted_at' column, run: npx drizzle-kit push
-    const allCustomers = await db
+    const customers = await db
       .select()
       .from(schema.customers)
       .where(whereClause)
       .orderBy(desc(schema.customers.updatedAt));
 
-    // Apply pagination
-    const totalCustomers = allCustomers.length;
-    const offset = (page - 1) * limit;
-    const customers = allCustomers.slice(offset, offset + limit);
-
-    if (customers.length === 0) {
-      return NextResponse.json({ 
-        success: true, 
-        customers: [],
-        pagination: {
-          page,
-          limit,
-          total: totalCustomers,
-          totalPages: Math.ceil(totalCustomers / limit)
-        }
-      });
-    }
-
-    // Get all customer IDs for batch fetching
-    const customerIds = customers.map(c => c.dbxCustomerId);
-
-    // Batch fetch all orders for all customers in one query
-    const allOrders = customerIds.length > 0 
-      ? await db
-          .select()
-          .from(schema.orders)
-          .where(inArray(schema.orders.customerId, customerIds))
-          .orderBy(desc(schema.orders.createdAt))
-      : [];
-
-    // Group orders by customer ID
-    const ordersByCustomer = new Map<string, typeof schema.orders.$inferSelect[]>();
-    for (const order of allOrders) {
-      const existing = ordersByCustomer.get(order.customerId) || [];
-      existing.push(order);
-      ordersByCustomer.set(order.customerId, existing);
-    }
-
-    // Batch fetch all alert acknowledgments in one query
-    const allAcknowledgments = customerIds.length > 0
-      ? await db
-          .select()
-          .from(schema.alertAcknowledgments)
-          .where(inArray(schema.alertAcknowledgments.customerId, customerIds))
-      : [];
-
-    // Group acknowledgments by customer ID
-    const acknowledgmentsByCustomer = new Map<string, Set<string>>();
-    for (const ack of allAcknowledgments) {
-      if (!acknowledgmentsByCustomer.has(ack.customerId)) {
-        acknowledgmentsByCustomer.set(ack.customerId, new Set());
-      }
-      acknowledgmentsByCustomer.get(ack.customerId)!.add(ack.alertType);
-    }
-
-    // Get all order IDs for batch fetching order items
-    const orderIds = allOrders.map(o => o.id);
-
-    // Batch fetch all order items in one query
-    const allOrderItems = orderIds.length > 0
-      ? await db
-          .select()
-          .from(schema.orderItems)
-          .where(inArray(schema.orderItems.orderId, orderIds))
-          .orderBy(schema.orderItems.rowIndex)
-      : [];
-
-    // Group order items by order ID
-    const orderItemsByOrder = new Map<string, typeof schema.orderItems.$inferSelect[]>();
-    for (const item of allOrderItems) {
-      const existing = orderItemsByOrder.get(item.orderId) || [];
-      existing.push(item);
-      orderItemsByOrder.set(item.orderId, existing);
-    }
-
-    // Process customers with their related data
+    // For each customer, get order count, stage, and check for validation issues
     const customersWithCounts = await Promise.all(
       customers.map(async (customer) => {
-        const orders = ordersByCustomer.get(customer.dbxCustomerId) || [];
+        const ordersList = await db
+          .select()
+          .from(schema.orders)
+          .where(eq(schema.orders.customerId, customer.dbxCustomerId))
+          .orderBy(desc(schema.orders.createdAt));
+        
+        const orders = ordersList;
 
         // Get stage from most recent order
         const mostRecentOrder = orders.length > 0 ? orders[0] : null;
@@ -148,12 +77,18 @@ export async function GET(request: NextRequest) {
         let hasValidationIssues = false;
         const validationIssues: string[] = [];
 
-        // Get acknowledged alert types for this customer
-        const acknowledgedAlertTypes = acknowledgmentsByCustomer.get(customer.dbxCustomerId) || new Set<string>();
+        // Check if alerts are acknowledged
+        const acknowledgments = await db.query.alertAcknowledgments.findMany({
+          where: eq(schema.alertAcknowledgments.customerId, customer.dbxCustomerId),
+        });
+        const acknowledgedAlertTypes = new Set(acknowledgments.map(ack => ack.alertType));
 
         for (const order of orders) {
-          // Get order items for this order from the pre-fetched map
-          const orderItems = orderItemsByOrder.get(order.id) || [];
+          // Get order items for this order
+          const orderItems = await db.query.orderItems.findMany({
+            where: eq(schema.orderItems.orderId, order.id),
+            orderBy: schema.orderItems.rowIndex,
+          });
 
           // Convert to OrderItem format for validation
           const items: OrderItem[] = orderItems.map((item) => ({
@@ -197,20 +132,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      customers: customersWithCounts,
-      pagination: {
-        page,
-        limit,
-        total: totalCustomers,
-        totalPages: Math.ceil(totalCustomers / limit)
-      }
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
-      }
-    });
+    return NextResponse.json({ success: true, customers: customersWithCounts });
   } catch (error) {
     console.error('Error fetching customers:', error);
     return NextResponse.json(

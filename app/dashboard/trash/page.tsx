@@ -8,11 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination } from '@/components/ui/pagination';
 import type { StoredContract } from '@/lib/store/contractStore';
 
 export default function TrashPage() {
   const [contracts, setContracts] = useState<StoredContract[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
 
   const fetchDeletedContracts = async () => {
     setLoading(true);
@@ -50,6 +53,12 @@ export default function TrashPage() {
   useEffect(() => {
     fetchDeletedContracts();
   }, []);
+
+  // Calculate pagination
+  const effectivePageSize = pageSize === 'all' ? contracts.length : pageSize;
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
+  const paginatedContracts = contracts.slice(startIndex, endIndex);
 
   if (loading) {
     return (
@@ -104,8 +113,9 @@ export default function TrashPage() {
                 <p className="text-muted-foreground">No deleted contracts found.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {contracts.map((contract, index) => {
+              <>
+                <div className="space-y-4">
+                  {paginatedContracts.map((contract, index) => {
                   const contractWithDeleted = contract as StoredContract & { isDeleted?: boolean; deletedAt?: Date | null };
                   
                   return (
@@ -150,7 +160,23 @@ export default function TrashPage() {
                     </motion.div>
                   );
                 })}
-              </div>
+                </div>
+                
+                {/* Pagination */}
+                {contracts.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={contracts.length}
+                    pageSize={pageSize}
+                    onPageChange={setCurrentPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    }}
+                    pageSizeOptions={[10, 30, 50]}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

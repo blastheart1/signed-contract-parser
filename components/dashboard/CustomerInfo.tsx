@@ -196,8 +196,70 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 </div>
               )}
             <div className="pb-3 flex items-start justify-between gap-4">
-              <div className="flex-1">
+              <div className="flex-1 flex items-center gap-3 flex-wrap">
                 <h1 className="text-4xl font-bold tracking-tight">{currentContract.customer.clientName || 'Customer'}</h1>
+                {/* Stage Badge/Dropdown */}
+                {isEditingProjectStatus && !isDeleted ? (
+                  <Select value={stage} onValueChange={setStage}>
+                    <SelectTrigger id="stage" className="w-[200px]">
+                      <SelectValue placeholder="Select stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="waiting_for_permit">Waiting for Permit</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isDeleted) {
+                              setIsEditingProjectStatus(true);
+                            }
+                          }}
+                          disabled={isDeleted}
+                          className={isDeleted ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                        >
+                          <Badge
+                            variant={
+                              stage === 'active'
+                                ? 'default'
+                                : stage === 'waiting_for_permit'
+                                ? 'secondary'
+                                : stage === 'completed'
+                                ? 'default'
+                                : 'outline'
+                            }
+                            className={`min-w-[160px] text-center flex items-center justify-center ${
+                              stage === 'active'
+                                ? 'bg-green-600 hover:bg-green-700'
+                                : stage === 'waiting_for_permit'
+                                ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                : stage === 'completed'
+                                ? 'bg-blue-600 hover:bg-blue-700'
+                                : ''
+                            }`}
+                          >
+                            {stage === 'waiting_for_permit'
+                              ? 'Waiting for Permit'
+                              : stage === 'active'
+                              ? 'Active'
+                              : stage === 'completed'
+                              ? 'Completed'
+                              : 'No Stage'}
+                          </Badge>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Click to Update</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
               <div className="flex items-center gap-2 pt-1">
                 {!isDeleted && (
@@ -254,9 +316,9 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Status</dt>
                 <dd className="text-sm text-foreground font-medium text-right flex-1">
                   {(currentContract.customer as any).status === 'completed' ? (
-                    <Badge variant="default" className="bg-green-600">Completed</Badge>
+                    <Badge variant="default" className="bg-green-600 min-w-[120px] text-center">Completed</Badge>
                   ) : (
-                    <Badge variant="secondary">Pending Updates</Badge>
+                    <Badge variant="secondary" className="min-w-[120px] text-center">Pending Updates</Badge>
                   )}
                 </dd>
               </div>
@@ -315,7 +377,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <h4 className="text-sm font-semibold">Project Status</h4>
-                    {!isEditingProjectStatus ? (
+                    {!isEditingProjectStatus && (
                       isDeleted ? (
                         <TooltipProvider>
                           <Tooltip>
@@ -344,64 +406,10 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                           <Edit className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                         </button>
                       )
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingProjectStatus(false);
-                          // Reset to original values
-                          const order = currentContract.order as any;
-                          setStage(order?.stage || '');
-                          setContractDate(order?.contractDate || '');
-                          setFirstBuildInvoiceDate(order?.firstBuildInvoiceDate || '');
-                          setProjectStartDate(order?.projectStartDate || '');
-                          setProjectEndDate(order?.projectEndDate || '');
-                        }}
-                        className="p-1 hover:bg-muted rounded-md transition-colors duration-150 text-sm text-muted-foreground hover:text-foreground"
-                        aria-label="Cancel editing"
-                      >
-                        Cancel
-                      </button>
                     )}
                   </div>
                   <div className="space-y-3">
-                    {/* Row 1: STAGE */}
-                    <div className="flex items-center gap-4">
-                      <Label htmlFor="stage" className="text-sm font-medium min-w-[180px]">STAGE:</Label>
-                      {isEditingProjectStatus && !isDeleted ? (
-                        <Select value={stage} onValueChange={setStage}>
-                          <SelectTrigger id="stage" className="flex-1">
-                            <SelectValue placeholder="Select stage" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="waiting_for_permit">Waiting for Permit</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="flex-1 text-sm text-foreground flex items-center gap-2">
-                          <span>
-                            {stage === 'waiting_for_permit' ? 'Waiting for Permit' :
-                             stage === 'active' ? 'Active' :
-                             stage === 'completed' ? 'Completed' :
-                             '-'}
-                          </span>
-                          {stage && (
-                            <span
-                              className={`inline-block w-2 h-2 rounded-full ${
-                                stage === 'active' ? 'bg-green-500' :
-                                stage === 'waiting_for_permit' ? 'bg-orange-500' :
-                                stage === 'completed' ? 'bg-blue-500' :
-                                'bg-gray-400'
-                              }`}
-                              aria-label={`Status: ${stage}`}
-                            />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {/* Row 2: Contract Date */}
+                    {/* Row 1: Contract Date */}
                     <div className="flex items-center gap-4">
                       <Label htmlFor="contractDate" className="text-sm font-medium min-w-[180px]">Contract Date: (DBX)</Label>
                       {isEditingProjectStatus && !isDeleted ? (
@@ -513,16 +521,35 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                         <div className="flex-1 text-sm text-foreground">{projectEndDate || '-'}</div>
                       )}
                     </div>
-                    {/* Save Button - Only show when editing and not deleted */}
+                    {/* Cancel and Save Buttons - Only show when editing and not deleted */}
                     {isEditingProjectStatus && !isDeleted && (
-                      <div className="flex justify-end pt-2">
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                          onClick={() => {
+                            setIsEditingProjectStatus(false);
+                            // Reset to original values
+                            const order = currentContract.order as any;
+                            setStage(order?.stage || '');
+                            setContractDate(order?.contractDate || '');
+                            setFirstBuildInvoiceDate(order?.firstBuildInvoiceDate || '');
+                            setProjectStartDate(order?.projectStartDate || '');
+                            setProjectEndDate(order?.projectEndDate || '');
+                          }}
+                          disabled={saving}
+                          size="sm"
+                          variant="outline"
+                          className="min-w-[80px]"
+                        >
+                          Cancel
+                        </Button>
                         <Button
                           onClick={handleSaveProjectStatus}
                           disabled={saving}
                           size="sm"
                           variant="outline"
+                          className="min-w-[80px]"
                         >
-                          {saving ? 'Saving...' : 'Save Project Status'}
+                          {saving ? 'Saving...' : 'Save'}
                         </Button>
                       </div>
                     )}
@@ -547,7 +574,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 <div>
                   <h3 className="text-lg font-semibold leading-none tracking-tight">Job Information</h3>
                   {isDeleted && (
-                    <Badge variant="secondary" className="mt-1.5 gap-1">
+                    <Badge variant="secondary" className="mt-1.5 gap-1 min-w-[140px] text-center">
                       <Trash2 className="h-3 w-3" />
                       Deleted Contract
                     </Badge>
@@ -558,7 +585,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                     variant="default"
                     size="sm"
                     onClick={() => setRestoreDialogOpen(true)}
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                    className="gap-2 bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
                   >
                     <RotateCcw className="h-4 w-4" />
                     Restore Contract

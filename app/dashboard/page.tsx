@@ -43,32 +43,13 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Parallelize all API calls for better performance
-      const [contractsRes, customersRes, timelineRes, statsRes] = await Promise.all([
-        // Fetch only recent contracts (limit to 50 for dashboard, but API will handle pagination)
-        fetch('/api/contracts?limit=50'),
-        // Fetch customers for stats
-        fetch('/api/customers?includeDeleted=false'),
-        // Fetch recent activity count (changes in last 7 days)
-        fetch('/api/timeline?period=week&limit=1'),
-        // Fetch total paid for selected period
-        fetch(`/api/dashboard/stats?period=${paidPeriod}`),
-      ]);
-
-      // Parse all responses in parallel
-      const [contractsData, customersData, timelineData, statsData] = await Promise.all([
-        contractsRes.json(),
-        customersRes.json(),
-        timelineRes.json(),
-        statsRes.json(),
-      ]);
+      // Fetch contracts
+      const contractsRes = await fetch('/api/contracts');
+      const contractsData = await contractsRes.json();
       
-      // Process contracts - API already sorts by createdAt descending, which matches parsedAt
       if (contractsData.success) {
-        const contracts = contractsData.contracts || [];
-        // Sort by parsedAt as fallback (in case parsedAt differs from createdAt)
-        // This ensures consistent sorting even if API sorting differs
-        const sortedContracts = contracts.sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
+        // Sort by latest to oldest (by parsedAt)
+        const sortedContracts = (contractsData.contracts || []).sort((a: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }, b: StoredContract & { isDeleted?: boolean; deletedAt?: Date | null }) => {
           const dateA = a.parsedAt ? new Date(a.parsedAt).getTime() : 0;
           const dateB = b.parsedAt ? new Date(b.parsedAt).getTime() : 0;
           return dateB - dateA; // Latest first
@@ -76,22 +57,32 @@ export default function DashboardPage() {
         setContracts(sortedContracts);
       }
 
-      // Process customers and calculate stats
+      // Fetch customers for stats
+      const customersRes = await fetch('/api/customers?includeDeleted=false');
+      const customersData = await customersRes.json();
+      
       if (customersData.success) {
         const customers = customersData.customers || [];
         const totalCustomers = customers.length;
         const pendingUpdates = customers.filter((c: any) => c.status === 'pending_updates').length;
         const completed = customers.filter((c: any) => c.status === 'completed').length;
         
-        // Calculate total value and average from contracts
+        // Calculate total value and average
         const totalValue = contractsData.success 
-          ? contractsData.contracts.reduce((sum: number, c: StoredContract) => sum + (parseFloat(c.order.orderGrandTotal?.toString() || '0') || 0), 0)
+          ? contractsData.contracts.reduce((sum: number, c: StoredContract) => sum + (c.order.orderGrandTotal || 0), 0)
           : 0;
         const averageOrderValue = contractsData.success && contractsData.contracts.length > 0
           ? totalValue / contractsData.contracts.length
           : 0;
 
+        // Fetch recent activity (changes in last 7 days)
+        const timelineRes = await fetch('/api/timeline?period=week&limit=1');
+        const timelineData = await timelineRes.json();
         const recentActivity = timelineData.success ? timelineData.total : 0;
+
+        // Fetch total paid for selected period
+        const statsRes = await fetch(`/api/dashboard/stats?period=${paidPeriod}`);
+        const statsData = await statsRes.json();
         const totalPaid = statsData.success ? statsData.totalPaid : 0;
 
         setStats({

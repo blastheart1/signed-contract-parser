@@ -63,7 +63,7 @@ export function validateOrderItemsTotal(
   const isValid = difference <= tolerance;
 
   if (!isValid) {
-    const message = `Order items total ($${itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) does not match Order Grand Total ($${orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}). Difference: $${difference.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const message = `The Grand Total specified in the contract ($${orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) differs from the computed sum of all line items ($${itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}). Difference: $${difference.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return {
       isValid: false,
       itemsTotal,

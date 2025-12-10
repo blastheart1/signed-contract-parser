@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { convertDatabaseToStoredContract, saveContractToDatabase } from '@/lib/db/contractHelpers';
 import { eq, or } from 'drizzle-orm';
-import { logCustomerEdit, logOrderEdit, valueToString } from '@/lib/services/changeHistory';
+import { logCustomerEdit, logOrderEdit, logContractAdd, valueToString } from '@/lib/services/changeHistory';
 import type { StoredContract } from '@/lib/store/contractStore';
 
 export async function GET(
@@ -185,9 +185,26 @@ export async function PUT(
       where: eq(schema.orders.orderNo, contract.order.orderNo),
     });
 
+    // Check if this is a new contract (order didn't exist before)
+    const isNewContract = !existingOrder;
+    
     // Save the contract
     const updatedContractId = await saveContractToDatabase(contract);
     console.log(`[PUT /api/contracts/${params.id}] Contract updated successfully: ${updatedContractId}`);
+    
+    // Fetch the saved order to get its ID for logging
+    const savedOrder = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.orderNo, contract.order.orderNo))
+      .limit(1)
+      .then(rows => rows[0]);
+    
+    // Log contract addition if this is a new contract
+    if (isNewContract && savedOrder) {
+      const contractDescription = `Contract for ${contract.customer.clientName || 'Unknown'} - Order #${contract.order.orderNo}`;
+      await logContractAdd(customerId, savedOrder.id, contractDescription);
+    }
 
     // Log customer changes
     if (existingCustomer) {

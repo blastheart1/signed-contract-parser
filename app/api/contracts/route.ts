@@ -2,84 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { saveContractToDatabase, convertDatabaseToStoredContract } from '@/lib/db/contractHelpers';
 import type { StoredContract } from '@/lib/store/contractStore';
-import { eq, inArray, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { logContractAdd } from '@/lib/services/changeHistory';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '1000', 10); // Default high limit for backward compatibility
-
-    // Fetch all orders with their customers and items (sorted by createdAt descending)
-    const allOrders = await db
+    // Fetch all orders with their customers and items
+    const orders = await db
       .select()
       .from(schema.orders)
-      .orderBy(desc(schema.orders.createdAt));
+      .orderBy(schema.orders.createdAt);
 
-    const totalOrders = allOrders.length;
-
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    const orders = allOrders.slice(offset, offset + limit);
-
-    if (orders.length === 0) {
-      return NextResponse.json({ 
-        success: true, 
-        contracts: [],
-        pagination: {
-          page,
-          limit,
-          total: totalOrders,
-          totalPages: Math.ceil(totalOrders / limit)
-        }
-      });
-    }
-
-    // Get all unique customer IDs and order IDs for batch fetching
-    const customerIds = [...new Set(orders.map(o => o.customerId))];
-    const orderIds = orders.map(o => o.id);
-
-    // Batch fetch all customers in one query
-    const allCustomers = customerIds.length > 0
-      ? await db
-          .select()
-          .from(schema.customers)
-          .where(inArray(schema.customers.dbxCustomerId, customerIds))
-      : [];
-
-    // Create a map for quick customer lookup
-    const customersMap = new Map<string, typeof schema.customers.$inferSelect>();
-    for (const customer of allCustomers) {
-      customersMap.set(customer.dbxCustomerId, customer);
-    }
-
-    // Batch fetch all order items in one query
-    const allOrderItems = orderIds.length > 0
-      ? await db
-          .select()
-          .from(schema.orderItems)
-          .where(inArray(schema.orderItems.orderId, orderIds))
-      : [];
-
-    // Group order items by order ID
-    const orderItemsByOrder = new Map<string, typeof schema.orderItems.$inferSelect[]>();
-    for (const item of allOrderItems) {
-      const existing = orderItemsByOrder.get(item.orderId) || [];
-      existing.push(item);
-      orderItemsByOrder.set(item.orderId, existing);
-    }
-
-    // Build contracts array
     const contracts: StoredContract[] = [];
 
     for (const order of orders) {
-      const customer = customersMap.get(order.customerId);
-      
+      // Get customer
+      const [customer] = await db
+        .select()
+        .from(schema.customers)
+        .where(eq(schema.customers.dbxCustomerId, order.customerId))
+        .limit(1);
+
       if (!customer) continue;
 
-      // Get order items from the pre-fetched map
-      const orderItems = orderItemsByOrder.get(order.id) || [];
+      // Get order items
+      const orderItems = await db
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, order.id));
 
       const contract = convertDatabaseToStoredContract(customer, order, orderItems);
       // Add deleted status to contract
@@ -88,27 +38,14 @@ export async function GET(request: NextRequest) {
       contracts.push(contract);
     }
     
-    // Sort by latest to oldest (by createdAt/parsedAt) - already sorted by createdAt, but parsedAt might differ
+    // Sort by latest to oldest (by createdAt/parsedAt)
     contracts.sort((a, b) => {
       const dateA = a.parsedAt ? new Date(a.parsedAt).getTime() : 0;
       const dateB = b.parsedAt ? new Date(b.parsedAt).getTime() : 0;
       return dateB - dateA; // Latest first
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      contracts,
-      pagination: {
-        page,
-        limit,
-        total: totalOrders,
-        totalPages: Math.ceil(totalOrders / limit)
-      }
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
-      }
-    });
+    return NextResponse.json({ success: true, contracts });
   } catch (error) {
     console.error('Error fetching contracts:', error);
     return NextResponse.json(

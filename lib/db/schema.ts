@@ -1,11 +1,11 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique } from 'drizzle-orm/pg-core';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
 export const userStatusEnum = pgEnum('user_status', ['pending', 'active', 'suspended']);
 export const orderStatusEnum = pgEnum('order_status', ['pending_updates', 'completed']);
 export const itemTypeEnum = pgEnum('item_type', ['maincategory', 'subcategory', 'item']);
-export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit']);
+export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit', 'contract_add', 'stage_update', 'customer_delete', 'customer_restore']);
 export const customerStatusEnum = pgEnum('customer_status', ['pending_updates', 'completed']);
 
 // Users Table
@@ -132,6 +132,18 @@ export const adminPreferences = pgTable('admin_preferences', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// Alert Acknowledgments Table
+export const alertAcknowledgments = pgTable('alert_acknowledgments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  customerId: varchar('customer_id', { length: 255 }).notNull().references(() => customers.dbxCustomerId),
+  alertType: varchar('alert_type', { length: 50 }).notNull(), // 'order_items_mismatch', etc.
+  acknowledgedBy: uuid('acknowledged_by').notNull().references(() => users.id),
+  acknowledgedAt: timestamp('acknowledged_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  customerAlertUnique: unique().on(table.customerId, table.alertType),
+}));
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -147,4 +159,6 @@ export type ChangeHistory = typeof changeHistory.$inferSelect;
 export type NewChangeHistory = typeof changeHistory.$inferInsert;
 export type AdminPreference = typeof adminPreferences.$inferSelect;
 export type NewAdminPreference = typeof adminPreferences.$inferInsert;
+export type AlertAcknowledgment = typeof alertAcknowledgments.$inferSelect;
+export type NewAlertAcknowledgment = typeof alertAcknowledgments.$inferInsert;
 

@@ -396,7 +396,7 @@ function CustomerDetailContent() {
         transition={{ duration: 0.3 }}
         className="flex justify-between items-start"
       >
-        <Button variant="ghost" size="sm" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link href={fromTrashWithDeleted ? "/dashboard/trash" : "/dashboard/customers"}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             {fromTrashWithDeleted ? "Back to Trash" : "Back to Customers"}
@@ -458,6 +458,7 @@ function CustomerDetailContent() {
             <OrderItemsValidationAlert 
               contract={contract} 
               currentItems={currentItems}
+              customerId={contract.customer?.dbxCustomerId}
             />
             <OrderTable 
               items={contract.items} 

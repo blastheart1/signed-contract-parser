@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Pagination } from '@/components/ui/pagination';
 
 interface Customer {
   id: string;
@@ -36,6 +37,7 @@ interface Customer {
   state: string;
   zip: string;
   status?: 'pending_updates' | 'completed' | null;
+  stage?: 'waiting_for_permit' | 'active' | 'completed' | null;
   contractCount: number;
   hasValidationIssues?: boolean;
   validationIssues?: string[];
@@ -48,6 +50,8 @@ export default function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -89,6 +93,11 @@ export default function CustomersPage() {
     fetchCustomers();
   }, [statusFilter, showTrash]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, showTrash]);
+
   const filteredCustomers = customers.filter((customer) => {
     const searchLower = searchTerm.toLowerCase();
     return (
@@ -98,6 +107,13 @@ export default function CustomersPage() {
       customer.city.toLowerCase().includes(searchLower)
     );
   });
+
+  // Calculate pagination
+  const effectivePageSize = pageSize === 'all' ? filteredCustomers.length : pageSize;
+  const totalPages = pageSize === 'all' ? 1 : Math.ceil(filteredCustomers.length / pageSize);
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
 
   if (loading) {
     return (
@@ -145,45 +161,6 @@ export default function CustomersPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Search Customers</CardTitle>
-            <CardDescription>
-              Search by name, ID, address, or city
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search customers..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending_updates">Pending Updates</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-      >
-        <Card>
-          <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>{showTrash ? 'Deleted Customers' : 'All Customers'}</CardTitle>
@@ -197,40 +174,69 @@ export default function CustomersPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {filteredCustomers.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">
-                  {searchTerm ? 'No customers found matching your search.' : 'No customers found.'}
-                </p>
-                {searchTerm && (
-                  <Button variant="outline" onClick={() => setSearchTerm('')}>
-                    Clear search
-                  </Button>
-                )}
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search customers..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending_updates">Pending Updates</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <div className="rounded-md border">
+              {filteredCustomers.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm ? 'No customers found matching your search.' : 'No customers found.'}
+                  </p>
+                  {searchTerm && (
+                    <Button variant="outline" onClick={() => setSearchTerm('')}>
+                      Clear search
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Customer</TableHead>
                       <TableHead>DBX ID</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center">Stage</TableHead>
                       <TableHead>Address</TableHead>
                       <TableHead>Contact</TableHead>
-                      <TableHead>Contracts</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>Overall Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCustomers.map((customer, index) => (
-                      <motion.tr
-                        key={customer.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className="border-b transition-colors hover:bg-muted/50"
-                      >
+                    {paginatedCustomers.map((customer, index) => (
+                      <TooltipProvider key={customer.id}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.tr
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.3, delay: index * 0.05 }}
+                              onClick={() => {
+                                if (!showTrash && customer.id) {
+                                  window.location.href = `/dashboard/customers/${customer.id}`;
+                                }
+                              }}
+                              className={`border-b transition-colors duration-150 hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm ${!showTrash ? 'cursor-pointer' : ''}`}
+                            >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {customer.clientName}
@@ -263,17 +269,40 @@ export default function CustomersPage() {
                         </TableCell>
                         <TableCell>
                           {customer.dbxCustomerId ? (
-                            <Badge variant="secondary">{customer.dbxCustomerId}</Badge>
+                            <Badge variant="secondary" className="min-w-[80px] text-center flex items-center justify-center">{customer.dbxCustomerId}</Badge>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {customer.status === 'completed' ? (
-                            <Badge variant="default" className="bg-green-600">Completed</Badge>
-                          ) : (
-                            <Badge variant="secondary">Pending Updates</Badge>
-                          )}
+                        <TableCell className="text-center">
+                          <Badge
+                            variant={
+                              customer.stage === 'active'
+                                ? 'default'
+                                : customer.stage === 'waiting_for_permit'
+                                ? 'secondary'
+                                : customer.stage === 'completed'
+                                ? 'default'
+                                : 'outline'
+                            }
+                            className={`min-w-[160px] text-center flex items-center justify-center ${
+                              customer.stage === 'active'
+                                ? 'bg-green-600 hover:bg-green-700'
+                                : customer.stage === 'waiting_for_permit'
+                                ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                : customer.stage === 'completed'
+                                ? 'bg-blue-600 hover:bg-blue-700'
+                                : ''
+                            }`}
+                          >
+                            {customer.stage === 'waiting_for_permit'
+                              ? 'Waiting for Permit'
+                              : customer.stage === 'active'
+                              ? 'Active'
+                              : customer.stage === 'completed'
+                              ? 'Completed'
+                              : 'No Stage'}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <div>{customer.streetAddress}</div>
@@ -286,29 +315,40 @@ export default function CustomersPage() {
                           <div className="text-sm text-muted-foreground">{customer.phone || '-'}</div>
                         </TableCell>
                         <TableCell>
-                          <Badge>{customer.contractCount}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {showTrash ? (
-                            <RecoverCustomerButton 
-                              customerId={customer.id} 
-                              onRecover={fetchCustomers}
-                            />
+                          {customer.status === 'completed' ? (
+                            <Badge variant="default" className="bg-green-600 min-w-[160px] text-center flex items-center justify-center">Completed</Badge>
                           ) : (
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link href={`/dashboard/customers/${customer.id}`}>
-                                View
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                              </Link>
-                            </Button>
+                            <Badge variant="secondary" className="min-w-[160px] text-center flex items-center justify-center">Pending Updates</Badge>
                           )}
                         </TableCell>
-                      </motion.tr>
+                            </motion.tr>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{!showTrash ? 'Click to view/edit customer' : ''}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            )}
+                </div>
+              )}
+              
+              {/* Pagination */}
+              {filteredCustomers.length > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalItems={filteredCustomers.length}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setCurrentPage(1); // Reset to first page when page size changes
+                  }}
+                  pageSizeOptions={[10, 30, 50]}
+                />
+              )}
+            </div>
           </CardContent>
         </Card>
       </motion.div>

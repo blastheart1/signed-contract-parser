@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, Loader2, Copy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -67,7 +67,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
       invoiceNumber: '',
       invoiceDate: '',
       invoiceAmount: '',
-      paymentsReceived: '0',
+      paymentsReceived: '',
       exclude: false,
     };
     setInvoices([...invoices, newInvoice as Invoice]);
@@ -291,8 +291,17 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
             <TableBody>
               {invoices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No invoices yet. Click "Add Invoice" to create one.
+                  <TableCell colSpan={8} className="p-0">
+                    <div
+                      onClick={isDeleted ? undefined : handleAddInvoice}
+                      className={`text-center text-muted-foreground py-8 transition-colors ${
+                        isDeleted 
+                          ? 'cursor-not-allowed opacity-50' 
+                          : 'cursor-pointer hover:bg-green-200 dark:hover:bg-green-800/40 hover:text-foreground'
+                      }`}
+                    >
+                      No invoices yet. Click "Add Invoice" to create one.
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -350,16 +359,19 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                       </TableCell>
                       <TableCell className="text-right">
                         {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={displayInvoice.invoiceAmount || ''}
-                            onChange={(e) =>
-                              setEditingInvoice({ ...editingInvoice, invoiceAmount: e.target.value })
-                            }
-                            placeholder="0.00"
-                            className="w-full text-right"
-                          />
+                          <div className="relative w-full max-w-[180px] ml-auto">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={displayInvoice.invoiceAmount || ''}
+                              onChange={(e) =>
+                                setEditingInvoice({ ...editingInvoice, invoiceAmount: e.target.value })
+                              }
+                              placeholder="0.00"
+                              className="w-full text-right pl-7 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                            />
+                          </div>
                         ) : (
                           displayInvoice.invoiceAmount
                             ? `$${parseFloat(displayInvoice.invoiceAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -368,16 +380,51 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                       </TableCell>
                       <TableCell className="text-right">
                         {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={displayInvoice.paymentsReceived || '0'}
-                            onChange={(e) =>
-                              setEditingInvoice({ ...editingInvoice, paymentsReceived: e.target.value })
-                            }
-                            placeholder="0.00"
-                            className="w-full text-right"
-                          />
+                          <div className="relative w-full max-w-[180px] ml-auto">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
+                            {(!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const amount = displayInvoice.invoiceAmount || '0';
+                                        setEditingInvoice({ ...editingInvoice, paymentsReceived: amount });
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                      }}
+                                      className="absolute left-8 top-1/2 -translate-y-1/2 h-7 w-7 p-0 pointer-events-auto z-20"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Same Amount</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={displayInvoice.paymentsReceived || ''}
+                              onChange={(e) =>
+                                setEditingInvoice({ ...editingInvoice, paymentsReceived: e.target.value })
+                              }
+                              placeholder="0.00"
+                              className={`w-full text-right pr-3 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${
+                                (!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') 
+                                  ? 'pl-16' 
+                                  : 'pl-7'
+                              }`}
+                            />
+                          </div>
                         ) : (
                           `$${parseFloat(displayInvoice.paymentsReceived || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         )}
