@@ -77,12 +77,16 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    console.log(`[Timeline] Fetched ${allChanges.length} changes`);
+
     // Get total count
     const totalCountResult = await db
       .select({ count: count(schema.changeHistory.id) })
       .from(schema.changeHistory)
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
     const totalCount = Number(totalCountResult[0]?.count || 0);
+
+    console.log(`[Timeline] Total count: ${totalCount}`);
 
     // Batch fetch all related data to avoid N+1 queries
     const userIds = [...new Set(allChanges.map(c => c.changedBy).filter(Boolean) as string[])];
@@ -161,10 +165,12 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching timeline:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
       {
         error: 'Failed to fetch timeline',
         message: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 }
     );

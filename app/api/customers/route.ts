@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
         : statusFilter;
     }
 
+    console.log('[Customers] Query params:', { status, includeDeleted, trashOnly, whereClause: whereClause ? 'defined' : 'undefined' });
+
     // Fetch customers with filters, sorted by latest modified (updatedAt descending)
     // NOTE: If you get an error about 'deleted_at' column, run: npx drizzle-kit push
     const customers = await db
@@ -42,19 +44,24 @@ export async function GET(request: NextRequest) {
       .where(whereClause)
       .orderBy(desc(schema.customers.updatedAt));
 
+    console.log(`[Customers] Fetched ${customers.length} customers from database`);
+
     if (customers.length === 0) {
+      console.log('[Customers] No customers found, returning empty array');
       return NextResponse.json({ success: true, customers: [] });
     }
 
     // Batch fetch all related data to avoid N+1 queries
     const customerIds = customers.map(c => c.dbxCustomerId);
 
-    // Fetch all orders for all customers in one query
-    const allOrders = await db
-      .select()
-      .from(schema.orders)
-      .where(inArray(schema.orders.customerId, customerIds))
-      .orderBy(desc(schema.orders.createdAt));
+    // Fetch all orders for all customers in one query (only if we have customerIds)
+    const allOrders = customerIds.length > 0
+      ? await db
+          .select()
+          .from(schema.orders)
+          .where(inArray(schema.orders.customerId, customerIds))
+          .orderBy(desc(schema.orders.createdAt))
+      : [];
 
     // Group orders by customerId
     const ordersByCustomerId = new Map<string, typeof allOrders>();
@@ -86,7 +93,7 @@ export async function GET(request: NextRequest) {
       orderItemsByOrderId.get(item.orderId)!.push(item);
     }
 
-    // Batch fetch all alert acknowledgments
+    // Batch fetch all alert acknowledgments (only if we have customerIds)
     const allAcknowledgments = customerIds.length > 0
       ? await db
           .select()
@@ -188,10 +195,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, customers: customersWithCounts });
   } catch (error) {
     console.error('Error fetching customers:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
       {
         error: 'Failed to fetch customers',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : undefined
       },
       { status: 500 }
     );
