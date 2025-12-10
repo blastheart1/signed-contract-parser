@@ -162,7 +162,14 @@ export async function PUT(
           ];
 
           // Collect all changed fields for this row (excluding computed fields like completedAmount)
-          const changedFields = userEditableFields.filter(field => !valuesAreEqual(field.old, field.new));
+          // Filter out auto-computed rate changes (where old value is null/empty - indicates auto-computation)
+          const changedFields = userEditableFields.filter(field => {
+            // Skip rate changes where old value is null/empty (indicates auto-computed, not user-entered)
+            if (field.name === 'rate' && (!field.old || field.old === '' || field.old === null)) {
+              return false; // Don't log auto-computed rate changes
+            }
+            return !valuesAreEqual(field.old, field.new);
+          });
 
           // If there are changes, log them as a single grouped entry
           if (changedFields.length > 0) {
