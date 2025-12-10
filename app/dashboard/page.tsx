@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination } from '@/components/ui/pagination';
 import type { StoredContract } from '@/lib/store/contractStore';
 import UploadContractModal from '@/components/dashboard/UploadContractModal';
 
@@ -36,13 +37,26 @@ export default function DashboardPage() {
   const [paidPeriod, setPaidPeriod] = useState<'day' | 'week' | 'month' | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch contracts
-      const contractsRes = await fetch('/api/contracts');
-      const contractsData = await contractsRes.json();
+      // Fetch all data in parallel for better performance
+      const [contractsRes, customersRes, timelineRes, statsRes] = await Promise.all([
+        fetch('/api/contracts'),
+        fetch('/api/customers?includeDeleted=false'),
+        fetch('/api/timeline?period=week&limit=1'),
+        fetch(`/api/dashboard/stats?period=${paidPeriod}`)
+      ]);
+
+      const [contractsData, customersData, timelineData, statsData] = await Promise.all([
+        contractsRes.json(),
+        customersRes.json(),
+        timelineRes.json(),
+        statsRes.json()
+      ]);
       
       if (contractsData.success) {
         // Sort by latest to oldest (by parsedAt)
@@ -53,10 +67,6 @@ export default function DashboardPage() {
         });
         setContracts(sortedContracts);
       }
-
-      // Fetch customers for stats
-      const customersRes = await fetch('/api/customers?includeDeleted=false');
-      const customersData = await customersRes.json();
       
       if (customersData.success) {
         const customers = customersData.customers || [];
@@ -72,14 +82,7 @@ export default function DashboardPage() {
           ? totalValue / contractsData.contracts.length
           : 0;
 
-        // Fetch recent activity (changes in last 7 days)
-        const timelineRes = await fetch('/api/timeline?period=week&limit=1');
-        const timelineData = await timelineRes.json();
         const recentActivity = timelineData.success ? timelineData.total : 0;
-
-        // Fetch total paid for selected period
-        const statsRes = await fetch(`/api/dashboard/stats?period=${paidPeriod}`);
-        const statsData = await statsRes.json();
         const totalPaid = statsData.success ? statsData.totalPaid : 0;
 
         setStats({
@@ -103,6 +106,12 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData();
   }, [paidPeriod]);
+
+  // Calculate pagination for contracts
+  const effectivePageSize = pageSize === 'all' ? contracts.length : pageSize;
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
+  const paginatedContracts = contracts.slice(startIndex, endIndex);
 
   if (loading) {
     return (
@@ -334,7 +343,7 @@ export default function DashboardPage() {
                 <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button variant="outline" asChild>
+                <Button variant="outline" size="sm" asChild>
                   <Link href="/dashboard/customers">
                     View All
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -353,8 +362,9 @@ export default function DashboardPage() {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {contracts.slice(0, 5).map((contract, index) => {
+              <>
+                <div className="space-y-4">
+                  {paginatedContracts.map((contract, index) => {
                   const contractWithDeleted = contract as StoredContract & { isDeleted?: boolean; deletedAt?: Date | null };
                   const isDeleted = contractWithDeleted.isDeleted || false;
                   
@@ -365,39 +375,81 @@ export default function DashboardPage() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.3, delay: 0.5 + index * 0.1 }}
                     >
-                      <Link
-                        href={`/dashboard/customers/${contract.id}`}
-                        className={`block p-4 border rounded-lg hover:bg-accent transition-colors ${isDeleted ? 'opacity-60' : ''}`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold">{contract.customer.clientName}</h3>
-                              {isDeleted && (
+                      {isDeleted ? (
+                        <div
+                          className="block p-4 border rounded-lg opacity-60 cursor-not-allowed pointer-events-none"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold">{contract.customer.clientName}</h3>
                                 <Badge variant="secondary" className="gap-1">
                                   <Trash2 className="h-3 w-3" />
                                   Deleted
                                 </Badge>
-                              )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Order #{contract.order.orderNo} • {contract.customer.streetAddress}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1 italic">
+                                View details in Trash section
+                              </p>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              Order #{contract.order.orderNo} • {contract.customer.streetAddress}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">
-                              ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(contract.parsedAt).toLocaleDateString()}
-                            </p>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(contract.parsedAt).toLocaleDateString()}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </Link>
+                      ) : (
+                        <Link
+                          href={`/dashboard/customers/${contract.id}`}
+                          className="block p-4 border rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold">{contract.customer.clientName}</h3>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Order #{contract.order.orderNo} • {contract.customer.streetAddress}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                ${contract.order.orderGrandTotal?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(contract.parsedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </Link>
+                      )}
                     </motion.div>
                   );
                 })}
-              </div>
+                </div>
+                
+                {/* Pagination */}
+                {contracts.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={contracts.length}
+                    pageSize={pageSize}
+                    onPageChange={setCurrentPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    }}
+                    pageSizeOptions={[10, 30, 50]}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -19,7 +19,7 @@ export default function UploadContractModal({ open, onOpenChange }: UploadContra
   // DashboardFileUpload handles the redirect, so we don't need to manually close the modal
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-visible">
         <DialogHeader>
           <DialogTitle>Upload Contract</DialogTitle>
           <DialogDescription>

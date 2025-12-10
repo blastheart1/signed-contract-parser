@@ -41,6 +41,58 @@ export async function saveContractToDatabase(contract: StoredContract) {
       },
     });
 
+  // Get existing order to preserve project status fields if not provided
+  const existingOrder = await db
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.orderNo, contract.order.orderNo))
+    .limit(1)
+    .then(rows => rows[0]);
+
+  // Build update set object, preserving project status fields if not provided
+  const updateSet: any = {
+    customerId: dbxCustomerId,
+    orderDate: contract.order.orderDate ? new Date(contract.order.orderDate) : null,
+    orderPO: contract.order.orderPO || null,
+    orderDueDate: contract.order.orderDueDate ? new Date(contract.order.orderDueDate) : null,
+    orderType: contract.order.orderType || null,
+    orderDelivered: contract.order.orderDelivered || false,
+    quoteExpirationDate: contract.order.quoteExpirationDate ? new Date(contract.order.quoteExpirationDate) : null,
+    orderGrandTotal: contract.order.orderGrandTotal.toString(),
+    progressPayments: contract.order.progressPayments || null,
+    balanceDue: contract.order.balanceDue.toString(),
+    salesRep: contract.order.salesRep || null,
+    updatedAt: new Date(),
+  };
+
+  // Only update project status fields if explicitly provided in contract, otherwise preserve existing values
+  const orderAny = contract.order as any;
+  if (orderAny.stage !== undefined) {
+    updateSet.stage = orderAny.stage || null;
+  } else if (existingOrder?.stage) {
+    updateSet.stage = existingOrder.stage;
+  }
+  if (orderAny.contractDate !== undefined) {
+    updateSet.contractDate = orderAny.contractDate || null;
+  } else if (existingOrder?.contractDate) {
+    updateSet.contractDate = existingOrder.contractDate;
+  }
+  if (orderAny.firstBuildInvoiceDate !== undefined) {
+    updateSet.firstBuildInvoiceDate = orderAny.firstBuildInvoiceDate || null;
+  } else if (existingOrder?.firstBuildInvoiceDate) {
+    updateSet.firstBuildInvoiceDate = existingOrder.firstBuildInvoiceDate;
+  }
+  if (orderAny.projectStartDate !== undefined) {
+    updateSet.projectStartDate = orderAny.projectStartDate || null;
+  } else if (existingOrder?.projectStartDate) {
+    updateSet.projectStartDate = existingOrder.projectStartDate;
+  }
+  if (orderAny.projectEndDate !== undefined) {
+    updateSet.projectEndDate = orderAny.projectEndDate || null;
+  } else if (existingOrder?.projectEndDate) {
+    updateSet.projectEndDate = existingOrder.projectEndDate;
+  }
+
   // Insert order
   const [order] = await db
     .insert(schema.orders)
@@ -57,25 +109,17 @@ export async function saveContractToDatabase(contract: StoredContract) {
       progressPayments: contract.order.progressPayments || null,
       balanceDue: contract.order.balanceDue.toString(),
       salesRep: contract.order.salesRep || null,
+      stage: orderAny.stage || null,
+      contractDate: orderAny.contractDate || null,
+      firstBuildInvoiceDate: orderAny.firstBuildInvoiceDate || null,
+      projectStartDate: orderAny.projectStartDate || null,
+      projectEndDate: orderAny.projectEndDate || null,
       emlBlobUrl: null, // For future implementation
       emlFilename: null, // For future implementation
     })
     .onConflictDoUpdate({
       target: schema.orders.orderNo,
-      set: {
-        customerId: dbxCustomerId,
-        orderDate: contract.order.orderDate ? new Date(contract.order.orderDate) : null,
-        orderPO: contract.order.orderPO || null,
-        orderDueDate: contract.order.orderDueDate ? new Date(contract.order.orderDueDate) : null,
-        orderType: contract.order.orderType || null,
-        orderDelivered: contract.order.orderDelivered || false,
-        quoteExpirationDate: contract.order.quoteExpirationDate ? new Date(contract.order.quoteExpirationDate) : null,
-        orderGrandTotal: contract.order.orderGrandTotal.toString(),
-        progressPayments: contract.order.progressPayments || null,
-        balanceDue: contract.order.balanceDue.toString(),
-        salesRep: contract.order.salesRep || null,
-        updatedAt: new Date(),
-      },
+      set: updateSet,
     })
     .returning();
 
@@ -197,6 +241,11 @@ export function convertDatabaseToStoredContract(
       progressPayments: order.progressPayments || undefined,
       balanceDue: parseFloat(order.balanceDue),
       salesRep: order.salesRep || undefined,
+      stage: order.stage || undefined,
+      contractDate: order.contractDate || undefined,
+      firstBuildInvoiceDate: order.firstBuildInvoiceDate || undefined,
+      projectStartDate: order.projectStartDate || undefined,
+      projectEndDate: order.projectEndDate || undefined,
     },
     items,
     parsedAt: order.createdAt,

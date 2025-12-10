@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { logCustomerRestore } from '@/lib/services/changeHistory';
 
 export async function POST(
   request: NextRequest,
@@ -11,9 +12,12 @@ export async function POST(
     console.log(`[POST /api/customers/${customerId}/recover] Recovering customer from trash...`);
 
     // Check if customer exists
-    const customer = await db.query.customers.findFirst({
-      where: eq(schema.customers.dbxCustomerId, customerId),
-    });
+    const customerRows = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.dbxCustomerId, customerId))
+      .limit(1);
+    const customer = customerRows[0];
 
     if (!customer) {
       return NextResponse.json(
@@ -29,6 +33,9 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Log customer restoration before restoring
+    await logCustomerRestore(customerId, customer.clientName || 'Unknown Customer');
 
     // Recover: clear deletedAt timestamp
     await db.update(schema.customers)

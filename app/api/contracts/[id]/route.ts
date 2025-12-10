@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { convertDatabaseToStoredContract, saveContractToDatabase } from '@/lib/db/contractHelpers';
 import { eq, or } from 'drizzle-orm';
-import { logCustomerEdit, logOrderEdit, valueToString } from '@/lib/services/changeHistory';
+import { logCustomerEdit, logOrderEdit, logContractAdd, valueToString } from '@/lib/services/changeHistory';
 import type { StoredContract } from '@/lib/store/contractStore';
 
 export async function GET(
@@ -122,6 +122,10 @@ export async function GET(
     console.log(`[GET /api/contracts/${params.id}] Found ${orderItems.length} order items`);
     const contract = convertDatabaseToStoredContract(customer, order, orderItems);
     
+    // Add deleted status to contract (same pattern as /api/contracts)
+    (contract as any).isDeleted = !!customer.deletedAt;
+    (contract as any).deletedAt = customer.deletedAt;
+    
     console.log(`[GET /api/contracts/${params.id}] Successfully returning contract`);
     return NextResponse.json({ success: true, contract });
   } catch (error) {
@@ -173,17 +177,40 @@ export async function PUT(
       );
     }
     
-    const existingCustomer = await db.query.customers.findFirst({
-      where: eq(schema.customers.dbxCustomerId, customerId),
-    });
+    const existingCustomerRows = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.dbxCustomerId, customerId))
+      .limit(1);
+    const existingCustomer = existingCustomerRows[0] || null;
 
-    const existingOrder = await db.query.orders.findFirst({
-      where: eq(schema.orders.orderNo, contract.order.orderNo),
-    });
+    const existingOrderRows = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.orderNo, contract.order.orderNo))
+      .limit(1);
+    const existingOrder = existingOrderRows[0] || null;
 
+    // Check if this is a new contract (order didn't exist before)
+    const isNewContract = !existingOrder;
+    
     // Save the contract
     const updatedContractId = await saveContractToDatabase(contract);
     console.log(`[PUT /api/contracts/${params.id}] Contract updated successfully: ${updatedContractId}`);
+    
+    // Fetch the saved order to get its ID for logging
+    const savedOrder = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.orderNo, contract.order.orderNo))
+      .limit(1)
+      .then(rows => rows[0]);
+    
+    // Log contract addition if this is a new contract
+    if (isNewContract && savedOrder) {
+      const contractDescription = `Contract for ${contract.customer.clientName || 'Unknown'} - Order #${contract.order.orderNo}`;
+      await logContractAdd(customerId, savedOrder.id, contractDescription);
+    }
 
     // Log customer changes
     if (existingCustomer) {

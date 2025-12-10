@@ -20,9 +20,12 @@ export async function PUT(
 
     // Verify order exists
     console.log(`[PUT /api/orders/${orderId}/items] Verifying order exists...`);
-    const order = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-    });
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
 
     if (!order) {
       console.error(`[PUT /api/orders/${orderId}/items] Order not found`);
@@ -34,10 +37,11 @@ export async function PUT(
     console.log(`[PUT /api/orders/${orderId}/items] Order found: ${order.orderNo}`);
 
     // Fetch existing order items for comparison
-    const existingItems = await db.query.orderItems.findMany({
-      where: eq(orderItems.orderId, orderId),
-      orderBy: orderItems.rowIndex,
-    });
+    const existingItems = await db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId))
+      .orderBy(orderItems.rowIndex);
     console.log(`[PUT /api/orders/${orderId}/items] Found ${existingItems.length} existing items`);
 
     // Before deleting order items, we need to clear the order_item_id references in change_history

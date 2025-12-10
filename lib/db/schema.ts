@@ -1,11 +1,11 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique, index } from 'drizzle-orm/pg-core';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
 export const userStatusEnum = pgEnum('user_status', ['pending', 'active', 'suspended']);
 export const orderStatusEnum = pgEnum('order_status', ['pending_updates', 'completed']);
 export const itemTypeEnum = pgEnum('item_type', ['maincategory', 'subcategory', 'item']);
-export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit']);
+export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit', 'contract_add', 'stage_update', 'customer_delete', 'customer_restore']);
 export const customerStatusEnum = pgEnum('customer_status', ['pending_updates', 'completed']);
 
 // Users Table
@@ -36,7 +36,11 @@ export const customers = pgTable('customers', {
   deletedAt: timestamp('deleted_at'), // Soft delete: when customer was deleted (null = not deleted)
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  deletedAtIdx: index('customers_deleted_at_idx').on(table.deletedAt),
+  updatedAtIdx: index('customers_updated_at_idx').on(table.updatedAt),
+  statusIdx: index('customers_status_idx').on(table.status),
+}));
 
 // Orders Table
 export const orders = pgTable('orders', {
@@ -54,13 +58,21 @@ export const orders = pgTable('orders', {
   balanceDue: decimal('balance_due', { precision: 15, scale: 2 }).notNull(),
   salesRep: varchar('sales_rep', { length: 255 }),
   status: orderStatusEnum('status').default('pending_updates'),
+  stage: varchar('stage', { length: 50 }), // 'waiting_for_permit', 'active', 'completed'
+  contractDate: varchar('contract_date', { length: 20 }), // MM/DD/YYYY format as string
+  firstBuildInvoiceDate: varchar('first_build_invoice_date', { length: 20 }), // MM/DD/YYYY format as string
+  projectStartDate: varchar('project_start_date', { length: 20 }), // MM/DD/YYYY format as string
+  projectEndDate: varchar('project_end_date', { length: 20 }), // MM/DD/YYYY format as string
   emlBlobUrl: varchar('eml_blob_url', { length: 500 }), // For future Vercel Blob implementation
   emlFilename: varchar('eml_filename', { length: 255 }), // For future Vercel Blob implementation
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   createdBy: uuid('created_by').references(() => users.id),
   updatedBy: uuid('updated_by').references(() => users.id),
-});
+}, (table) => ({
+  customerIdIdx: index('orders_customer_id_idx').on(table.customerId),
+  createdAtIdx: index('orders_created_at_idx').on(table.createdAt),
+}));
 
 // Order Items Table
 export const orderItems = pgTable('order_items', {
@@ -84,7 +96,9 @@ export const orderItems = pgTable('order_items', {
   subCategory: varchar('sub_category', { length: 255 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  orderIdIdx: index('order_items_order_id_idx').on(table.orderId),
+}));
 
 // Invoices Table
 export const invoices = pgTable('invoices', {
@@ -98,7 +112,10 @@ export const invoices = pgTable('invoices', {
   rowIndex: integer('row_index'), // Position in table (354-391)
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  orderIdIdx: index('invoices_order_id_idx').on(table.orderId),
+  updatedAtIdx: index('invoices_updated_at_idx').on(table.updatedAt),
+}));
 
 // Change History Table
 export const changeHistory = pgTable('change_history', {
@@ -113,7 +130,11 @@ export const changeHistory = pgTable('change_history', {
   rowIndex: integer('row_index'),
   changedBy: uuid('changed_by').notNull().references(() => users.id),
   changedAt: timestamp('changed_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  customerIdIdx: index('change_history_customer_id_idx').on(table.customerId),
+  orderIdIdx: index('change_history_order_id_idx').on(table.orderId),
+  changedAtIdx: index('change_history_changed_at_idx').on(table.changedAt),
+}));
 
 // Admin Preferences Table (for notes, todos, maintenance)
 export const adminPreferences = pgTable('admin_preferences', {
@@ -126,6 +147,19 @@ export const adminPreferences = pgTable('admin_preferences', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// Alert Acknowledgments Table
+export const alertAcknowledgments = pgTable('alert_acknowledgments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  customerId: varchar('customer_id', { length: 255 }).notNull().references(() => customers.dbxCustomerId),
+  alertType: varchar('alert_type', { length: 50 }).notNull(), // 'order_items_mismatch', etc.
+  acknowledgedBy: uuid('acknowledged_by').notNull().references(() => users.id),
+  acknowledgedAt: timestamp('acknowledged_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  customerAlertUnique: unique().on(table.customerId, table.alertType),
+  customerIdIdx: index('alert_acknowledgments_customer_id_idx').on(table.customerId),
+}));
 
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
@@ -142,4 +176,6 @@ export type ChangeHistory = typeof changeHistory.$inferSelect;
 export type NewChangeHistory = typeof changeHistory.$inferInsert;
 export type AdminPreference = typeof adminPreferences.$inferSelect;
 export type NewAdminPreference = typeof adminPreferences.$inferInsert;
+export type AlertAcknowledgment = typeof alertAcknowledgments.$inferSelect;
+export type NewAlertAcknowledgment = typeof alertAcknowledgments.$inferInsert;
 

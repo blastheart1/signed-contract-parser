@@ -51,25 +51,34 @@ export async function GET(
     const formattedChanges = await Promise.all(
       allChanges.map(async (change) => {
         // Fetch user
-        const user = change.changedBy
-          ? await db.query.users.findFirst({
-              where: eq(schema.users.id, change.changedBy),
-            })
-          : null;
+        const userRows = change.changedBy
+          ? await db
+              .select()
+              .from(schema.users)
+              .where(eq(schema.users.id, change.changedBy))
+              .limit(1)
+          : [];
+        const user = userRows[0] || null;
 
         // Fetch customer
-        const customer = change.customerId
-          ? await db.query.customers.findFirst({
-              where: eq(schema.customers.dbxCustomerId, change.customerId),
-            })
-          : null;
+        const customerRows = change.customerId
+          ? await db
+              .select()
+              .from(schema.customers)
+              .where(eq(schema.customers.dbxCustomerId, change.customerId))
+              .limit(1)
+          : [];
+        const customer = customerRows[0] || null;
 
         // Fetch order
-        const order = change.orderId
-          ? await db.query.orders.findFirst({
-              where: eq(schema.orders.id, change.orderId),
-            })
-          : null;
+        const orderRows = change.orderId
+          ? await db
+              .select()
+              .from(schema.orders)
+              .where(eq(schema.orders.id, change.orderId))
+              .limit(1)
+          : [];
+        const order = orderRows[0] || null;
 
         return {
           id: change.id,

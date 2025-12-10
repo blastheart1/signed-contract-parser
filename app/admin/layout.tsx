@@ -15,7 +15,8 @@ import {
   Database,
   BarChart3,
   Menu,
-  X
+  X,
+  Repeat
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -92,7 +93,6 @@ export default function AdminLayout({
   const navItems = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard, exact: true },
     { href: '/admin/users', label: 'Users', icon: Users },
-    { href: '/dashboard', label: 'Dashboard', icon: FileText },
     { href: '/admin/settings', label: 'Settings', icon: Settings },
     { href: '/admin/audit-logs', label: 'Audit Logs', icon: FileSearch },
     { href: '/admin/data-management', label: 'Data Management', icon: Database },
@@ -197,6 +197,18 @@ function SidebarContent({
             <p className="text-sm text-muted-foreground mt-1">System Management</p>
           </div>
         </Link>
+        {/* Toggle to Dashboard View */}
+        <div className="mt-4 flex justify-center">
+          <Link href="/dashboard">
+            <Button
+              variant="outline"
+              className="w-32 justify-center gap-2 border-2 hover:bg-accent"
+            >
+              <Repeat className="h-4 w-4" />
+              <span className="font-medium">Dashboard</span>
+            </Button>
+          </Link>
+        </div>
       </div>
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {

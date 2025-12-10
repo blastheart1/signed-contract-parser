@@ -2,7 +2,7 @@ export type TimelineFilter = 'day' | 'week' | 'month' | 'all';
 
 export interface TimelineEntry {
   id: string;
-  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit';
+  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit' | 'contract_add' | 'stage_update' | 'customer_delete' | 'customer_restore';
   fieldName: string;
   oldValue: string | null;
   newValue: string | null;

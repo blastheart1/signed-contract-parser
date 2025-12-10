@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, Loader2, Copy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -25,9 +25,10 @@ interface Invoice {
 interface InvoiceTableProps {
   orderId: string;
   onInvoiceChange?: () => void; // Callback to notify parent when invoices change
+  isDeleted?: boolean; // Whether the contract is deleted
 }
 
-export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableProps) {
+export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = false }: InvoiceTableProps) {
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +67,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
       invoiceNumber: '',
       invoiceDate: '',
       invoiceAmount: '',
-      paymentsReceived: '0',
+      paymentsReceived: '',
       exclude: false,
     };
     setInvoices([...invoices, newInvoice as Invoice]);
@@ -242,10 +243,28 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
             <CardTitle>Invoices</CardTitle>
             <CardDescription>Manage invoices for this order (Rows 354-391)</CardDescription>
           </div>
-          <Button onClick={handleAddInvoice} size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Invoice
-          </Button>
+          {isDeleted ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button onClick={() => {}} size="sm" disabled className="opacity-50 cursor-not-allowed">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Invoice
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Restore first before editing</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button onClick={handleAddInvoice} size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Invoice
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -272,8 +291,17 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
             <TableBody>
               {invoices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No invoices yet. Click "Add Invoice" to create one.
+                  <TableCell colSpan={8} className="p-0">
+                    <div
+                      onClick={isDeleted ? undefined : handleAddInvoice}
+                      className={`text-center text-muted-foreground py-8 transition-colors ${
+                        isDeleted 
+                          ? 'cursor-not-allowed opacity-50' 
+                          : 'cursor-pointer hover:bg-green-200 dark:hover:bg-green-800/40 hover:text-foreground'
+                      }`}
+                    >
+                      No invoices yet. Click "Add Invoice" to create one.
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -331,16 +359,19 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
                       </TableCell>
                       <TableCell className="text-right">
                         {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={displayInvoice.invoiceAmount || ''}
-                            onChange={(e) =>
-                              setEditingInvoice({ ...editingInvoice, invoiceAmount: e.target.value })
-                            }
-                            placeholder="0.00"
-                            className="w-full text-right"
-                          />
+                          <div className="relative w-full max-w-[180px] ml-auto">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={displayInvoice.invoiceAmount || ''}
+                              onChange={(e) =>
+                                setEditingInvoice({ ...editingInvoice, invoiceAmount: e.target.value })
+                              }
+                              placeholder="0.00"
+                              className="w-full text-right pl-7 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                            />
+                          </div>
                         ) : (
                           displayInvoice.invoiceAmount
                             ? `$${parseFloat(displayInvoice.invoiceAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -349,16 +380,51 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
                       </TableCell>
                       <TableCell className="text-right">
                         {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={displayInvoice.paymentsReceived || '0'}
-                            onChange={(e) =>
-                              setEditingInvoice({ ...editingInvoice, paymentsReceived: e.target.value })
-                            }
-                            placeholder="0.00"
-                            className="w-full text-right"
-                          />
+                          <div className="relative w-full max-w-[180px] ml-auto">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
+                            {(!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const amount = displayInvoice.invoiceAmount || '0';
+                                        setEditingInvoice({ ...editingInvoice, paymentsReceived: amount });
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                      }}
+                                      className="absolute left-8 top-1/2 -translate-y-1/2 h-7 w-7 p-0 pointer-events-auto z-20"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Same Amount</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={displayInvoice.paymentsReceived || ''}
+                              onChange={(e) =>
+                                setEditingInvoice({ ...editingInvoice, paymentsReceived: e.target.value })
+                              }
+                              placeholder="0.00"
+                              className={`w-full text-right pr-3 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${
+                                (!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') 
+                                  ? 'pl-16' 
+                                  : 'pl-7'
+                              }`}
+                            />
+                          </div>
                         ) : (
                           `$${parseFloat(displayInvoice.paymentsReceived || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         )}
@@ -392,25 +458,71 @@ export default function InvoiceTable({ orderId, onInvoiceChange }: InvoiceTableP
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEdit(invoice)}
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDelete(invoice.id)}
-                              disabled={isSaving}
-                            >
-                              {isSaving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
+                            {isDeleted ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {}}
+                                        disabled
+                                        className="opacity-50 cursor-not-allowed"
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Restore first before editing</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEdit(invoice)}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {isDeleted ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {}}
+                                        disabled
+                                        className="opacity-50 cursor-not-allowed"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Restore first before editing</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDelete(invoice.id)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         )}
                       </TableCell>

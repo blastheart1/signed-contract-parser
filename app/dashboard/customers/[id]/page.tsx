@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Download, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { StoredContract } from '@/lib/store/contractStore';
 import CustomerInfo from '@/components/dashboard/CustomerInfo';
@@ -18,10 +19,14 @@ import InvoiceSummary from '@/components/dashboard/InvoiceSummary';
 import OrderItemsValidationAlert from '@/components/dashboard/OrderItemsValidationAlert';
 import DeleteCustomerButton from '@/components/dashboard/DeleteCustomerButton';
 
-export default function CustomerDetailPage() {
+function CustomerDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [contract, setContract] = useState<StoredContract | null>(null);
+  
+  // Check if we came from trash (based on query param, will be enhanced with isDeleted later if contract exists)
+  const fromTrash = searchParams.get('from') === 'trash';
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [currentItems, setCurrentItems] = useState<any[]>([]);
@@ -333,7 +338,9 @@ export default function CustomerDetailPage() {
         <p className="text-destructive mb-4">Error: {error}</p>
         <p className="text-sm text-muted-foreground mb-4">Check the browser console for detailed logs.</p>
         <Button variant="outline" asChild>
-          <Link href="/dashboard/customers">Back to Customers</Link>
+          <Link href={fromTrash ? "/dashboard/trash" : "/dashboard/customers"}>
+            {fromTrash ? "Back to Trash" : "Back to Customers"}
+          </Link>
         </Button>
       </div>
     );
@@ -346,16 +353,42 @@ export default function CustomerDetailPage() {
         <p className="text-muted-foreground mb-4">Contract not found</p>
         <p className="text-sm text-muted-foreground mb-4">ID: {params.id}</p>
         <Button variant="outline" asChild>
-          <Link href="/dashboard/customers">Back to Customers</Link>
+          <Link href={fromTrash ? "/dashboard/trash" : "/dashboard/customers"}>
+            {fromTrash ? "Back to Trash" : "Back to Customers"}
+          </Link>
         </Button>
       </div>
     );
   }
 
   console.log('[CustomerDetailPage] Rendering contract view');
+  
+  // Check if contract is deleted
+  const contractWithDeleted = contract as StoredContract & { isDeleted?: boolean; deletedAt?: Date | null };
+  const isDeleted = contractWithDeleted.isDeleted === true;
+  // Update fromTrash to also consider if contract is deleted (even without query param)
+  const fromTrashWithDeleted = fromTrash || isDeleted;
+  
   try {
     return (
     <div className="space-y-8">
+      {/* Deleted Contract Banner */}
+      {isDeleted && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>This contract has been deleted</AlertTitle>
+            <AlertDescription>
+              This contract is in read-only mode. Restore it to make changes.
+            </AlertDescription>
+          </Alert>
+        </motion.div>
+      )}
+      
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -363,10 +396,10 @@ export default function CustomerDetailPage() {
         transition={{ duration: 0.3 }}
         className="flex justify-between items-start"
       >
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/dashboard/customers">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={fromTrashWithDeleted ? "/dashboard/trash" : "/dashboard/customers"}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Customers
+            {fromTrashWithDeleted ? "Back to Trash" : "Back to Customers"}
           </Link>
         </Button>
         <div className="flex gap-2">
@@ -398,7 +431,8 @@ export default function CustomerDetailPage() {
             transition={{ duration: 0.3, delay: 0.1 }}
           >
             <CustomerInfo 
-              contract={contract} 
+              contract={contract}
+              isDeleted={isDeleted}
               onContractUpdate={async (updatedContract) => {
                 setContract(updatedContract);
                 // Refresh from server after a short delay to ensure update is saved
@@ -424,12 +458,14 @@ export default function CustomerDetailPage() {
             <OrderItemsValidationAlert 
               contract={contract} 
               currentItems={currentItems}
+              customerId={contract.customer?.dbxCustomerId}
             />
             <OrderTable 
               items={contract.items} 
               onItemsChange={setCurrentItems} 
               orderId={contract.id}
               onSaveSuccess={handleOrderItemsSave}
+              isDeleted={isDeleted}
             />
           </TabsContent>
           <TabsContent value="invoices" className="mt-6 space-y-6">
@@ -437,6 +473,7 @@ export default function CustomerDetailPage() {
             <InvoiceTable 
               orderId={contract.id} 
               onInvoiceChange={() => setInvoiceRefreshTrigger(prev => prev + 1)}
+              isDeleted={isDeleted}
             />
           </TabsContent>
         </Tabs>
@@ -454,9 +491,26 @@ export default function CustomerDetailPage() {
         <p className="text-destructive mb-4">Render Error: {renderError instanceof Error ? renderError.message : 'Unknown error'}</p>
         <p className="text-sm text-muted-foreground mb-4">Check the browser console for detailed logs.</p>
         <Button variant="outline" asChild>
-          <Link href="/dashboard/customers">Back to Customers</Link>
+          <Link href={fromTrash ? "/dashboard/trash" : "/dashboard/customers"}>
+            {fromTrash ? "Back to Trash" : "Back to Customers"}
+          </Link>
         </Button>
       </div>
     );
   }
+}
+
+export default function CustomerDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CustomerDetailContent />
+    </Suspense>
+  );
 }

@@ -19,7 +19,7 @@ async function getCurrentUserId(): Promise<string | null> {
  * Generic function to log any change to the change history table
  */
 export async function logChange(
-  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit',
+  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit' | 'contract_add' | 'stage_update' | 'customer_delete' | 'customer_restore',
   fieldName: string,
   oldValue: string | null,
   newValue: string | null,
@@ -192,7 +192,7 @@ export function valuesAreEqual(oldValue: any, newValue: any): boolean {
  * Compare two values and log if they're different
  */
 export async function logIfChanged(
-  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit',
+  changeType: 'cell_edit' | 'row_add' | 'row_delete' | 'row_update' | 'customer_edit' | 'order_edit' | 'contract_add' | 'stage_update' | 'customer_delete' | 'customer_restore',
   fieldName: string,
   oldValue: any,
   newValue: any,
@@ -210,5 +210,58 @@ export async function logIfChanged(
   if (oldStr !== newStr) {
     await logChange(changeType, fieldName, oldStr, newStr, options);
   }
+}
+
+/**
+ * Log contract additions (when a new contract is uploaded/saved)
+ */
+export async function logContractAdd(
+  customerId: string,
+  orderId: string,
+  contractDescription: string
+): Promise<void> {
+  await logChange('contract_add', 'contract', null, contractDescription, {
+    customerId,
+    orderId,
+  });
+}
+
+/**
+ * Log stage updates (when project stage changes)
+ */
+export async function logStageUpdate(
+  oldStage: string | null,
+  newStage: string | null,
+  orderId: string,
+  customerId: string
+): Promise<void> {
+  await logChange('stage_update', 'stage', valueToString(oldStage), valueToString(newStage), {
+    orderId,
+    customerId,
+  });
+}
+
+/**
+ * Log customer deletions (when customer is soft-deleted to trash)
+ */
+export async function logCustomerDelete(
+  customerId: string,
+  customerName: string
+): Promise<void> {
+  await logChange('customer_delete', 'customer', customerName, 'deleted', {
+    customerId,
+  });
+}
+
+/**
+ * Log customer restoration (when customer is restored from trash)
+ */
+export async function logCustomerRestore(
+  customerId: string,
+  customerName: string
+): Promise<void> {
+  await logChange('customer_restore', 'customer', 'deleted', customerName, {
+    customerId,
+  });
 }
 

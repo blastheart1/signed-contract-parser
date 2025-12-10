@@ -291,31 +291,33 @@ export default function DashboardFileUpload() {
     }
   };
 
+  const handleAreaClick = () => {
+    if (!file && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Upload Contract</CardTitle>
-        <CardDescription>
-          Upload a signed build contract .eml file to parse and view in dashboard
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+      {/* CardHeader removed - title/description already in modal header */}
+      <CardContent className="space-y-6 pt-6">
         {/* Privacy Disclaimer */}
         <div className="flex justify-end">
           <PrivacyDisclaimer />
         </div>
 
-        {/* Drag and Drop Area */}
+        {/* Drag and Drop Area - Entire area is clickable */}
         <div
           className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 ${
             isDragging
               ? 'border-primary bg-primary/5'
               : 'border-muted hover:border-primary/50'
-          }`}
+          } ${!file ? 'cursor-pointer' : ''}`}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onClick={handleAreaClick}
         >
           {file ? (
             <motion.div
@@ -333,7 +335,8 @@ export default function DashboardFileUpload() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent triggering file input when clicking remove
                   setFile(null);
                   setError(null);
                   if (fileInputRef.current) {
@@ -348,22 +351,18 @@ export default function DashboardFileUpload() {
             <div className="space-y-4">
               <Upload className="h-12 w-12 text-muted-foreground mx-auto" />
               <div>
-                <Label htmlFor="file-upload" className="cursor-pointer">
-                  <span className="text-primary hover:underline">Click to upload</span>
-                  {' '}or drag and drop
-                </Label>
-                <Input
-                  id="file-upload"
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".eml"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
+                <p className="text-primary font-medium">Click to upload</p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  EML files only
+                  or drag and drop • EML files only
                 </p>
               </div>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".eml"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
             </div>
           )}
         </div>

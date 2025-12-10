@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2 } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import type { OrderItem } from '@/lib/tableExtractor';
 
@@ -37,6 +38,7 @@ interface OrderTableProps {
   onItemsChange?: (items: OrderItem[]) => void;
   orderId?: string; // Order ID for saving to database
   onSaveSuccess?: () => void; // Callback after successful save
+  isDeleted?: boolean; // Whether the contract is deleted
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -62,6 +64,8 @@ function SortableRow({
   overId,
   insertPosition,
   isFirstRow,
+  isDeleted,
+  onEnterEditMode,
 }: {
   item: EditableOrderItem;
   index: number;
@@ -71,9 +75,11 @@ function SortableRow({
   onDeleteRow: (itemId: string) => void;
   isEvenRow: boolean;
   activeId: string | null;
+  isDeleted?: boolean;
   overId: string | null;
   insertPosition: 'above' | 'below' | null;
   isFirstRow: boolean;
+  onEnterEditMode?: () => void;
 }) {
   const {
     attributes,
@@ -191,14 +197,22 @@ function SortableRow({
           </td>
         </tr>
       )}
-      <motion.tr
-        ref={setNodeRef}
-        style={style}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, delay: index * 0.02 }}
-        className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem ? 'hover:bg-muted/70 dark:hover:bg-muted/50' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
-      >
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <motion.tr
+              ref={setNodeRef}
+              style={style}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: index * 0.02 }}
+              onClick={() => {
+                if (!isEditing && !isDeleted && isItem && onEnterEditMode) {
+                  onEnterEditMode();
+                }
+              }}
+              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing ? 'cursor-pointer' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+            >
       <TableCell className="font-medium">
         <div className="flex items-center gap-2">
           {isEditing && (
@@ -239,7 +253,7 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -255,7 +269,7 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right font-medium">
@@ -271,26 +285,36 @@ function SortableRow({
             readOnly={!isItem}
           />
         ) : (
-          isItem ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
         {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.progressOverallPct || ''}
-            onChange={(e) => {
-              const value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
-              onCellChange(item.id, 'progressOverallPct', value);
-            }}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value={item.progressOverallPct ?? ''}
+              onChange={(e) => {
+                const parsed = parseFloat(e.target.value);
+                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
+                // Clamp value between 0 and 100
+                if (value !== '' && typeof value === 'number') {
+                  value = Math.max(0, Math.min(100, value));
+                }
+                onCellChange(item.id, 'progressOverallPct', value);
+              }}
+              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              placeholder="0"
+              disabled={!isItem}
+              readOnly={!isItem}
+            />
+            <span className="text-muted-foreground text-sm">%</span>
+          </div>
         ) : (
-          isItem && item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -307,26 +331,36 @@ function SortableRow({
             title={isItem ? "Calculated: % Progress Overall × Amount" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
         {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.previouslyInvoicedPct || ''}
-            onChange={(e) => {
-              const value = e.target.value === '' ? '' : parseFloat(e.target.value) || '';
-              onCellChange(item.id, 'previouslyInvoicedPct', value);
-            }}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value={item.previouslyInvoicedPct ?? ''}
+              onChange={(e) => {
+                const parsed = parseFloat(e.target.value);
+                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
+                // Clamp value between 0 and 100
+                if (value !== '' && typeof value === 'number') {
+                  value = Math.max(0, Math.min(100, value));
+                }
+                onCellChange(item.id, 'previouslyInvoicedPct', value);
+              }}
+              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              placeholder="0"
+              disabled={!isItem}
+              readOnly={!isItem}
+            />
+            <span className="text-muted-foreground text-sm">%</span>
+          </div>
         ) : (
-          isItem && item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -343,7 +377,7 @@ function SortableRow({
             title={isItem ? "Calculated: Amount × % Previously Invoiced" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -360,7 +394,7 @@ function SortableRow({
             title={isItem ? "Calculated: % Progress Overall - % Previously Invoiced" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       <TableCell className="text-right">
@@ -377,34 +411,58 @@ function SortableRow({
             title={isItem ? "Calculated: % New Progress × Amount" : "Not applicable for headers"}
           />
         ) : (
-          isItem && calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>
+          isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''
         )}
       </TableCell>
       {isEditing && (
         <TableCell>
           <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onAddRow(index)}
-              className="h-7 w-7 p-0"
-              title="Add row below"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDeleteRow(item.id)}
-              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-              title="Delete row"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => !isDeleted && onAddRow(index)}
+                    disabled={isDeleted}
+                    className={`h-7 w-7 p-0 ${isDeleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isDeleted ? 'Restore first before editing' : 'Add row below'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => !isDeleted && onDeleteRow(item.id)}
+                    disabled={isDeleted}
+                    className={`h-7 w-7 p-0 text-destructive hover:text-destructive ${isDeleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isDeleted ? 'Restore first before editing' : 'Delete row'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </TableCell>
       )}
-    </motion.tr>
+            </motion.tr>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{!isEditing && !isDeleted && isItem ? 'Click to enter edit mode' : ''}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     {/* Insertion line below row */}
     {showInsertBelow && (
       <tr className="relative">
@@ -422,20 +480,80 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess }: OrderTableProps) {
+export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [items, setItems] = useState<EditableOrderItem[]>(() => 
-    initialItems.map((item, index) => ({
+  const [showMainCategories, setShowMainCategories] = useState(true);
+  const [showSubCategories, setShowSubCategories] = useState(true);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Auto-compute rate if empty/null: Rate = Amount / Quantity
+  const autoComputeRate = (item: OrderItem | EditableOrderItem): EditableOrderItem => {
+    const editableItem = 'id' in item ? item as EditableOrderItem : {
       ...item,
-      id: `item-${index}`,
+      id: '',
       progressOverallPct: item.progressOverallPct || '',
       completedAmount: item.completedAmount || '',
       previouslyInvoicedPct: item.previouslyInvoicedPct || '',
       previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
       newProgressPct: item.newProgressPct || '',
       thisBill: item.thisBill || '',
-    }))
+    };
+
+    // Only compute for items (not categories)
+    if (editableItem.type !== 'item') {
+      return editableItem;
+    }
+
+    // Only compute if rate is empty, null, or doesn't exist
+    const rateIsEmpty = 
+      editableItem.rate === null || 
+      editableItem.rate === undefined || 
+      editableItem.rate === '' || 
+      (typeof editableItem.rate === 'string' && editableItem.rate.trim() === '') ||
+      (typeof editableItem.rate === 'number' && isNaN(editableItem.rate));
+
+    if (!rateIsEmpty) {
+      // Rate already exists, don't overwrite
+      return editableItem;
+    }
+
+    // Get amount and quantity values
+    const amount = typeof editableItem.amount === 'number' 
+      ? editableItem.amount 
+      : parseFloat(String(editableItem.amount || 0)) || 0;
+    
+    const qty = typeof editableItem.qty === 'number'
+      ? editableItem.qty
+      : parseFloat(String(editableItem.qty || 0)) || 0;
+
+    // Only compute if both amount and quantity are valid numbers > 0
+    if (amount > 0 && qty > 0) {
+      const computedRate = amount / qty;
+      return {
+        ...editableItem,
+        rate: computedRate,
+      };
+    }
+
+    return editableItem;
+  };
+
+  const [items, setItems] = useState<EditableOrderItem[]>(() => 
+    initialItems.map((item, index) => {
+      const editableItem = {
+        ...item,
+        id: `item-${index}`,
+        progressOverallPct: item.progressOverallPct || '',
+        completedAmount: item.completedAmount || '',
+        previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+        previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+        newProgressPct: item.newProgressPct || '',
+        thisBill: item.thisBill || '',
+      };
+      return autoComputeRate(editableItem);
+    })
   );
 
   // Track previous initialItems to detect changes
@@ -447,16 +565,19 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     // This ensures we get the latest data after a save
     if (!isEditing) {
       setItems(
-        initialItems.map((item, index) => ({
-          ...item,
-          id: `item-${index}`,
-          progressOverallPct: item.progressOverallPct || '',
-          completedAmount: item.completedAmount || '',
-          previouslyInvoicedPct: item.previouslyInvoicedPct || '',
-          previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-          newProgressPct: item.newProgressPct || '',
-          thisBill: item.thisBill || '',
-        }))
+        initialItems.map((item, index) => {
+          const editableItem = {
+            ...item,
+            id: `item-${index}`,
+            progressOverallPct: item.progressOverallPct || '',
+            completedAmount: item.completedAmount || '',
+            previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+            previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+            newProgressPct: item.newProgressPct || '',
+            thisBill: item.thisBill || '',
+          };
+          return autoComputeRate(editableItem);
+        })
       );
       prevInitialItemsRef.current = initialItems;
     }
@@ -573,11 +694,17 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   };
 
   const handleCellChange = (itemId: string, field: keyof EditableOrderItem, value: string | number) => {
-    const newItems = items.map(item => 
-      item.id === itemId 
-        ? { ...item, [field]: value }
-        : item
-    );
+    const newItems = items.map(item => {
+      if (item.id === itemId) {
+        const updatedItem = { ...item, [field]: value };
+        // Auto-compute rate if amount or qty changed and rate is empty
+        if ((field === 'amount' || field === 'qty') && updatedItem.type === 'item') {
+          return autoComputeRate(updatedItem);
+        }
+        return updatedItem;
+      }
+      return item;
+    });
     updateItems(newItems);
   };
 
@@ -685,7 +812,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         }
       }
       // Ctrl+E or Cmd+E to edit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !isDeleted) {
         e.preventDefault();
         setIsEditing(true);
       }
@@ -694,16 +821,19 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         e.preventDefault();
         setIsEditing(false);
         setSaveError(null);
-        setItems(initialItems.map((item, index) => ({
-          ...item,
-          id: `item-${index}`,
-          progressOverallPct: item.progressOverallPct || '',
-          completedAmount: item.completedAmount || '',
-          previouslyInvoicedPct: item.previouslyInvoicedPct || '',
-          previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-          newProgressPct: item.newProgressPct || '',
-          thisBill: item.thisBill || '',
-        })));
+        setItems(initialItems.map((item, index) => {
+          const editableItem = {
+            ...item,
+            id: `item-${index}`,
+            progressOverallPct: item.progressOverallPct || '',
+            completedAmount: item.completedAmount || '',
+            previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+            previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+            newProgressPct: item.newProgressPct || '',
+            thisBill: item.thisBill || '',
+          };
+          return autoComputeRate(editableItem);
+        }));
       }
     };
 
@@ -722,6 +852,43 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     return indices;
   }, [items]);
 
+  // Calculate total of all line item amounts
+  const totalAmount = useMemo(() => {
+    return items
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+        return sum + amount;
+      }, 0);
+  }, [items]);
+
+  // Filter items based on show/hide settings
+  const filteredItems = useMemo(() => {
+    return items.filter(item => {
+      if (item.type === 'maincategory') {
+        return showMainCategories;
+      }
+      if (item.type === 'subcategory') {
+        return showSubCategories;
+      }
+      return true; // Always show items
+    });
+  }, [items, showMainCategories, showSubCategories]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [dropdownOpen]);
+
   return (
     <Card>
       <CardHeader>
@@ -733,25 +900,78 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             </CardDescription>
           </div>
           {!isEditing ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                    <Edit2 className="mr-2 h-4 w-4" />
-                    Edit Table
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Edit order items (Ctrl+E)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="flex items-center gap-2">
+              <div className="relative" ref={dropdownRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="gap-2"
+                >
+                  <Eye className="h-4 w-4" />
+                  Show/Hide Headers
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-full bg-background border rounded-md shadow-lg z-50 p-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer">
+                        <Checkbox
+                          id="main-category"
+                          checked={showMainCategories}
+                          onCheckedChange={(checked) => setShowMainCategories(checked === true)}
+                        />
+                        <label
+                          htmlFor="main-category"
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex-1"
+                        >
+                          Main Category
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer">
+                        <Checkbox
+                          id="sub-category"
+                          checked={showSubCategories}
+                          onCheckedChange={(checked) => setShowSubCategories(checked === true)}
+                        />
+                        <label
+                          htmlFor="sub-category"
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex-1"
+                        >
+                          Sub-category
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {isDeleted ? (
+                      <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Edit Table
+                      </Button>
+                    ) : (
+                      <Button onClick={() => setIsEditing(true)} variant="outline" size="sm" className="w-[130px]">
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Edit Table
+                      </Button>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{isDeleted ? 'Restore first before editing' : 'Edit order items (Ctrl+E)'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           ) : (
             <div className="flex gap-2">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleSave} size="sm" disabled={saving}>
+                    <Button onClick={handleSave} size="sm" disabled={saving} className="min-w-[100px]">
                       {saving ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -792,6 +1012,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       variant="outline" 
                       size="sm"
                       disabled={saving}
+                      className="w-[130px]"
                     >
                       <X className="mr-2 h-4 w-4" />
                       Cancel
@@ -814,11 +1035,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         )}
         <div className="rounded-md border overflow-x-auto">
           <DndContext
-            sensors={sensors}
+            sensors={isDeleted ? [] : sensors}
             collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
+            onDragStart={isDeleted ? undefined : handleDragStart}
+            onDragOver={isDeleted ? undefined : handleDragOver}
+            onDragEnd={isDeleted ? undefined : handleDragEnd}
           >
             <Table>
               <TableHeader>
@@ -827,9 +1048,31 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                   <TableHead className="text-right">QTY</TableHead>
                   <TableHead className="text-right">RATE</TableHead>
                   <TableHead className="text-right">AMOUNT</TableHead>
-                  <TableHead className="text-right">% Progress Overall</TableHead>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <TableHead className="text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-help">
+                          <span>% Progress Overall</span>
+                        </TableHead>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Editable: Set the overall progress percentage for this item</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <TableHead className="text-right">$ Completed</TableHead>
-                  <TableHead className="text-right">% PREVIOUSLY INVOICED</TableHead>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <TableHead className="text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-help">
+                          <span>% PREVIOUSLY INVOICED</span>
+                        </TableHead>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Editable: Set the previously invoiced percentage for this item</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <TableHead className="text-right">$ PREVIOUSLY INVOICED</TableHead>
                   <TableHead className="text-right">% NEW PROGRESS</TableHead>
                   <TableHead className="text-right">THIS BILL</TableHead>
@@ -837,7 +1080,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext items={filteredItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
                   {isEditing && (
                     <motion.tr
                       initial={{ opacity: 0 }}
@@ -849,7 +1092,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'maincategory')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'maincategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Folder className="mr-2 h-4 w-4" />
                             Add Main Category
@@ -857,7 +1102,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'subcategory')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'subcategory')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <FolderOpen className="mr-2 h-4 w-4" />
                             Add Subcategory
@@ -865,7 +1112,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(-1, 'item')}
+                            onClick={() => !isDeleted && handleAddRow(-1, 'item')}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Row at Top
@@ -874,9 +1123,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       </TableCell>
                     </motion.tr>
                   )}
-                  {items.map((item, index) => {
+                  {filteredItems.map((item, index) => {
                     // Determine if this is an even item row (for alternating colors)
-                    const itemIndex = itemRowIndices.indexOf(index);
+                    // Need to find the original index in the full items array to calculate itemIndex correctly
+                    const originalIndex = items.findIndex(i => i.id === item.id);
+                    const itemIndex = itemRowIndices.indexOf(originalIndex);
                     const isEvenRow = itemIndex >= 0 && itemIndex % 2 === 0;
 
                     return (
@@ -892,7 +1143,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         activeId={activeId}
                         overId={overId}
                         insertPosition={insertPosition}
-                        isFirstRow={index === 0}
+                        isFirstRow={originalIndex === 0 || filteredItems.findIndex(fi => fi.id === item.id) === 0}
+                        isDeleted={isDeleted}
+                        onEnterEditMode={() => setIsEditing(true)}
                       />
                     );
                   })}
@@ -907,7 +1160,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'maincategory')}
+                            onClick={() => {
+                              if (!isDeleted) {
+                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
+                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
+                                handleAddRow(lastIndex, 'maincategory');
+                              }
+                            }}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Folder className="mr-2 h-4 w-4" />
                             Add Main Category
@@ -915,7 +1176,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'subcategory')}
+                            onClick={() => {
+                              if (!isDeleted) {
+                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
+                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
+                                handleAddRow(lastIndex, 'subcategory');
+                              }
+                            }}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <FolderOpen className="mr-2 h-4 w-4" />
                             Add Subcategory
@@ -923,7 +1192,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleAddRow(items.length - 1, 'item')}
+                            onClick={() => {
+                              if (!isDeleted) {
+                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
+                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
+                                handleAddRow(lastIndex, 'item');
+                              }
+                            }}
+                            disabled={isDeleted}
+                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
                           >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Row at Bottom
@@ -932,6 +1209,16 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       </TableCell>
                     </motion.tr>
                   )}
+                  {/* Total row */}
+                  <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
+                    <TableCell colSpan={isEditing ? 4 : 3} className="font-bold text-right">
+                      Total
+                    </TableCell>
+                    <TableCell className="text-right font-bold">
+                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell colSpan={isEditing ? 6 : 6}></TableCell>
+                  </TableRow>
                 </SortableContext>
               </TableBody>
             </Table>
