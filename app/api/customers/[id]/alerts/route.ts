@@ -52,7 +52,7 @@ export async function GET(
         return NextResponse.json({
           success: true,
           acknowledgments: [],
-        });
+    });
       }
       // Re-throw other errors
       throw error;

@@ -184,12 +184,12 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
 
   // State 2: Expanded + Acknowledged
   if (isAcknowledged && isExpanded) {
-    return (
-      <>
-        <Alert variant="destructive" className="mb-4">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle className="flex items-center justify-between">
-            <span>Order Items Total Mismatch</span>
+  return (
+    <>
+      <Alert variant="destructive" className="mb-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle className="flex items-center justify-between">
+          <span>Order Items Total Mismatch</span>
             <Button
               variant="ghost"
               size="sm"
@@ -199,25 +199,25 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
             >
               <ChevronUp className="h-4 w-4" />
             </Button>
-          </AlertTitle>
-          <AlertDescription>
-            <div className="space-y-3">
+        </AlertTitle>
+        <AlertDescription>
+          <div className="space-y-3">
               {acknowledgmentInfo && (
-                <div className="bg-muted/50 p-2 rounded text-sm">
-                  Acknowledged by <strong>{acknowledgmentInfo.acknowledgedBy.username}</strong> on {formatDate(acknowledgmentInfo.acknowledgedAt)}
-                </div>
-              )}
-              
-              <div>
-                <p className="mb-2">
-                  The Grand Total specified in the contract (<strong>${validation.orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>) differs from the computed sum of all line items (<strong>${validation.itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>). This may indicate missing items, parsing errors, or additional charges not included in the line items.
-                </p>
-                <div className="text-sm space-y-1 mt-3">
-                  <p>• <strong>Contract Grand Total:</strong> ${validation.orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  <p>• <strong>Sum of Line Items:</strong> ${validation.itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  <p>• <strong>Difference:</strong> ${validation.difference.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                </div>
+              <div className="bg-muted/50 p-2 rounded text-sm">
+                Acknowledged by <strong>{acknowledgmentInfo.acknowledgedBy.username}</strong> on {formatDate(acknowledgmentInfo.acknowledgedAt)}
               </div>
+            )}
+            
+            <div>
+              <p className="mb-2">
+                The Grand Total specified in the contract (<strong>${validation.orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>) differs from the computed sum of all line items (<strong>${validation.itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>). This may indicate missing items, parsing errors, or additional charges not included in the line items.
+              </p>
+              <div className="text-sm space-y-1 mt-3">
+                <p>• <strong>Contract Grand Total:</strong> ${validation.orderGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p>• <strong>Sum of Line Items:</strong> ${validation.itemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p>• <strong>Difference:</strong> ${validation.difference.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+            </div>
             </div>
           </AlertDescription>
         </Alert>
@@ -279,8 +279,8 @@ export default function OrderItemsValidationAlert({ contract, currentItems, cust
                 <ChevronDown className="h-4 w-4 mr-2" />
                 Show Details
               </Button>
-            </div>
-          </AlertDescription>
+          </div>
+        </AlertDescription>
         )}
       </Alert>
 
