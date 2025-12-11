@@ -384,33 +384,33 @@ export default function DashboardFileUpload() {
 
         setProcessingStage('uploading');
 
-        // Read file as base64
-        const reader = new FileReader();
-        
-        reader.onload = async (e) => {
-          try {
-            const result = e.target?.result as string;
-            const base64Data = result.split(',')[1];
-            
-            setProcessingStage('parsing');
-
-            const dataResponse = await fetch('/api/parse-contract', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
+      // Read file as base64
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        try {
+          const result = e.target?.result as string;
+          const base64Data = result.split(',')[1];
+          
+          setProcessingStage('parsing');
+          
+          const dataResponse = await fetch('/api/parse-contract', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
                 mode: 'eml',
-                file: base64Data,
-                filename: file.name,
+              file: base64Data,
+              filename: file.name,
                 originalContractUrl: originalContract?.url,
                 addendumLinks: addendumUrls.length > 0 ? addendumUrls : undefined,
-                deleteExtraRows: deleteExtraRows,
-                includeMainCategories: includeMainCategories,
-                includeSubcategories: includeSubcategories,
-                returnData: true,
-              }),
-            });
+              deleteExtraRows: deleteExtraRows,
+              includeMainCategories: includeMainCategories,
+              includeSubcategories: includeSubcategories,
+              returnData: true,
+            }),
+          });
 
             await handleParseResponse(dataResponse);
           } catch (err) {
@@ -437,149 +437,149 @@ export default function DashboardFileUpload() {
 
   // Handle API response and store contract
   const handleParseResponse = async (dataResponse: Response) => {
-    setProcessingStage('storing');
+          setProcessingStage('storing');
 
-    if (!dataResponse.ok) {
-      let errorMessage = 'Failed to process contract';
-      try {
-        const errorData = await dataResponse.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-      } catch (e) {
-        errorMessage = dataResponse.statusText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
+          if (!dataResponse.ok) {
+            let errorMessage = 'Failed to process contract';
+            try {
+              const errorData = await dataResponse.json();
+              errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch (e) {
+              errorMessage = dataResponse.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
+          }
 
-    const dataResult = await dataResponse.json();
-    
-    if (!dataResult.success || !dataResult.data) {
-      throw new Error('Failed to parse contract data');
-    }
+          const dataResult = await dataResponse.json();
+          
+          if (!dataResult.success || !dataResult.data) {
+            throw new Error('Failed to parse contract data');
+          }
 
     // Store contract (same logic as before)
-    const { location, items, addendums, isLocationParsed, orderItemsValidation } = dataResult.data;
+          const { location, items, addendums, isLocationParsed, orderItemsValidation } = dataResult.data;
     const newContractId = `contract-${Date.now()}-${location.orderNo || 'unknown'}`;
-    
-    // Combine items with addendum structure preserved
-    const allItems: any[] = [...items];
-    
-    // Add addendums with headers and markers
-    if (addendums && addendums.length > 0) {
-      // Add 2 blank rows separator before addendums
-      allItems.push({
-        type: 'item',
-        productService: '',
-        qty: '',
-        rate: '',
-        amount: '',
+          
+          // Combine items with addendum structure preserved
+          const allItems: any[] = [...items];
+          
+          // Add addendums with headers and markers
+          if (addendums && addendums.length > 0) {
+            // Add 2 blank rows separator before addendums
+            allItems.push({
+              type: 'item',
+              productService: '',
+              qty: '',
+              rate: '',
+              amount: '',
         columnBLabel: 'Initial',
-        isBlankRow: true,
-      });
-      allItems.push({
-        type: 'item',
-        productService: '',
-        qty: '',
-        rate: '',
-        amount: '',
+              isBlankRow: true,
+            });
+            allItems.push({
+              type: 'item',
+              productService: '',
+              qty: '',
+              rate: '',
+              amount: '',
         columnBLabel: 'Initial',
-        isBlankRow: true,
-      });
-      
-      // Process each addendum
-      addendums.forEach((addendum: any) => {
-        const addendumNum = addendum.addendumNumber;
-        const urlId = addendum.urlId || addendum.addendumNumber;
-        const headerText = `Addendum #${addendumNum} (${urlId})`;
-        
-        allItems.push({
+              isBlankRow: true,
+            });
+            
+            // Process each addendum
+            addendums.forEach((addendum: any) => {
+              const addendumNum = addendum.addendumNumber;
+              const urlId = addendum.urlId || addendum.addendumNumber;
+              const headerText = `Addendum #${addendumNum} (${urlId})`;
+              
+              allItems.push({
           type: 'maincategory',
-          productService: headerText,
-          qty: '',
-          rate: '',
-          amount: '',
-          columnBLabel: 'Addendum',
-          isAddendumHeader: true,
-          addendumNumber: addendumNum,
-          addendumUrlId: urlId,
-        });
-        
-        addendum.items.forEach((item: any) => {
-          allItems.push({
-            ...item,
+                productService: headerText,
+                qty: '',
+                rate: '',
+                amount: '',
+                columnBLabel: 'Addendum',
+                isAddendumHeader: true,
+                addendumNumber: addendumNum,
+                addendumUrlId: urlId,
+              });
+              
+              addendum.items.forEach((item: any) => {
+                allItems.push({
+                  ...item,
             columnBLabel: 'Addendum',
-          });
-        });
-      });
-    }
-    
+                });
+              });
+            });
+          }
+          
     // Ensure all main items have 'Initial' marker
-    items.forEach((item: any, index: number) => {
-      if (allItems[index] && !allItems[index].columnBLabel) {
-        allItems[index].columnBLabel = 'Initial';
-      }
-    });
+          items.forEach((item: any, index: number) => {
+            if (allItems[index] && !allItems[index].columnBLabel) {
+              allItems[index].columnBLabel = 'Initial';
+            }
+          });
 
-    const contractData = {
-      id: newContractId,
-      customer: {
-        dbxCustomerId: location.dbxCustomerId,
-        clientName: location.clientName || 'Unknown',
-        email: location.email,
-        phone: location.phone,
-        streetAddress: location.streetAddress,
-        city: location.city,
-        state: location.state,
-        zip: location.zip,
-      },
-      order: {
-        orderNo: location.orderNo,
-        orderDate: location.orderDate,
-        orderPO: location.orderPO,
-        orderDueDate: location.orderDueDate,
-        orderType: location.orderType,
-        orderDelivered: location.orderDelivered,
-        quoteExpirationDate: location.quoteExpirationDate,
-        orderGrandTotal: location.orderGrandTotal || 0,
-        progressPayments: location.progressPayments,
-        balanceDue: location.balanceDue || 0,
-        salesRep: location.salesRep,
-      },
-      items: allItems,
-      parsedAt: new Date(),
+          const contractData = {
+            id: newContractId,
+            customer: {
+              dbxCustomerId: location.dbxCustomerId,
+              clientName: location.clientName || 'Unknown',
+              email: location.email,
+              phone: location.phone,
+              streetAddress: location.streetAddress,
+              city: location.city,
+              state: location.state,
+              zip: location.zip,
+            },
+            order: {
+              orderNo: location.orderNo,
+              orderDate: location.orderDate,
+              orderPO: location.orderPO,
+              orderDueDate: location.orderDueDate,
+              orderType: location.orderType,
+              orderDelivered: location.orderDelivered,
+              quoteExpirationDate: location.quoteExpirationDate,
+              orderGrandTotal: location.orderGrandTotal || 0,
+              progressPayments: location.progressPayments,
+              balanceDue: location.balanceDue || 0,
+              salesRep: location.salesRep,
+            },
+            items: allItems,
+            parsedAt: new Date(),
       isLocationParsed: isLocationParsed !== false,
       orderItemsValidation: orderItemsValidation,
-    };
+          };
 
     // Store in localStorage
-    try {
-      const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
-      LocalStorageStore.addContract(contractData);
-      console.log('Contract stored in localStorage');
-    } catch (localStorageError) {
-      console.warn('localStorage storage failed:', localStorageError);
-    }
+          try {
+            const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
+            LocalStorageStore.addContract(contractData);
+            console.log('Contract stored in localStorage');
+          } catch (localStorageError) {
+            console.warn('localStorage storage failed:', localStorageError);
+          }
 
     // Store via API
-    try {
-      const storeResponse = await fetch('/api/contracts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(contractData),
-      });
+          try {
+            const storeResponse = await fetch('/api/contracts', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(contractData),
+            });
 
-      if (storeResponse.ok) {
-        console.log('Contract stored in API');
-      } else {
-        console.warn('API storage failed, but localStorage storage succeeded');
-      }
-    } catch (apiError) {
-      console.warn('API storage error, but localStorage storage succeeded:', apiError);
-    }
+            if (storeResponse.ok) {
+              console.log('Contract stored in API');
+            } else {
+              console.warn('API storage failed, but localStorage storage succeeded');
+            }
+          } catch (apiError) {
+            console.warn('API storage error, but localStorage storage succeeded:', apiError);
+          }
 
-    // Redirect to customer view
-    router.push(`/dashboard/customers/${newContractId}`);
+          // Redirect to customer view
+          router.push(`/dashboard/customers/${newContractId}`);
   };
 
   // Prepare links for confirmation (DBX Links Only mode)
@@ -709,7 +709,7 @@ export default function DashboardFileUpload() {
 https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
     style={{ height: "237px" }}
   />
-</div>
+        </div>
 
               <Button
                 onClick={handleValidateLinks}
@@ -765,75 +765,75 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
           </TabsContent>
 
           {/* EML Upload Mode */}
-          <TabsContent value="eml" className="overflow-y-auto mt-3 max-h-[400px]">
+          <TabsContent value="eml" className="mt-3 flex flex-col min-h-0">
             {emlStep === 'upload' && (
               <div className="space-y-3 flex flex-col h-full">
-                <div
+        <div
                   className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-300 flex-shrink-0 ${
-                    isDragging
-                      ? 'border-primary bg-primary/5'
-                      : 'border-muted hover:border-primary/50'
-                  } ${!file ? 'cursor-pointer' : ''}`}
-                  style={{ height: '379px', marginTop: '12px' }}
+            isDragging
+              ? 'border-primary bg-primary/5'
+              : 'border-muted hover:border-primary/50'
+          } ${!file ? 'cursor-pointer' : ''}`}
+                  style={{ height: '339px', marginTop: '12px' }}
                   onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
-                  onDrop={handleDrop}
-                  onClick={handleAreaClick}
-                >
-                  {file ? (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
+          onDrop={handleDrop}
+          onClick={handleAreaClick}
+        >
+          {file ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
                       className="flex flex-col justify-center items-center h-full space-y-2"
-                    >
+            >
                       <FileText className="h-8 w-8 text-primary" />
                       <div className="text-center">
-                        <p className="font-medium">{file.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {(file.size / 1024).toFixed(2)} KB
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
+                <p className="font-medium">{file.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {(file.size / 1024).toFixed(2)} KB
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
                           e.stopPropagation();
-                          setFile(null);
-                          setError(null);
+                  setFile(null);
+                  setError(null);
                           setExtractedLinks([]);
                           setShowExtractedLinks(false);
                           setEmlStep('upload');
                           setIsValidatingLinks(false);
                           setProcessingStage('idle');
                           setIsExtractingLinks(false);
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = '';
-                          }
-                        }}
-                      >
-                        Remove file
-                      </Button>
-                    </motion.div>
-                  ) : (
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+              >
+                Remove file
+              </Button>
+            </motion.div>
+          ) : (
                     <div className="flex flex-col justify-center items-center h-full space-y-2">
                       <Upload className="h-8 w-8 text-muted-foreground" />
                       <div className="text-center">
-                        <p className="text-primary font-medium">Click to upload</p>
+                <p className="text-primary font-medium">Click to upload</p>
                         <p className="text-sm text-muted-foreground mt-1">
-                          or drag and drop • EML files only
-                        </p>
-                      </div>
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".eml"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                      />
-                    </div>
-                  )}
-                </div>
+                  or drag and drop • EML files only
+                </p>
+              </div>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".eml"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+            </div>
+          )}
+        </div>
 
                 {/* Extract Links Button - appears after file is selected */}
                 {file && (
@@ -861,12 +861,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
 
             {/* Step 2: Link Selection */}
             {emlStep === 'select' && showExtractedLinks && extractedLinks.length > 0 && (
-              <motion.div
+          <motion.div
                 initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-3"
+            animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col h-full min-h-0"
+                style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
               >
-                <div className="flex items-center justify-between">
+                {/* Header - stays at top */}
+                <div className="flex items-center justify-between mb-3 flex-shrink-0" style={{ order: 1 }}>
                   <Label className="text-base font-semibold">Detected Links (Step 2)</Label>
                   <div className="flex gap-2">
                     <Button
@@ -890,7 +892,8 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                   </div>
                 </div>
 
-                <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2">
+                {/* Checkboxes - takes available space, scrollable */}
+                <div className="space-y-3 overflow-y-auto pr-2 flex-1 min-h-0 mb-3" style={{ order: 2, flex: '1 1 auto' }}>
                   {extractedLinks.map((link, index) => (
                     <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
                       <Checkbox
@@ -924,48 +927,20 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                   ))}
                 </div>
 
-                <Button
-                  onClick={handleValidateSelectedLinks}
-                  disabled={extractedLinks.filter(l => l.selected).length === 0 || isValidatingLinks}
-                  variant="outline"
-                  className="w-full"
-                >
-                  {isValidatingLinks ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Validating Selected Links...
-                    </>
-                  ) : (
-                    <>
-                      <LinkIcon className="mr-2 h-4 w-4" />
-                      Validate Selected Links
-                    </>
-                  )}
-                </Button>
-              </motion.div>
-            )}
+          </motion.div>
+        )}
         </TabsContent>
       </Tabs>
 
       {/* Options (visible for both modes when ready to parse) */}
       {((uploadMode === 'links' && linkValidationResults.length > 0) || 
         (uploadMode === 'eml' && showExtractedLinks && emlStep !== 'confirm')) && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
           className="space-y-3 border-t pt-3 flex-shrink-0"
         >
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="delete-extra-rows"
-                  checked={deleteExtraRows}
-                  onCheckedChange={(checked) => setDeleteExtraRows(checked === true)}
-                />
-                <Label htmlFor="delete-extra-rows" className="cursor-pointer">
-                  Delete Extra Rows
-                </Label>
-              </div>
+            <div className="flex items-center justify-center gap-6">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="include-main-categories"
@@ -986,8 +961,32 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                   Include Subcategories
                 </Label>
               </div>
-          </div>
-        </motion.div>
+            </div>
+          </motion.div>
+        )}
+
+      {/* Validate Selected Links Button - for EML mode only, shown after Options */}
+      {uploadMode === 'eml' && emlStep === 'select' && showExtractedLinks && extractedLinks.length > 0 && (
+        <div className="flex-shrink-0 mt-3">
+          <Button
+            onClick={handleValidateSelectedLinks}
+            disabled={extractedLinks.filter(l => l.selected).length === 0 || isValidatingLinks}
+            variant="outline"
+            className="w-full"
+          >
+            {isValidatingLinks ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Validating Selected Links...
+              </>
+            ) : (
+              <>
+                <LinkIcon className="mr-2 h-4 w-4" />
+                Validate Selected Links
+              </>
+            )}
+          </Button>
+        </div>
       )}
 
       {/* Error Message */}
@@ -1014,15 +1013,15 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               {getProcessingText()}
-            </>
-          ) : (
-            <>
-              <Upload className="mr-2 h-4 w-4" />
-              Parse Contract
-            </>
-          )}
-        </Button>
-      )}
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                Parse Contract
+              </>
+            )}
+          </Button>
+        )}
 
         {/* Confirmation Dialog (DBX Links Only mode) */}
         <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>

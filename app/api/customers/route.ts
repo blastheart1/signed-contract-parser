@@ -163,8 +163,9 @@ export async function GET(request: NextRequest) {
         const orders = ordersByCustomerId.get(customer.dbxCustomerId) || [];
 
         // Get stage from most recent order
+        // Normalize null stage to 'waiting_for_permit' (treat "No Stage" as "Waiting for Permit")
         const mostRecentOrder = orders.length > 0 ? orders[0] : null;
-        const stage = mostRecentOrder?.stage || null;
+        const stage = mostRecentOrder?.stage || 'waiting_for_permit';
 
         // If stage is 'completed' but status is not 'completed', update the status
         if (stage === 'completed' && customer.status !== 'completed') {

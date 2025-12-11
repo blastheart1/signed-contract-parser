@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Search, Plus, ArrowRight, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
@@ -25,6 +25,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Pagination } from '@/components/ui/pagination';
+import SortableTableHeader from '@/components/dashboard/SortableTableHeader';
+import SortableTableHeaderArrowOnly from '@/components/dashboard/SortableTableHeaderArrowOnly';
+import FilterableTableHeader from '@/components/dashboard/FilterableTableHeader';
+import { sortData, type SortState } from '@/lib/utils/tableSorting';
+import { filterData, type FilterState } from '@/lib/utils/tableFiltering';
 
 interface Customer {
   id: string;
@@ -52,6 +57,18 @@ export default function CustomersPage() {
   const [showTrash, setShowTrash] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(10);
+  
+  // Sorting state
+  const [sortState, setSortState] = useState<SortState<Customer>>({
+    column: null,
+    direction: null,
+  });
+  
+  // Filtering state
+  const [filters, setFilters] = useState<FilterState>({
+    stage: undefined,
+    status: undefined,
+  });
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -93,12 +110,47 @@ export default function CustomersPage() {
     fetchCustomers();
   }, [statusFilter, showTrash]);
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters/sort change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, showTrash]);
+  }, [searchTerm, statusFilter, showTrash, sortState, filters]);
 
-  const filteredCustomers = customers.filter((customer) => {
+  // Memoized value extractors for sorting
+  const getSortValue = useCallback((customer: Customer, column: keyof Customer): any => {
+    switch (column) {
+      case 'clientName':
+        return customer.clientName.toLowerCase();
+      case 'dbxCustomerId':
+        return customer.dbxCustomerId?.toLowerCase() ?? '';
+      case 'stage':
+        // Custom order: waiting_for_permit -> active -> completed -> null
+        const stage = customer.stage;
+        if (stage === 'waiting_for_permit') return 1;
+        if (stage === 'active') return 2;
+        if (stage === 'completed') return 3;
+        return 4; // null or undefined
+      case 'status':
+        // Custom order: pending_updates -> completed
+        return customer.status === 'completed' ? 2 : 1;
+      case 'city':
+      case 'state':
+      case 'zip':
+        return customer[column]?.toLowerCase() ?? '';
+      case 'streetAddress':
+        return customer.streetAddress.toLowerCase();
+      case 'email':
+      case 'phone':
+        return customer[column]?.toLowerCase() ?? '';
+      default:
+        return '';
+    }
+  }, []);
+
+  // Efficient data processing pipeline (memoized)
+  const processedCustomers = useMemo(() => {
+    // Step 1: Apply global search filter
+    const searched = searchTerm
+      ? customers.filter((customer) => {
     const searchLower = searchTerm.toLowerCase();
     return (
       customer.clientName.toLowerCase().includes(searchLower) ||
@@ -106,14 +158,45 @@ export default function CustomersPage() {
       customer.streetAddress.toLowerCase().includes(searchLower) ||
       customer.city.toLowerCase().includes(searchLower)
     );
-  });
+        })
+      : customers;
+
+    // Step 2: Apply column filters
+    const filtered = filterData(
+      searched,
+      filters,
+      (customer) => customer.stage ?? null,
+      (customer) => customer.status ?? 'pending_updates'
+    );
+
+    // Step 3: Apply sorting
+    const sorted = sortState.column && sortState.direction
+      ? sortData(filtered, sortState, getSortValue)
+      : filtered;
+
+    return sorted;
+  }, [customers, searchTerm, filters, sortState, getSortValue]);
 
   // Calculate pagination
-  const effectivePageSize = pageSize === 'all' ? filteredCustomers.length : pageSize;
-  const totalPages = pageSize === 'all' ? 1 : Math.ceil(filteredCustomers.length / pageSize);
+  const effectivePageSize = pageSize === 'all' ? processedCustomers.length : pageSize;
+  const totalPages = pageSize === 'all' ? 1 : Math.ceil(processedCustomers.length / pageSize);
   const startIndex = (currentPage - 1) * effectivePageSize;
   const endIndex = startIndex + effectivePageSize;
-  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+  const paginatedCustomers = processedCustomers.slice(startIndex, endIndex);
+
+  // Sort change handler
+  const handleSortChange = useCallback((column: keyof Customer, direction: 'asc' | 'desc' | null) => {
+    setSortState({ column, direction });
+  }, []);
+
+  // Filter change handlers
+  const handleStageFilterChange = useCallback((values: Set<string | null>) => {
+    setFilters((prev) => ({ ...prev, stage: values.size > 0 ? values : undefined }));
+  }, []);
+
+  const handleStatusFilterChange = useCallback((values: Set<string | null>) => {
+    setFilters((prev) => ({ ...prev, status: values.size > 0 ? values : undefined }));
+  }, []);
 
   if (loading) {
     return (
@@ -165,7 +248,7 @@ export default function CustomersPage() {
               <div>
                 <CardTitle>{showTrash ? 'Deleted Customers' : 'All Customers'}</CardTitle>
                 <CardDescription>
-                  {filteredCustomers.length} customer{filteredCustomers.length !== 1 ? 's' : ''} found
+                  {processedCustomers.length} customer{processedCustomers.length !== 1 ? 's' : ''} found
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={fetchCustomers} disabled={loading}>
@@ -197,7 +280,7 @@ export default function CustomersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {filteredCustomers.length === 0 ? (
+              {processedCustomers.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground mb-4">
                     {searchTerm ? 'No customers found matching your search.' : 'No customers found.'}
@@ -213,12 +296,49 @@ export default function CustomersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>DBX ID</TableHead>
-                      <TableHead className="text-center">Stage</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Overall Status</TableHead>
+                      <SortableTableHeaderArrowOnly
+                        column="clientName"
+                        title="Customer"
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                      />
+                      <SortableTableHeaderArrowOnly
+                        column="dbxCustomerId"
+                        title="DBX ID"
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                        width="w-24"
+                      />
+                      <FilterableTableHeader
+                        title="Stage"
+                        options={[
+                          { value: 'waiting_for_permit', label: 'Waiting for Permit' },
+                          { value: 'active', label: 'Active' },
+                          { value: 'completed', label: 'Completed' },
+                        ]}
+                        selectedValues={filters.stage ?? new Set()}
+                        onFilterChange={handleStageFilterChange}
+                        className="text-center"
+                        width="w-40"
+                      />
+                      <SortableTableHeaderArrowOnly
+                        column="city"
+                        title="Address"
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                      />
+                      <TableHead className="border-r border-border">Contact</TableHead>
+                      <FilterableTableHeader
+                        title="Overall Status"
+                        options={[
+                          { value: 'pending_updates', label: 'Pending Updates' },
+                          { value: 'completed', label: 'Completed' },
+                        ]}
+                        selectedValues={filters.status ?? new Set()}
+                        onFilterChange={handleStatusFilterChange}
+                        showSeparator={false}
+                        width="w-36"
+                      />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -267,14 +387,14 @@ export default function CustomersPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-24">
                           {customer.dbxCustomerId ? (
-                            <Badge variant="secondary" className="min-w-[80px] text-center flex items-center justify-center">{customer.dbxCustomerId}</Badge>
+                            <Badge variant="secondary" className="text-center flex items-center justify-center">{customer.dbxCustomerId}</Badge>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className="text-center w-40">
                           <Badge
                             variant={
                               customer.stage === 'active'
@@ -285,7 +405,7 @@ export default function CustomersPage() {
                                 ? 'default'
                                 : 'outline'
                             }
-                            className={`min-w-[160px] text-center flex items-center justify-center ${
+                            className={`text-center flex items-center justify-center ${
                               customer.stage === 'active'
                                 ? 'bg-green-600 hover:bg-green-700'
                                 : customer.stage === 'waiting_for_permit'
@@ -314,11 +434,11 @@ export default function CustomersPage() {
                           <div className="text-sm">{customer.email || '-'}</div>
                           <div className="text-sm text-muted-foreground">{customer.phone || '-'}</div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-36">
                           {customer.status === 'completed' ? (
-                            <Badge variant="default" className="bg-green-600 min-w-[160px] text-center flex items-center justify-center">Completed</Badge>
+                            <Badge variant="default" className="bg-green-600 text-center flex items-center justify-center">Completed</Badge>
                           ) : (
-                            <Badge variant="secondary" className="min-w-[160px] text-center flex items-center justify-center">Pending Updates</Badge>
+                            <Badge variant="secondary" className="text-center flex items-center justify-center">Pending Updates</Badge>
                           )}
                         </TableCell>
                             </motion.tr>
@@ -335,10 +455,10 @@ export default function CustomersPage() {
               )}
               
               {/* Pagination */}
-              {filteredCustomers.length > 0 && (
+              {processedCustomers.length > 0 && (
                 <Pagination
                   currentPage={currentPage}
-                  totalItems={filteredCustomers.length}
+                  totalItems={processedCustomers.length}
                   pageSize={pageSize}
                   onPageChange={setCurrentPage}
                   onPageSizeChange={(size) => {

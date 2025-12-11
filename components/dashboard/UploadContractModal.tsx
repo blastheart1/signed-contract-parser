@@ -25,8 +25,8 @@ export default function UploadContractModal({ open, onOpenChange }: UploadContra
           <DialogTitle>Upload Contract</DialogTitle>
           <div className="flex items-center justify-between gap-2 mt-1">
             <DialogDescription className="flex-1 m-0">
-              Upload a signed build contract .eml file to parse and view in dashboard
-            </DialogDescription>
+            Upload a signed build contract .eml file to parse and view in dashboard
+          </DialogDescription>
             <PrivacyDisclaimer />
           </div>
         </DialogHeader>

@@ -4,6 +4,17 @@ import type { StoredContract } from '@/lib/store/contractStore';
 import type { OrderItem } from '@/lib/tableExtractor';
 
 /**
+ * Normalize stage value: null/undefined/empty → 'waiting_for_permit'
+ * This treats "No Stage" as equivalent to "Waiting for Permit"
+ */
+function normalizeStage(stage: string | null | undefined): string | null {
+  if (!stage || (typeof stage === 'string' && stage.trim() === '')) {
+    return 'waiting_for_permit';
+  }
+  return stage;
+}
+
+/**
  * Convert StoredContract to database format and save
  */
 export async function saveContractToDatabase(contract: StoredContract) {
@@ -68,9 +79,14 @@ export async function saveContractToDatabase(contract: StoredContract) {
   // Only update project status fields if explicitly provided in contract, otherwise preserve existing values
   const orderAny = contract.order as any;
   if (orderAny.stage !== undefined) {
-    updateSet.stage = orderAny.stage || null;
+    // Normalize provided stage value (null → 'waiting_for_permit')
+    updateSet.stage = normalizeStage(orderAny.stage);
   } else if (existingOrder?.stage) {
+    // Preserve existing stage
     updateSet.stage = existingOrder.stage;
+  } else {
+    // Existing order has null stage, normalize to default
+    updateSet.stage = normalizeStage(existingOrder?.stage);
   }
   if (orderAny.contractDate !== undefined) {
     updateSet.contractDate = orderAny.contractDate || null;
@@ -109,7 +125,7 @@ export async function saveContractToDatabase(contract: StoredContract) {
       progressPayments: contract.order.progressPayments || null,
       balanceDue: contract.order.balanceDue.toString(),
       salesRep: contract.order.salesRep || null,
-      stage: orderAny.stage || null,
+      stage: normalizeStage(orderAny.stage), // Normalize null → 'waiting_for_permit'
       contractDate: orderAny.contractDate || null,
       firstBuildInvoiceDate: orderAny.firstBuildInvoiceDate || null,
       projectStartDate: orderAny.projectStartDate || null,
@@ -241,7 +257,7 @@ export function convertDatabaseToStoredContract(
       progressPayments: order.progressPayments || undefined,
       balanceDue: parseFloat(order.balanceDue),
       salesRep: order.salesRep || undefined,
-      stage: order.stage || undefined,
+      stage: order.stage || 'waiting_for_permit', // Normalize null → 'waiting_for_permit' when converting
       contractDate: order.contractDate || undefined,
       firstBuildInvoiceDate: order.firstBuildInvoiceDate || undefined,
       projectStartDate: order.projectStartDate || undefined,

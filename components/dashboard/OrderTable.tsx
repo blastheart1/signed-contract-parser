@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -25,12 +25,15 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
+import FilterableTableHeaderText from '@/components/dashboard/FilterableTableHeaderText';
 import type { OrderItem } from '@/lib/tableExtractor';
 
 interface OrderTableProps {
@@ -66,6 +69,7 @@ function SortableRow({
   isFirstRow,
   isDeleted,
   onEnterEditMode,
+  showActionsColumn,
 }: {
   item: EditableOrderItem;
   index: number;
@@ -80,6 +84,7 @@ function SortableRow({
   insertPosition: 'above' | 'below' | null;
   isFirstRow: boolean;
   onEnterEditMode?: () => void;
+  showActionsColumn?: boolean;
 }) {
   const {
     attributes,
@@ -90,6 +95,7 @@ function SortableRow({
     isDragging,
     isOver,
   } = useSortable({ id: item.id });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -98,6 +104,17 @@ function SortableRow({
   };
 
   const isMainCategory = item.type === 'maincategory';
+  
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current && isEditing) {
+      const textarea = textareaRef.current;
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Set height based on scrollHeight
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+  }, [item.productService, isEditing]);
   const isSubCategory = item.type === 'subcategory';
   const isItem = item.type === 'item';
   
@@ -173,11 +190,11 @@ function SortableRow({
 
   // Determine row background color
   const rowBgClass = isMainCategory
-    ? 'bg-primary/20 dark:bg-primary/30 border-l-4 border-l-primary'
+    ? 'bg-primary/20 dark:bg-primary/30'
     : isSubCategory
-    ? 'bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary/70'
+    ? 'bg-primary/10 dark:bg-primary/20'
     : isEvenRow && isItem
-    ? 'bg-muted/60 dark:bg-muted/40'
+    ? 'bg-muted dark:bg-muted/80'
     : isItem
     ? 'bg-background'
     : '';
@@ -187,7 +204,7 @@ function SortableRow({
       {/* Insertion line above row */}
       {showInsertAbove && (
         <tr className="relative">
-          <td colSpan={isEditing ? 11 : 10} className="h-2 p-0 relative">
+          <td colSpan={isEditing ? (showActionsColumn ? 11 : 10) : 10} className="h-2 p-0 relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full h-0.5 bg-primary border-t-2 border-t-primary border-dashed"></div>
               <div className="absolute left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-semibold shadow-lg whitespace-nowrap">
@@ -213,84 +230,93 @@ function SortableRow({
               }}
               className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing ? 'cursor-pointer' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
             >
-      <TableCell className="font-medium">
-        <div className="flex items-center gap-2">
+      <TableCell className="font-medium w-[300px] pl-2 align-top">
+        <div className="flex items-start gap-2 min-w-0">
           {isEditing && (
             <button
               {...attributes}
               {...listeners}
-              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground flex-shrink-0 mt-1"
               title="Drag to reorder"
             >
               <GripVertical className="h-4 w-4" />
             </button>
           )}
           {isEditing ? (
-            <Input
+            <Textarea
+              ref={textareaRef}
               value={item.productService}
               onChange={(e) => onCellChange(item.id, 'productService', e.target.value)}
-              className="h-8"
+              className="min-h-[32px] w-full box-border flex-1 min-w-0 !px-1 text-left break-words resize-none overflow-hidden"
               placeholder="Product/Service"
+              rows={1}
+              style={{ height: 'auto' }}
             />
           ) : (
-            <div className="flex items-center gap-2">
-              {isMainCategory && <Folder className="h-4 w-4 text-primary" />}
-              {isSubCategory && <FolderOpen className="h-4 w-4 text-primary/70 ml-2" />}
-              {item.productService}
+            <div className="flex items-start gap-2 min-w-0 flex-1">
+              {isMainCategory && <Folder className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />}
+              {isSubCategory && <FolderOpen className="h-4 w-4 text-primary/70 ml-2 flex-shrink-0 mt-0.5" />}
+              <span className="break-words min-w-0">{item.productService}</span>
             </div>
           )}
         </div>
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[70px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             value={item.qty || ''}
             onChange={(e) => onCellChange(item.id, 'qty', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0"
             disabled={!isItem}
             readOnly={!isItem}
           />
         ) : (
-          isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[86px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={item.rate || ''}
             onChange={(e) => onCellChange(item.id, 'rate', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={!isItem}
             readOnly={!isItem}
           />
         ) : (
-          isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right font-medium">
+      <TableCell className="text-right font-medium w-[95px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={item.amount || ''}
             onChange={(e) => onCellChange(item.id, 'amount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={!isItem}
             readOnly={!isItem}
           />
         ) : (
-          isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[90px] min-h-[32px]">
         {isEditing ? (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-1 w-full">
             <Input
               type="number"
               min="0"
@@ -306,37 +332,42 @@ function SortableRow({
                 }
                 onCellChange(item.id, 'progressOverallPct', value);
               }}
-              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
               placeholder="0"
               disabled={!isItem}
               readOnly={!isItem}
             />
-            <span className="text-muted-foreground text-sm">%</span>
+            <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
           </div>
         ) : (
-          isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[110px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={isItem ? calculatedCompletedAmount : (item.completedAmount || '')}
             onChange={(e) => onCellChange(item.id, 'completedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right bg-muted ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={true}
             readOnly={true}
             title={isItem ? "Calculated: % Progress Overall × Amount" : "Not applicable for headers"}
+            style={{ paddingRight: '8px' }}
           />
         ) : (
-          isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[115px] min-h-[32px]">
         {isEditing ? (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-1 w-full">
             <Input
               type="number"
               min="0"
@@ -352,70 +383,81 @@ function SortableRow({
                 }
                 onCellChange(item.id, 'previouslyInvoicedPct', value);
               }}
-              className={`h-8 text-right ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+              className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
               placeholder="0"
               disabled={!isItem}
               readOnly={!isItem}
             />
-            <span className="text-muted-foreground text-sm">%</span>
+            <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
           </div>
         ) : (
-          isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[140px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={isItem ? calculatedPreviouslyInvoicedAmount : (item.previouslyInvoicedAmount || '')}
             onChange={(e) => onCellChange(item.id, 'previouslyInvoicedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right bg-muted ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={true}
             readOnly={true}
             title={isItem ? "Calculated: Amount × % Previously Invoiced" : "Not applicable for headers"}
+            style={{ paddingRight: '8px' }}
           />
         ) : (
-          isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[90px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={isItem ? calculatedNewProgressPct : (item.newProgressPct || '')}
             onChange={(e) => onCellChange(item.id, 'newProgressPct', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right bg-muted ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={true}
             readOnly={true}
             title={isItem ? "Calculated: % Progress Overall - % Previously Invoiced" : "Not applicable for headers"}
+            style={{ paddingRight: '8px' }}
           />
         ) : (
-          isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right w-[105px] min-h-[32px]">
         {isEditing ? (
           <Input
             type="number"
             step="0.01"
             value={isItem ? calculatedThisBill : (item.thisBill || '')}
             onChange={(e) => onCellChange(item.id, 'thisBill', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 text-right bg-muted ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
             placeholder="0.00"
             disabled={true}
             readOnly={true}
             title={isItem ? "Calculated: % New Progress × Amount" : "Not applicable for headers"}
+            style={{ paddingRight: '8px' }}
           />
         ) : (
-          isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''
+          <div className="min-h-[32px] flex items-center justify-end">
+            {isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+          </div>
         )}
       </TableCell>
-      {isEditing && (
-        <TableCell>
+      {isEditing && showActionsColumn && (
+        <TableCell className="w-[80px]">
           <div className="flex gap-1">
             <TooltipProvider>
               <Tooltip>
@@ -466,7 +508,7 @@ function SortableRow({
     {/* Insertion line below row */}
     {showInsertBelow && (
       <tr className="relative">
-        <td colSpan={isEditing ? 11 : 10} className="h-2 p-0 relative">
+        <td colSpan={isEditing ? (showActionsColumn ? 11 : 10) : 10} className="h-2 p-0 relative">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full h-0.5 bg-primary border-b-2 border-b-primary border-dashed"></div>
             <div className="absolute left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-semibold shadow-lg whitespace-nowrap">
@@ -485,6 +527,8 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [isEditing, setIsEditing] = useState(false);
   const [showMainCategories, setShowMainCategories] = useState(true);
   const [showSubCategories, setShowSubCategories] = useState(true);
+  const [productFilter, setProductFilter] = useState<string>('');
+  const [showActionsColumn, setShowActionsColumn] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
@@ -862,18 +906,29 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       }, 0);
   }, [items]);
 
-  // Filter items based on show/hide settings
+  // Filter items based on show/hide settings and product/service filter
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      // Apply category filters first
       if (item.type === 'maincategory') {
         return showMainCategories;
       }
       if (item.type === 'subcategory') {
         return showSubCategories;
       }
-      return true; // Always show items
+      
+      // Then apply product/service text filter (view-only, doesn't affect order)
+      if (productFilter.trim()) {
+        const productService = (item.productService || '').toLowerCase();
+        const filterText = productFilter.toLowerCase();
+        if (!productService.includes(filterText)) {
+          return false;
+        }
+      }
+      
+      return true; // Always show items that pass all filters
     });
-  }, [items, showMainCategories, showSubCategories]);
+  }, [items, showMainCategories, showSubCategories, productFilter]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -967,6 +1022,56 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
               </TooltipProvider>
             </div>
           ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => !isDeleted && handleAddRow(-1, 'maincategory')}
+                disabled={isDeleted}
+                className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                <Folder className="mr-2 h-4 w-4" />
+                Add Main Category
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => !isDeleted && handleAddRow(-1, 'subcategory')}
+                disabled={isDeleted}
+                className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                <FolderOpen className="mr-2 h-4 w-4" />
+                Add Subcategory
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => !isDeleted && handleAddRow(-1, 'item')}
+                disabled={isDeleted}
+                className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Row at Top
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowActionsColumn(!showActionsColumn)}
+                disabled={isDeleted}
+                className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                {showActionsColumn ? (
+                  <>
+                    <EyeOff className="mr-2 h-4 w-4" />
+                    Hide Actions
+                  </>
+                ) : (
+                  <>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Show Actions
+                  </>
+                )}
+              </Button>
             <div className="flex gap-2">
               <TooltipProvider>
                 <Tooltip>
@@ -1023,6 +1128,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+              </div>
             </div>
           )}
         </div>
@@ -1033,7 +1139,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             <p className="text-sm text-destructive">{saveError}</p>
           </div>
         )}
-        <div className="rounded-md border overflow-x-auto">
+        <div className="rounded-md border overflow-x-hidden max-h-[600px] overflow-y-auto relative [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded [&:hover::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/50" style={{ scrollbarWidth: 'thin', scrollbarGutter: 'auto' }}>
           <DndContext
             sensors={isDeleted ? [] : sensors}
             collisionDetection={closestCenter}
@@ -1041,88 +1147,59 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             onDragOver={isDeleted ? undefined : handleDragOver}
             onDragEnd={isDeleted ? undefined : handleDragEnd}
           >
-            <Table>
+            <table className="w-full caption-bottom text-sm table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[300px]">PRODUCT/SERVICE</TableHead>
-                  <TableHead className="text-right">QTY</TableHead>
-                  <TableHead className="text-right">RATE</TableHead>
-                  <TableHead className="text-right">AMOUNT</TableHead>
+                  <FilterableTableHeaderText
+                    title="PRODUCT/SERVICE"
+                    value={productFilter}
+                    onChange={setProductFilter}
+                    placeholder="Filter by product/service..."
+                    className="sticky top-0 z-10 bg-background w-[300px] h-8 pl-2"
+                    showSeparator={true}
+                  />
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[65px] whitespace-nowrap h-8">QTY</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[75px] whitespace-nowrap h-8">RATE</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[95px] whitespace-nowrap h-8">AMOUNT</TableHead>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <TableHead className="text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-help">
-                          <span>% Progress Overall</span>
+                        <TableHead 
+                          className="sticky top-0 z-10 bg-background text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-border w-[80px] h-8"
+                          onClick={() => !isEditing && !isDeleted && setIsEditing(true)}
+                        >
+                          <span>% Progress<br />Overall</span>
                         </TableHead>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Editable: Set the overall progress percentage for this item</p>
+                        <p>Click to edit: Set the overall progress percentage for items</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TableHead className="text-right">$ Completed</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[110px] whitespace-nowrap h-8">$ Completed</TableHead>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <TableHead className="text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-help">
-                          <span>% PREVIOUSLY INVOICED</span>
+                        <TableHead 
+                          className="sticky top-0 z-10 bg-background text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-border w-[100px] h-8"
+                          onClick={() => !isEditing && !isDeleted && setIsEditing(true)}
+                        >
+                          <span>% PREVIOUSLY<br />INVOICED</span>
                         </TableHead>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Editable: Set the previously invoiced percentage for this item</p>
+                        <p>Click to edit: Set the previously invoiced percentage for items</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TableHead className="text-right">$ PREVIOUSLY INVOICED</TableHead>
-                  <TableHead className="text-right">% NEW PROGRESS</TableHead>
-                  <TableHead className="text-right">THIS BILL</TableHead>
-                  {isEditing && <TableHead className="w-20">Actions</TableHead>}
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[120px] h-8">$ PREVIOUSLY<br />INVOICED</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[90px] h-8">% NEW<br />PROGRESS</TableHead>
+                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-border", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
+                  {isEditing && showActionsColumn && <TableHead className="w-[80px] h-8">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <SortableContext items={filteredItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
-                  {isEditing && (
-                    <motion.tr
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="border-b-2 border-dashed"
-                    >
-                      <TableCell colSpan={isEditing ? 11 : 10} className="text-center py-2">
-                        <div className="flex gap-2 justify-center items-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => !isDeleted && handleAddRow(-1, 'maincategory')}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <Folder className="mr-2 h-4 w-4" />
-                            Add Main Category
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => !isDeleted && handleAddRow(-1, 'subcategory')}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <FolderOpen className="mr-2 h-4 w-4" />
-                            Add Subcategory
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => !isDeleted && handleAddRow(-1, 'item')}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Row at Top
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </motion.tr>
-                  )}
                   {filteredItems.map((item, index) => {
                     // Determine if this is an even item row (for alternating colors)
                     // Need to find the original index in the full items array to calculate itemIndex correctly
@@ -1146,69 +1223,10 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         isFirstRow={originalIndex === 0 || filteredItems.findIndex(fi => fi.id === item.id) === 0}
                         isDeleted={isDeleted}
                         onEnterEditMode={() => setIsEditing(true)}
+                        showActionsColumn={showActionsColumn}
                       />
                     );
                   })}
-                  {isEditing && (
-                    <motion.tr
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="border-t-2 border-dashed"
-                    >
-                      <TableCell colSpan={isEditing ? 11 : 10} className="text-center py-4">
-                        <div className="flex gap-2 justify-center items-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              if (!isDeleted) {
-                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
-                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
-                                handleAddRow(lastIndex, 'maincategory');
-                              }
-                            }}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <Folder className="mr-2 h-4 w-4" />
-                            Add Main Category
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              if (!isDeleted) {
-                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
-                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
-                                handleAddRow(lastIndex, 'subcategory');
-                              }
-                            }}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <FolderOpen className="mr-2 h-4 w-4" />
-                            Add Subcategory
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              if (!isDeleted) {
-                                const lastFilteredItem = filteredItems[filteredItems.length - 1];
-                                const lastIndex = lastFilteredItem ? items.findIndex(i => i.id === lastFilteredItem.id) : items.length - 1;
-                                handleAddRow(lastIndex, 'item');
-                              }
-                            }}
-                            disabled={isDeleted}
-                            className={isDeleted ? 'opacity-50 cursor-not-allowed' : ''}
-                          >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Row at Bottom
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </motion.tr>
-                  )}
                   {/* Total row */}
                   <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
                     <TableCell colSpan={isEditing ? 4 : 3} className="font-bold text-right">
@@ -1217,11 +1235,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     <TableCell className="text-right font-bold">
                       ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell colSpan={isEditing ? 6 : 6}></TableCell>
+                    <TableCell colSpan={isEditing ? (showActionsColumn ? 6 : 5) : 6}></TableCell>
                   </TableRow>
                 </SortableContext>
               </TableBody>
-            </Table>
+            </table>
             <DragOverlay>
               {activeId ? (
                 (() => {

@@ -126,31 +126,31 @@ export async function GET(request: NextRequest) {
       const customer = change.customerId ? customersMap.get(change.customerId) || null : null;
       const order = change.orderId ? ordersMap.get(change.orderId) || null : null;
 
-      return {
-        id: change.id,
-        changeType: change.changeType,
-        fieldName: change.fieldName,
-        oldValue: change.oldValue,
-        newValue: change.newValue,
-        rowIndex: change.rowIndex,
-        changedAt: change.changedAt,
-        changedBy: {
-          id: user?.id || null,
-          username: user?.username || 'Unknown',
-        },
-        customer: customer
-          ? {
-              dbxCustomerId: customer.dbxCustomerId,
-              clientName: customer.clientName,
-            }
-          : null,
-        order: order
-          ? {
-              id: order.id,
-              orderNo: order.orderNo,
-            }
-          : null,
-      };
+        return {
+          id: change.id,
+          changeType: change.changeType,
+          fieldName: change.fieldName,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+          rowIndex: change.rowIndex,
+          changedAt: change.changedAt,
+          changedBy: {
+            id: user?.id || null,
+            username: user?.username || 'Unknown',
+          },
+          customer: customer
+            ? {
+                dbxCustomerId: customer.dbxCustomerId,
+                clientName: customer.clientName,
+              }
+            : null,
+          order: order
+            ? {
+                id: order.id,
+                orderNo: order.orderNo,
+              }
+            : null,
+        };
     });
 
     const hasMore = offset + limit < totalCount;

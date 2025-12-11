@@ -269,6 +269,59 @@ export default function Timeline() {
     }
   };
 
+  const formatChangeValues = (oldValue: string | null, newValue: string | null) => {
+    if (!oldValue && !newValue) return null;
+    
+    // Check if it's a "Multiple fields:" entry
+    if (oldValue && oldValue.startsWith('Multiple fields: ')) {
+      const content = oldValue.replace('Multiple fields: ', '');
+      const changes = content.split('; ').filter(c => c.trim());
+      
+      return (
+        <div className="space-y-2">
+          <div className="font-medium">Multiple fields:</div>
+          {changes.map((change, idx) => {
+            // Parse each change: "fieldName: oldValue → newValue" or "fieldName: oldValue → newValue →"
+            const arrowMatch = change.match(/^(.+?):\s*(.+?)\s*→\s*(.+?)(\s*→)?\s*$/);
+            if (arrowMatch) {
+              const [, fieldName, oldVal, newVal] = arrowMatch;
+              const trimmedOldVal = oldVal.trim();
+              const trimmedNewVal = newVal.trim().replace(/\s*→\s*$/, ''); // Remove trailing arrow
+              
+              return (
+                <div key={idx} className="space-y-1">
+                  <div className="font-medium text-sm">{fieldName}:</div>
+                  <div className="pl-2 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-destructive line-through break-words">{trimmedOldVal || '(empty)'}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-green-600 font-medium break-words">{trimmedNewVal || '(empty)'}</span>
+                  </div>
+                </div>
+              );
+            }
+            // Fallback if parsing fails
+            return (
+              <div key={idx} className="text-sm break-words pl-2">{change}</div>
+            );
+          })}
+        </div>
+      );
+    }
+    
+    // Single field change - standard display
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-destructive line-through break-words">
+          {oldValue || '(empty)'}
+        </span>
+        <span className="text-muted-foreground">→</span>
+        <span className="text-green-600 font-medium break-words">
+          {newValue || '(empty)'}
+        </span>
+      </div>
+    );
+  };
+
   const groupEntriesByDate = (entries: TimelineEntry[]): Map<string, TimelineEntry[]> => {
     const groups = new Map<string, TimelineEntry[]>();
     
@@ -418,9 +471,9 @@ export default function Timeline() {
                     <div className="absolute left-1/2 top-2 w-4 h-4 rounded-full bg-primary border-2 border-background z-10 transform -translate-x-1/2 hidden md:block" />
 
                     {/* Card */}
-                    <div className={`w-full ${isLeft ? 'md:pr-8' : 'md:pl-8'}`} style={{ maxWidth: '600px' }}>
+                    <div className={`w-full ${isLeft ? 'md:pr-8' : 'md:pl-8'}`} style={{ maxWidth: '450px' }}>
                       <div
-                        className="bg-card border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        className="bg-card border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer max-w-full"
                         onClick={() => toggleExpand(entry.id)}
                       >
                         <div className="flex items-start justify-between">
@@ -466,31 +519,25 @@ export default function Timeline() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="mt-4 pt-4 border-t space-y-2"
+                            className="mt-4 pt-4 border-t space-y-3"
                           >
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-2">
                               <div>
-                                <span className="text-muted-foreground">Field:</span>
-                                <p className="font-medium">{entry.fieldName}</p>
+                                <span className="text-muted-foreground text-sm">Field:</span>
+                                <p className="font-medium text-sm break-words">{entry.fieldName}</p>
                               </div>
                               {entry.rowIndex !== null && (
                                 <div>
-                                  <span className="text-muted-foreground">Row Index:</span>
-                                  <p className="font-medium">{entry.rowIndex}</p>
+                                  <span className="text-muted-foreground text-sm">Row Index:</span>
+                                  <p className="font-medium text-sm">{entry.rowIndex}</p>
                                 </div>
                               )}
                             </div>
                             {(entry.oldValue || entry.newValue) && (
                               <div className="space-y-1">
-                                <span className="text-muted-foreground text-sm">Change:</span>
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-destructive line-through">
-                                    {entry.oldValue || '(empty)'}
-                                  </span>
-                                  <span className="text-muted-foreground">→</span>
-                                  <span className="text-green-600 font-medium">
-                                    {entry.newValue || '(empty)'}
-                                  </span>
+                                <span className="text-muted-foreground text-sm block mb-1">Change Values:</span>
+                                <div className="text-sm break-words">
+                                  {formatChangeValues(entry.oldValue, entry.newValue)}
                                 </div>
                               </div>
                             )}
