@@ -59,6 +59,7 @@ function SortableRow({
   item,
   index,
   isEditing,
+  editingColumn,
   onCellChange,
   onAddRow,
   onDeleteRow,
@@ -74,6 +75,7 @@ function SortableRow({
   item: EditableOrderItem;
   index: number;
   isEditing: boolean;
+  editingColumn: 'progressOverall' | 'previouslyInvoiced' | null;
   onCellChange: (itemId: string, field: keyof EditableOrderItem, value: string | number) => void;
   onAddRow: (insertAfterIndex: number) => void;
   onDeleteRow: (itemId: string) => void;
@@ -224,11 +226,11 @@ function SortableRow({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: index * 0.02 }}
               onClick={() => {
-                if (!isEditing && !isDeleted && isItem && onEnterEditMode) {
+                if (!isEditing && !editingColumn && !isDeleted && isItem && onEnterEditMode) {
                   onEnterEditMode();
                 }
               }}
-              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing ? 'cursor-pointer' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing && !editingColumn ? 'cursor-pointer' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
             >
       <TableCell className="font-medium w-[300px] pl-2 align-top">
         <div className="flex items-start gap-2 min-w-0">
@@ -315,7 +317,7 @@ function SortableRow({
         )}
       </TableCell>
       <TableCell className="text-right w-[90px] min-h-[32px]">
-        {isEditing ? (
+        {(isEditing || editingColumn === 'progressOverall') ? (
           <div className="flex items-center justify-end gap-1 w-full">
             <Input
               type="number"
@@ -366,7 +368,7 @@ function SortableRow({
         )}
       </TableCell>
       <TableCell className="text-right w-[115px] min-h-[32px]">
-        {isEditing ? (
+        {(isEditing || editingColumn === 'previouslyInvoiced') ? (
           <div className="flex items-center justify-end gap-1 w-full">
             <Input
               type="number"
@@ -501,7 +503,7 @@ function SortableRow({
             </motion.tr>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{!isEditing && !isDeleted && isItem ? 'Click to enter edit mode' : ''}</p>
+            <p>{!isEditing && !editingColumn && !isDeleted && isItem ? 'Click to enter edit mode' : ''}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -525,6 +527,7 @@ function SortableRow({
 export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [editingColumn, setEditingColumn] = useState<'progressOverall' | 'previouslyInvoiced' | null>(null);
   const [showMainCategories, setShowMainCategories] = useState(true);
   const [showSubCategories, setShowSubCategories] = useState(true);
   const [productFilter, setProductFilter] = useState<string>('');
@@ -810,6 +813,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
 
       if (data.success) {
         setIsEditing(false);
+        setEditingColumn(null);
         setSaveError(null);
         // Show success toast
         toast({
@@ -849,21 +853,23 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+S or Cmd+S to save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's' && isEditing) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && (isEditing || editingColumn)) {
         e.preventDefault();
         if (!saving) {
           handleSave();
         }
       }
       // Ctrl+E or Cmd+E to edit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !isDeleted) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !editingColumn && !isDeleted) {
         e.preventDefault();
         setIsEditing(true);
+        setEditingColumn(null);
       }
       // Esc to cancel
-      if (e.key === 'Escape' && isEditing) {
+      if (e.key === 'Escape' && (isEditing || editingColumn)) {
         e.preventDefault();
         setIsEditing(false);
+        setEditingColumn(null);
         setSaveError(null);
         setItems(initialItems.map((item, index) => {
           const editableItem = {
@@ -954,7 +960,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
               {items.length} item{items.length !== 1 ? 's' : ''} in this order
             </CardDescription>
           </div>
-          {!isEditing ? (
+          {!isEditing && !editingColumn ? (
             <div className="flex items-center gap-2">
               <div className="relative" ref={dropdownRef}>
                 <Button
@@ -1009,7 +1015,10 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         Edit Table
                       </Button>
                     ) : (
-                      <Button onClick={() => setIsEditing(true)} variant="outline" size="sm" className="w-[130px]">
+                      <Button onClick={() => {
+                        setIsEditing(true);
+                        setEditingColumn(null);
+                      }} variant="outline" size="sm" className="w-[130px]">
                         <Edit2 className="mr-2 h-4 w-4" />
                         Edit Table
                       </Button>
@@ -1101,6 +1110,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     <Button 
                       onClick={() => {
                         setIsEditing(false);
+                        setEditingColumn(null);
                         setSaveError(null);
                         // Reset items to initial state on cancel
                         setItems(initialItems.map((item, index) => ({
@@ -1147,7 +1157,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             onDragOver={isDeleted ? undefined : handleDragOver}
             onDragEnd={isDeleted ? undefined : handleDragEnd}
           >
-            <table className="w-full caption-bottom text-sm table-fixed">
+            <table className="w-full caption-bottom text-sm table-fixed border-separate border-spacing-0">
               <TableHeader>
                 <TableRow>
                   <FilterableTableHeaderText
@@ -1158,15 +1168,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     className="sticky top-0 z-10 bg-background w-[300px] h-8 pl-2"
                     showSeparator={true}
                   />
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[65px] whitespace-nowrap h-8">QTY</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[75px] whitespace-nowrap h-8">RATE</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[95px] whitespace-nowrap h-8">AMOUNT</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[65px] whitespace-nowrap h-8">QTY</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[75px] whitespace-nowrap h-8">RATE</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[95px] whitespace-nowrap h-8">AMOUNT</TableHead>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <TableHead 
-                          className="sticky top-0 z-10 bg-background text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-border w-[80px] h-8"
-                          onClick={() => !isEditing && !isDeleted && setIsEditing(true)}
+                          className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[80px] h-8"
+                          onClick={() => !isDeleted && setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall')}
                         >
                           <span>% Progress<br />Overall</span>
                         </TableHead>
@@ -1176,13 +1186,13 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[110px] whitespace-nowrap h-8">$ Completed</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[110px] whitespace-nowrap h-8">$ Completed</TableHead>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <TableHead 
-                          className="sticky top-0 z-10 bg-background text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-border w-[100px] h-8"
-                          onClick={() => !isEditing && !isDeleted && setIsEditing(true)}
+                          className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[100px] h-8"
+                          onClick={() => !isDeleted && setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced')}
                         >
                           <span>% PREVIOUSLY<br />INVOICED</span>
                         </TableHead>
@@ -1192,9 +1202,9 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[120px] h-8">$ PREVIOUSLY<br />INVOICED</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-border w-[90px] h-8">% NEW<br />PROGRESS</TableHead>
-                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-border", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[120px] h-8">$ PREVIOUSLY<br />INVOICED</TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[90px] h-8">% NEW<br />PROGRESS</TableHead>
+                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
                   {isEditing && showActionsColumn && <TableHead className="w-[80px] h-8">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -1213,6 +1223,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         item={item}
                         index={index}
                         isEditing={isEditing}
+                        editingColumn={editingColumn}
                         onCellChange={handleCellChange}
                         onAddRow={handleAddRow}
                         onDeleteRow={handleDeleteRow}
@@ -1222,7 +1233,10 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         insertPosition={insertPosition}
                         isFirstRow={originalIndex === 0 || filteredItems.findIndex(fi => fi.id === item.id) === 0}
                         isDeleted={isDeleted}
-                        onEnterEditMode={() => setIsEditing(true)}
+                        onEnterEditMode={() => {
+                          setIsEditing(true);
+                          setEditingColumn(null);
+                        }}
                         showActionsColumn={showActionsColumn}
                       />
                     );

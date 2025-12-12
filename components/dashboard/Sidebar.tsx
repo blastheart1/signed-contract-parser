@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import SidebarNavigation from './SidebarNavigation';
 import { createPortal } from 'react-dom';
+import ChangelogModal from './ChangelogModal';
 
 export interface User {
   id: string;
@@ -53,6 +54,8 @@ export default function Sidebar({
   const [isMobile, setIsMobile] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState<string>('1.0.0');
 
   // Determine if we're in controlled or uncontrolled mode
   const isControlled = controlledCollapsed !== undefined;
@@ -68,6 +71,31 @@ export default function Sidebar({
       }
     }
   }, [isControlled]);
+
+  // Fetch current version from API
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    fetch('/api/version', { signal: abortController.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted && data.success && data.version) {
+          setCurrentVersion(data.version);
+        }
+      })
+      .catch(error => {
+        // Ignore abort errors (component unmounted)
+        if (error.name !== 'AbortError' && isMounted) {
+          console.error('Error fetching version:', error);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, []);
 
   // Handle responsive behavior
   useEffect(() => {
@@ -147,53 +175,66 @@ export default function Sidebar({
     >
       {/* Header */}
       <div className={cn(
-        'p-4 border-b flex items-center',
-        collapsed && !isMobile ? 'justify-center' : 'justify-between'
+        'p-4 border-b',
+        collapsed && !isMobile ? 'flex items-center justify-center' : ''
       )}>
-        {(!collapsed || isMobile) && (
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2"
-          >
-            <FileText className="h-6 w-6 text-primary flex-shrink-0" />
-            <motion.div
-              initial={false}
-              animate={{ opacity: collapsed && !isMobile ? 0 : 1 }}
-              transition={{ duration: 0.15 }}
-              className="overflow-hidden"
-            >
-              <h1 className="text-lg font-bold whitespace-nowrap">Unified Dashboard</h1>
-              <p className="text-sm text-muted-foreground whitespace-nowrap">Build Contracts</p>
-            </motion.div>
-          </Link>
-        )}
-        {showToggle && !isMobile && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleToggle}
-                  className={cn(
-                    "h-8 w-8 flex-shrink-0",
-                    collapsed ? "mx-auto" : "ml-auto"
-                  )}
-                  aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        <div className={cn(
+          'flex items-center',
+          collapsed && !isMobile ? 'justify-center' : 'justify-between w-full'
+        )}>
+          {(!collapsed || isMobile) && (
+            <div className="flex flex-col gap-1">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-6 w-6 text-primary flex-shrink-0" />
+                <motion.div
+                  initial={false}
+                  animate={{ opacity: collapsed && !isMobile ? 0 : 1 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
                 >
-                  {collapsed ? (
-                    <ChevronRight className="h-4 w-4" />
-                  ) : (
-                    <ChevronLeft className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+                  <h1 className="text-lg font-bold whitespace-nowrap">Unified Dashboard</h1>
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">Build Contracts</p>
+                </motion.div>
+              </Link>
+              <button
+                onClick={() => setChangelogOpen(true)}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer ml-8 text-left"
+              >
+                Version {currentVersion}
+              </button>
+            </div>
+          )}
+          {showToggle && !isMobile && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggle}
+                    className={cn(
+                      "h-8 w-8 flex-shrink-0",
+                      collapsed ? "mx-auto" : "ml-auto"
+                    )}
+                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  >
+                    {collapsed ? (
+                      <ChevronRight className="h-4 w-4" />
+                    ) : (
+                      <ChevronLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
       {/* Admin Button (if applicable) */}
@@ -260,6 +301,7 @@ export default function Sidebar({
           {(!collapsed || isMobile) && <span>Logout</span>}
         </Button>
       </div>
+      <ChangelogModal open={changelogOpen} onOpenChange={setChangelogOpen} />
     </motion.aside>
   );
 

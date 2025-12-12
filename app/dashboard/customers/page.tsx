@@ -42,7 +42,7 @@ interface Customer {
   state: string;
   zip: string;
   status?: 'pending_updates' | 'completed' | null;
-  stage?: 'waiting_for_permit' | 'active' | 'completed' | null;
+  stage?: 'waiting_for_permit' | 'active' | 'completed';
   contractCount: number;
   hasValidationIssues?: boolean;
   validationIssues?: string[];
@@ -123,12 +123,14 @@ export default function CustomersPage() {
       case 'dbxCustomerId':
         return customer.dbxCustomerId?.toLowerCase() ?? '';
       case 'stage':
-        // Custom order: waiting_for_permit -> active -> completed -> null
+        // Custom order: waiting_for_permit -> active -> completed
+        // Note: API normalizes null/undefined stage to 'waiting_for_permit', so null is never returned
         const stage = customer.stage;
         if (stage === 'waiting_for_permit') return 1;
         if (stage === 'active') return 2;
         if (stage === 'completed') return 3;
-        return 4; // null or undefined
+        // Fallback for undefined (defensive coding, but should never occur per API contract)
+        return 0;
       case 'status':
         // Custom order: pending_updates -> completed
         return customer.status === 'completed' ? 2 : 1;
@@ -165,7 +167,7 @@ export default function CustomersPage() {
     const filtered = filterData(
       searched,
       filters,
-      (customer) => customer.stage ?? null,
+      (customer) => customer.stage ?? 'waiting_for_permit',
       (customer) => customer.status ?? 'pending_updates'
     );
 
@@ -421,7 +423,7 @@ export default function CustomersPage() {
                               ? 'Active'
                               : customer.stage === 'completed'
                               ? 'Completed'
-                              : 'No Stage'}
+                              : 'Waiting for Permit'}
                           </Badge>
                         </TableCell>
                         <TableCell>

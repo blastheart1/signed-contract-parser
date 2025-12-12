@@ -108,12 +108,15 @@ export default function DashboardFileUpload() {
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      if (response.ok) {
+      const responseData = await response.json().catch(() => ({}));
+      
+      // Check the 'valid' field in the response body, not just HTTP status
+      // The API returns status 200 for both success and format validation failures
+      if (response.ok && responseData.valid === true) {
         result.isValid = true;
       } else {
-        const errorData = await response.json().catch(() => ({}));
         result.isValid = false;
-        result.error = errorData.message || `Failed to access link (${response.status})`;
+        result.error = responseData.error || responseData.message || `Failed to access link (${response.status})`;
       }
     } catch (err) {
       result.isValid = false;

@@ -28,6 +28,9 @@ Thumbs.db
 # Testing
 test-output.xlsx
 
+# TypeScript
+tsconfig.tsbuildinfo
+
 # Archived files (not tracked)
 archive/
 docs/archive/

@@ -105,7 +105,7 @@ function FilterableTableHeaderText({
     <TableHead 
       className={cn(
         'relative',
-        showSeparator && 'border-r border-border',
+        showSeparator && 'border-r border-black',
         width,
         className
       )}
