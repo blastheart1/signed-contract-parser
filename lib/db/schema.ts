@@ -110,6 +110,7 @@ export const invoices = pgTable('invoices', {
   paymentsReceived: decimal('payments_received', { precision: 15, scale: 2 }).default('0'),
   exclude: boolean('exclude').default(false),
   rowIndex: integer('row_index'), // Position in table (354-391)
+  linkedLineItems: jsonb('linked_line_items'), // Array of { orderItemId: string, thisBillAmount: number } for audit trail
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({

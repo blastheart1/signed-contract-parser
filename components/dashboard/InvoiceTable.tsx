@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, Loader2, Copy } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, Loader2, Copy, Link2, Eye, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import InvoiceLineItemSelector from './InvoiceLineItemSelector';
+import InvoiceDetailsModal from './InvoiceDetailsModal';
 
 interface Invoice {
   id: string;
@@ -20,6 +23,7 @@ interface Invoice {
   paymentsReceived: string;
   exclude: boolean;
   rowIndex: number | null;
+  linkedLineItems?: Array<{ orderItemId: string; thisBillAmount: number }> | null;
 }
 
 interface InvoiceTableProps {
@@ -36,6 +40,11 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Partial<Invoice>>({});
+  const [selectedLineItemIds, setSelectedLineItemIds] = useState<string[]>([]);
+  const [linkedItemsTotal, setLinkedItemsTotal] = useState<number>(0); // Sum of linked items' THIS BILL values
+  const [lineItemSelectorOpen, setLineItemSelectorOpen] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedInvoiceForDetails, setSelectedInvoiceForDetails] = useState<Invoice | null>(null);
 
   // Fetch invoices
   useEffect(() => {
@@ -62,6 +71,27 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
   };
 
   const handleAddInvoice = () => {
+    // Prevent adding a new invoice if there's already an unsaved new invoice
+    const hasUnsavedNewInvoice = invoices.some(inv => inv.id.startsWith('new-'));
+    if (hasUnsavedNewInvoice) {
+      toast({
+        title: 'Please save or cancel',
+        description: 'There is already an unsaved invoice. Please save or cancel it before adding a new one.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Also check if we're currently editing any invoice
+    if (editingId !== null) {
+      toast({
+        title: 'Please save or cancel',
+        description: 'Please save or cancel the current invoice before adding a new one.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const newInvoice: Partial<Invoice> = {
       id: `new-${Date.now()}`,
       invoiceNumber: '',
@@ -73,16 +103,36 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     setInvoices([...invoices, newInvoice as Invoice]);
     setEditingId(newInvoice.id!);
     setEditingInvoice(newInvoice);
+    setSelectedLineItemIds([]);
+    setLinkedItemsTotal(0);
   };
 
   const handleEdit = (invoice: Invoice) => {
     setEditingId(invoice.id);
     setEditingInvoice({ ...invoice });
+    // Load existing linked line item IDs if any
+    if (invoice.linkedLineItems && Array.isArray(invoice.linkedLineItems)) {
+      const linkedIds = invoice.linkedLineItems.map(item => item.orderItemId);
+      setSelectedLineItemIds(linkedIds);
+      // Calculate total from linked items' thisBillAmount values
+      const total = invoice.linkedLineItems.reduce((sum, item) => {
+        const amount = parseFloat(String(item.thisBillAmount || 0));
+        return sum + amount;
+      }, 0);
+      setLinkedItemsTotal(total);
+      // Auto-populate invoice amount with the total
+      setEditingInvoice({ ...invoice, invoiceAmount: total > 0 ? total.toString() : invoice.invoiceAmount });
+    } else {
+      setSelectedLineItemIds([]);
+      setLinkedItemsTotal(0);
+    }
   };
 
   const handleCancel = () => {
     setEditingId(null);
     setEditingInvoice({});
+    setSelectedLineItemIds([]);
+    setLinkedItemsTotal(0);
     // If it was a new invoice, remove it from the list
     setInvoices(invoices.filter(inv => inv.id !== editingId || !inv.id.startsWith('new-')));
   };
@@ -101,26 +151,69 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
 
       const method = isNew ? 'POST' : 'PATCH';
 
+      // Prepare request body
+      const requestBody: any = {
+        invoiceNumber: invoiceData.invoiceNumber || null,
+        invoiceDate: invoiceData.invoiceDate || null,
+        paymentsReceived: invoiceData.paymentsReceived || '0',
+        exclude: invoiceData.exclude || false,
+      };
+
+      // Handle invoiceAmount - ensure it's null not empty string
+      if (selectedLineItemIds.length > 0 && linkedItemsTotal > 0) {
+        requestBody.invoiceAmount = linkedItemsTotal.toString();
+      } else {
+        requestBody.invoiceAmount = invoiceData.invoiceAmount && invoiceData.invoiceAmount.trim() !== '' 
+          ? invoiceData.invoiceAmount 
+          : null;
+      }
+
+      // Handle linkedLineItemIds
+      // For PATCH: send empty array to clear, or array with IDs to set
+      // For POST: only include if there are items to link
+      if (isNew) {
+        // POST: only include if there are items
+        if (selectedLineItemIds.length > 0) {
+          requestBody.linkedLineItemIds = selectedLineItemIds;
+        }
+      } else {
+        // PATCH: always include to allow clearing (empty array) or setting (array with IDs)
+        requestBody.linkedLineItemIds = selectedLineItemIds;
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          invoiceNumber: invoiceData.invoiceNumber || null,
-          invoiceDate: invoiceData.invoiceDate || null,
-          invoiceAmount: invoiceData.invoiceAmount || null,
-          paymentsReceived: invoiceData.paymentsReceived || '0',
-          exclude: invoiceData.exclude || false,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        // Handle non-200 responses
+        const errorMessage = data.error || data.message || `Failed to save invoice (${response.status})`;
+        const validationErrors = data.validationErrors || [];
+        const fullErrorMessage = validationErrors.length > 0
+          ? `${errorMessage}\n${validationErrors.map((err: any) => `- ${err.reason || err}`).join('\n')}`
+          : errorMessage;
+        
+        setError(fullErrorMessage);
+        toast({
+          title: 'Failed to save invoice',
+          description: fullErrorMessage,
+          variant: 'destructive',
+        });
+        return;
+      }
 
       if (data.success) {
         await fetchInvoices(); // Refresh list
         setEditingId(null);
         setEditingInvoice({});
+        setSelectedLineItemIds([]);
+        setLinkedItemsTotal(0);
         // Show success toast
         toast({
           title: isNew ? 'Invoice created' : 'Invoice updated',
@@ -202,13 +295,13 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     }
   };
 
-  const calculateStatus = (invoice: Partial<Invoice>): string => {
+  const calculateStatus = (invoice: Partial<Invoice>): 'Paid' | 'Open' | null => {
     const payments = parseFloat(invoice.paymentsReceived?.toString() || '0');
     const amount = parseFloat(invoice.invoiceAmount?.toString() || '0');
 
     if (payments > 0) return 'Paid';
     if (amount > 0) return 'Open';
-    return '';
+    return null;
   };
 
   const calculateOpenBalance = (invoice: Partial<Invoice>): number => {
@@ -260,10 +353,28 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
               </Tooltip>
             </TooltipProvider>
           ) : (
-            <Button onClick={handleAddInvoice} size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Invoice
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button 
+                      onClick={handleAddInvoice} 
+                      size="sm"
+                      disabled={editingId !== null || invoices.some(inv => inv.id.startsWith('new-'))}
+                      className={editingId !== null || invoices.some(inv => inv.id.startsWith('new-')) ? 'opacity-50 cursor-not-allowed' : ''}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Invoice
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {(editingId !== null || invoices.some(inv => inv.id.startsWith('new-'))) && (
+                  <TooltipContent>
+                    <p>Please save or cancel the current invoice before adding a new one</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </CardHeader>
@@ -274,18 +385,18 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
           </Alert>
         )}
 
-        <div className="overflow-x-auto">
-          <Table>
+        <div className="rounded-md border overflow-x-auto">
+          <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[100px]">Status</TableHead>
-                <TableHead className="w-[80px]">Exclude</TableHead>
-                <TableHead>Invoice No.</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Payments</TableHead>
-                <TableHead className="text-right">Open Balance</TableHead>
-                <TableHead className="w-[120px]">Actions</TableHead>
+                <TableHead className="w-[100px] border-r border-black">Status</TableHead>
+                <TableHead className="w-[80px] border-r border-black">Exclude</TableHead>
+                <TableHead className="w-[150px] border-r border-black">Invoice No.</TableHead>
+                <TableHead className="w-[120px] border-r border-black">Date</TableHead>
+                <TableHead className="w-[130px] text-right border-r border-black">Amount</TableHead>
+                <TableHead className="w-[130px] text-right border-r border-black">Payments</TableHead>
+                <TableHead className="w-[130px] text-right border-r border-black">Open Balance</TableHead>
+                <TableHead className="w-[140px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -314,8 +425,25 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
 
                   return (
                     <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">{status || '—'}</TableCell>
-                      <TableCell>
+                      <TableCell className="w-[100px] min-h-[32px]">
+                        <div className="min-h-[32px] flex items-center">
+                          {status ? (
+                            <Badge 
+                              variant="outline" 
+                              className={`w-[50px] flex items-center justify-center ${
+                                status === 'Paid' 
+                                  ? 'bg-green-500 text-white border-green-600 hover:bg-green-600' 
+                                  : 'bg-orange-500 text-white border-orange-600 hover:bg-orange-600'
+                              }`}
+                            >
+                              {status}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground/30">—</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="w-[80px] min-h-[32px]">
                         {isEditing ? (
                           <Checkbox
                             checked={displayInvoice.exclude || false}
@@ -324,10 +452,12 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                             }
                           />
                         ) : (
-                          displayInvoice.exclude ? 'Yes' : 'No'
+                          <div className="min-h-[32px] flex items-center">
+                            {displayInvoice.exclude ? 'Yes' : 'No'}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[150px] min-h-[32px]">
                         {isEditing ? (
                           <Input
                             value={displayInvoice.invoiceNumber || ''}
@@ -335,13 +465,28 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                               setEditingInvoice({ ...editingInvoice, invoiceNumber: e.target.value })
                             }
                             placeholder="Invoice No."
-                            className="w-full"
+                            className="w-full h-8"
                           />
                         ) : (
-                          displayInvoice.invoiceNumber || '—'
+                          <div className="min-h-[32px] flex items-center">
+                            {invoice.linkedLineItems && invoice.linkedLineItems.length > 0 ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoiceForDetails(invoice);
+                                  setDetailsModalOpen(true);
+                                }}
+                                className="text-left hover:underline cursor-pointer"
+                                title="Click to view linked items"
+                              >
+                                {displayInvoice.invoiceNumber || <span className="text-muted-foreground/30">—</span>}
+                              </button>
+                            ) : (
+                              displayInvoice.invoiceNumber || <span className="text-muted-foreground/30">—</span>
+                            )}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[120px] min-h-[32px]">
                         {isEditing ? (
                           <Input
                             type="date"
@@ -349,38 +494,62 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                             onChange={(e) =>
                               setEditingInvoice({ ...editingInvoice, invoiceDate: e.target.value })
                             }
-                            className="w-full"
+                            className="w-full h-8"
                           />
                         ) : (
-                          displayInvoice.invoiceDate
-                            ? new Date(displayInvoice.invoiceDate).toLocaleDateString()
-                            : '—'
+                          <div className="min-h-[32px] flex items-center">
+                            {displayInvoice.invoiceDate
+                              ? new Date(displayInvoice.invoiceDate).toLocaleDateString()
+                              : <span className="text-muted-foreground/30">—</span>}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="w-[130px] text-right min-h-[32px]">
                         {isEditing ? (
-                          <div className="relative w-full max-w-[180px] ml-auto">
+                          <div className="relative w-full">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
                             <Input
                               type="number"
                               step="0.01"
                               value={displayInvoice.invoiceAmount || ''}
-                              onChange={(e) =>
-                                setEditingInvoice({ ...editingInvoice, invoiceAmount: e.target.value })
-                              }
+                              onChange={(e) => {
+                                const newValue = e.target.value;
+                                // If items are linked, prevent exceeding the linked items total
+                                if (selectedLineItemIds.length > 0 && linkedItemsTotal > 0) {
+                                  const numValue = parseFloat(newValue);
+                                  if (!isNaN(numValue) && numValue > linkedItemsTotal) {
+                                    // Don't allow exceeding the total - set to max
+                                    setEditingInvoice({ ...editingInvoice, invoiceAmount: linkedItemsTotal.toString() });
+                                    toast({
+                                      title: 'Amount limit',
+                                      description: `Invoice amount cannot exceed the linked items total of $${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                                      variant: 'destructive',
+                                    });
+                                    return;
+                                  }
+                                }
+                                setEditingInvoice({ ...editingInvoice, invoiceAmount: newValue });
+                              }}
                               placeholder="0.00"
-                              className="w-full text-right pl-7 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                              className="w-full h-8 text-right pl-7 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                              readOnly={selectedLineItemIds.length > 0}
+                              max={selectedLineItemIds.length > 0 ? linkedItemsTotal : undefined}
+                              title={selectedLineItemIds.length > 0 
+                                ? `Amount calculated from ${selectedLineItemIds.length} linked item(s). Total: $${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : ''}
                             />
                           </div>
                         ) : (
-                          displayInvoice.invoiceAmount
-                            ? `$${parseFloat(displayInvoice.invoiceAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : '—'
+                          <div className="min-h-[32px] flex items-center justify-end">
+                            {displayInvoice.invoiceAmount
+                              ? `$${parseFloat(displayInvoice.invoiceAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : <span className="text-muted-foreground/30">—</span>}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="w-[130px] text-right min-h-[32px]">
                         {isEditing ? (
-                          <div className="relative w-full max-w-[180px] ml-auto">
+                          <div className="relative w-full">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
                             {(!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') && (
                               <TooltipProvider>
@@ -418,7 +587,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                                 setEditingInvoice({ ...editingInvoice, paymentsReceived: e.target.value })
                               }
                               placeholder="0.00"
-                              className={`w-full text-right pr-3 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${
+                              className={`w-full h-8 text-right pr-3 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${
                                 (!displayInvoice.paymentsReceived || displayInvoice.paymentsReceived === '0' || displayInvoice.paymentsReceived === '') 
                                   ? 'pl-16' 
                                   : 'pl-7'
@@ -426,15 +595,50 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                             />
                           </div>
                         ) : (
-                          `$${parseFloat(displayInvoice.paymentsReceived || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          <div className="min-h-[32px] flex items-center justify-end">
+                            {`$${parseFloat(displayInvoice.paymentsReceived || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${openBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <TableCell className="w-[130px] text-right font-medium min-h-[32px]">
+                        <div className="min-h-[32px] flex items-center justify-end">
+                          ${openBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[140px] min-h-[32px]">
                         {isEditing ? (
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
+                            {selectedLineItemIds.length > 0 && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center">
+                                      <Info className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{selectedLineItemIds.length} item{selectedLineItemIds.length !== 1 ? 's' : ''} linked (${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setLineItemSelectorOpen(true)}
+                                    disabled={isSaving}
+                                  >
+                                    <Link2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Link Line Items</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -458,6 +662,33 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                           </div>
                         ) : (
                           <div className="flex gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      if (invoice.linkedLineItems && invoice.linkedLineItems.length > 0) {
+                                        setSelectedInvoiceForDetails(invoice);
+                                        setDetailsModalOpen(true);
+                                      }
+                                    }}
+                                    disabled={!invoice.linkedLineItems || invoice.linkedLineItems.length === 0}
+                                    className={(!invoice.linkedLineItems || invoice.linkedLineItems.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {invoice.linkedLineItems && invoice.linkedLineItems.length > 0 
+                                      ? 'View Linked Items' 
+                                      : 'No linked items'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             {isDeleted ? (
                               <TooltipProvider>
                                 <Tooltip>
@@ -534,6 +765,38 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
           </Table>
         </div>
       </CardContent>
+
+      {/* Line Item Selector Modal */}
+      <InvoiceLineItemSelector
+        open={lineItemSelectorOpen}
+        onOpenChange={setLineItemSelectorOpen}
+        orderId={orderId}
+        selectedItemIds={selectedLineItemIds}
+        onSave={(itemIds, totalAmount) => {
+          setSelectedLineItemIds(itemIds);
+          setLinkedItemsTotal(totalAmount);
+          // Auto-populate invoice amount with the total
+          if (itemIds.length > 0 && totalAmount > 0) {
+            setEditingInvoice({ ...editingInvoice, invoiceAmount: totalAmount.toString() });
+          } else {
+            // Clear invoice amount if no items linked
+            setEditingInvoice({ ...editingInvoice, invoiceAmount: '' });
+          }
+        }}
+      />
+
+      {/* Invoice Details Modal */}
+      {selectedInvoiceForDetails && (
+        <InvoiceDetailsModal
+          open={detailsModalOpen}
+          onOpenChange={setDetailsModalOpen}
+          orderId={orderId}
+          invoiceId={selectedInvoiceForDetails.id}
+          invoiceNumber={selectedInvoiceForDetails.invoiceNumber}
+          invoiceDate={selectedInvoiceForDetails.invoiceDate}
+          invoiceAmount={selectedInvoiceForDetails.invoiceAmount}
+        />
+      )}
     </Card>
   );
 }

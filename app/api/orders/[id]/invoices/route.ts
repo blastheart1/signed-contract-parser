@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { invoices, orders } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { invoices, orders, orderItems } from '@/lib/db/schema';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus';
 import { logInvoiceChange, valueToString } from '@/lib/services/changeHistory';
+import {
+  validateItemsForLinking,
+  calculateInvoiceAmountFromItems,
+  createLinkedLineItems,
+  type OrderItemForValidation,
+} from '@/lib/utils/invoiceLineItemValidation';
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +60,43 @@ export async function POST(
   try {
     const orderId = params.id;
     const body = await request.json();
+    
+    console.log(`[POST /api/orders/${orderId}/invoices] Request body:`, {
+      invoiceNumber: body.invoiceNumber,
+      invoiceDate: body.invoiceDate,
+      invoiceAmount: body.invoiceAmount,
+      paymentsReceived: body.paymentsReceived,
+      exclude: body.exclude,
+      linkedLineItemIds: body.linkedLineItemIds,
+      linkedLineItemIdsLength: body.linkedLineItemIds?.length || 0,
+    });
+
+    // Validate request body
+    if (body.linkedLineItemIds !== undefined && !Array.isArray(body.linkedLineItemIds)) {
+      console.error(`[POST /api/orders/${orderId}/invoices] Invalid linkedLineItemIds format:`, typeof body.linkedLineItemIds, body.linkedLineItemIds);
+      return NextResponse.json(
+        {
+          error: 'Invalid request format',
+          message: 'linkedLineItemIds must be an array',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate invoiceAmount if provided
+    if (body.invoiceAmount !== undefined && body.invoiceAmount !== null && body.invoiceAmount !== '') {
+      const amount = parseFloat(String(body.invoiceAmount));
+      if (isNaN(amount) || amount < 0) {
+        console.error(`[POST /api/orders/${orderId}/invoices] Invalid invoiceAmount:`, body.invoiceAmount);
+        return NextResponse.json(
+          {
+            error: 'Invalid invoice amount',
+            message: 'invoiceAmount must be a valid positive number',
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Verify order exists
     const orderRows = await db
@@ -90,16 +133,153 @@ export async function POST(
       );
     }
 
+    // Handle line item linking if provided
+    let linkedLineItems = null;
+    let calculatedInvoiceAmount = body.invoiceAmount;
+
+    if (body.linkedLineItemIds !== undefined && Array.isArray(body.linkedLineItemIds)) {
+      if (body.linkedLineItemIds.length > 0) {
+        console.log(`[POST /api/orders/${orderId}/invoices] Processing ${body.linkedLineItemIds.length} linked line items`);
+      // Fetch the order items to validate and calculate amounts
+      const itemsToLink = await db
+        .select()
+        .from(orderItems)
+        .where(
+          and(
+            eq(orderItems.orderId, orderId),
+            eq(orderItems.itemType, 'item')
+          )
+        );
+
+      const itemMap = new Map(itemsToLink.map(item => [item.id, item]));
+      const selectedItems: OrderItemForValidation[] = body.linkedLineItemIds
+        .map((id: string): OrderItemForValidation | null => {
+          const item = itemMap.get(id);
+          if (!item) return null;
+          // Include all fields needed for calculation (thisBill may be null/0, will be calculated)
+          return {
+            id: item.id,
+            amount: item.amount,
+            thisBill: item.thisBill, // May be null/0, will be calculated in validation
+            progressOverallPct: item.progressOverallPct,
+            previouslyInvoicedPct: item.previouslyInvoicedPct,
+          };
+        })
+        .filter((item: OrderItemForValidation | null): item is OrderItemForValidation => item !== null);
+      
+      console.log(`[POST /api/orders/${orderId}/invoices] Selected items for validation:`, selectedItems.map(item => ({
+        id: item.id,
+        thisBill_raw: item.thisBill,
+        progressOverallPct: item.progressOverallPct,
+        previouslyInvoicedPct: item.previouslyInvoicedPct,
+        amount: item.amount,
+      })));
+
+      if (selectedItems.length === 0) {
+        console.error(`[POST /api/orders/${orderId}/invoices] No valid order items found for linking. Requested IDs:`, body.linkedLineItemIds);
+        return NextResponse.json(
+          { 
+            error: 'No valid order items found for linking',
+            message: `None of the provided ${body.linkedLineItemIds.length} item ID(s) were found or are valid for linking`,
+            requestedIds: body.linkedLineItemIds,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Get existing invoice amounts for each item
+      // Note: This will fail if migration hasn't been run (linked_line_items column missing)
+      let allInvoices = [];
+      try {
+        allInvoices = await db
+          .select()
+          .from(invoices)
+          .where(
+            and(
+              eq(invoices.orderId, orderId),
+              or(isNull(invoices.exclude), eq(invoices.exclude, false))
+            )
+          );
+      } catch (invoiceError) {
+        console.error(`[POST /api/orders/${orderId}/invoices] Error fetching invoices (migration may be needed):`, invoiceError);
+        return NextResponse.json(
+          {
+            error: 'Database migration required',
+            message: 'Please run "npm run migrate" to add the linked_line_items column to the invoices table',
+            details: invoiceError instanceof Error ? invoiceError.message : 'Unknown error'
+          },
+          { status: 500 }
+        );
+      }
+
+      const itemInvoiceAmounts = new Map<string, number>();
+      for (const invoice of allInvoices) {
+        if (invoice.linkedLineItems && typeof invoice.linkedLineItems === 'object') {
+          const linkedItems = Array.isArray(invoice.linkedLineItems)
+            ? invoice.linkedLineItems
+            : [];
+          
+          for (const linkedItem of linkedItems) {
+            if (linkedItem && typeof linkedItem === 'object' && 'orderItemId' in linkedItem) {
+              const itemId = String(linkedItem.orderItemId);
+              const thisBillAmount = parseFloat(String(linkedItem.thisBillAmount || 0));
+              const current = itemInvoiceAmounts.get(itemId) || 0;
+              itemInvoiceAmounts.set(itemId, current + thisBillAmount);
+            }
+          }
+        }
+      }
+
+      // Validate items
+      const getExistingAmounts = (itemId: string) => itemInvoiceAmounts.get(itemId) || 0;
+      const validationErrors = validateItemsForLinking(selectedItems, getExistingAmounts);
+
+      if (validationErrors.length > 0) {
+        console.error(`[POST /api/orders/${orderId}/invoices] Validation failed:`, validationErrors);
+        return NextResponse.json(
+          {
+            error: 'Validation failed',
+            validationErrors: validationErrors,
+            message: `Validation failed for ${validationErrors.length} item(s)`,
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[POST /api/orders/${orderId}/invoices] Validation passed, calculating invoice amount`);
+
+      // Calculate invoice amount from THIS BILL values
+      calculatedInvoiceAmount = calculateInvoiceAmountFromItems(selectedItems).toString();
+      console.log(`[POST /api/orders/${orderId}/invoices] Calculated invoice amount: ${calculatedInvoiceAmount}`);
+
+      // Create linked line items array
+      linkedLineItems = createLinkedLineItems(body.linkedLineItemIds, selectedItems);
+      console.log(`[POST /api/orders/${orderId}/invoices] Created ${linkedLineItems.length} linked line items`);
+      } else {
+        console.log(`[POST /api/orders/${orderId}/invoices] Empty linkedLineItemIds array - no items to link`);
+      }
+    } else {
+      console.log(`[POST /api/orders/${orderId}/invoices] No linkedLineItemIds provided - creating invoice without linked items`);
+    }
+
     // Create new invoice
-    const newInvoice = await db.insert(invoices).values({
+    const invoiceValues = {
       orderId: orderId,
       invoiceNumber: body.invoiceNumber || null,
       invoiceDate: body.invoiceDate ? new Date(body.invoiceDate) : null,
-      invoiceAmount: body.invoiceAmount || null,
+      invoiceAmount: calculatedInvoiceAmount || null,
       paymentsReceived: body.paymentsReceived || '0',
       exclude: body.exclude || false,
       rowIndex: nextRowIndex,
-    }).returning();
+      linkedLineItems: linkedLineItems ? JSON.stringify(linkedLineItems) : null,
+    };
+    
+    console.log(`[POST /api/orders/${orderId}/invoices] Creating invoice with values:`, {
+      ...invoiceValues,
+      linkedLineItems: linkedLineItems ? `${linkedLineItems.length} items` : null,
+    });
+    
+    const newInvoice = await db.insert(invoices).values(invoiceValues).returning();
 
     // Log invoice creation
     await logInvoiceChange(
@@ -114,13 +294,16 @@ export async function POST(
     // Trigger customer status recalculation
     await recalculateCustomerStatusForOrder(orderId);
 
+    console.log(`[POST /api/orders/${orderId}/invoices] Invoice created successfully:`, newInvoice[0].id);
     return NextResponse.json({ success: true, invoice: newInvoice[0] }, { status: 201 });
   } catch (error) {
-    console.error('Error creating invoice:', error);
+    console.error(`[POST /api/orders/${params.id}/invoices] Error creating invoice:`, error);
+    console.error(`[POST /api/orders/${params.id}/invoices] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
       {
         error: 'Failed to create invoice',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 }
     );

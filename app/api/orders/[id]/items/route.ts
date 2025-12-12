@@ -1,10 +1,272 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { orders, orderItems, changeHistory } from '@/lib/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { orders, orderItems, changeHistory, invoices } from '@/lib/db/schema';
+import { eq, inArray, and, or, isNull, sql, gt } from 'drizzle-orm';
 import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus';
 import { logOrderItemChange, valueToString, valuesAreEqual } from '@/lib/services/changeHistory';
 import type { OrderItem } from '@/lib/tableExtractor';
+
+/**
+ * GET /api/orders/[id]/items?availableForInvoice=true
+ * Returns order items available for invoice linking
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const orderId = params.id;
+    const searchParams = request.nextUrl.searchParams;
+    const availableForInvoice = searchParams.get('availableForInvoice') === 'true';
+
+    // Verify order exists
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    const order = orderRows[0];
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Order not found', id: orderId },
+        { status: 404 }
+      );
+    }
+
+    console.log(`[GET /api/orders/${orderId}/items] availableForInvoice=${availableForInvoice}`);
+
+    if (availableForInvoice) {
+      // First, get ALL items to see what we're working with
+      const allItemsRaw = await db
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId))
+        .orderBy(orderItems.rowIndex);
+
+      console.log(`[GET /api/orders/${orderId}/items] Total items in database: ${allItemsRaw.length}`);
+      
+      // Log item types distribution
+      const itemTypeCounts = allItemsRaw.reduce((acc, item) => {
+        acc[item.itemType || 'unknown'] = (acc[item.itemType || 'unknown'] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log(`[GET /api/orders/${orderId}/items] Item types:`, itemTypeCounts);
+
+      // Filter to only 'item' type (not categories)
+      // Also include items where itemType might be null/undefined but they're actual line items
+      const allItems = allItemsRaw.filter(item => {
+        const itemType = item.itemType;
+        // Include items that are explicitly 'item' type
+        if (itemType === 'item') return true;
+        // Also include items that are NOT categories (might be null/undefined but are line items)
+        if (itemType !== 'maincategory' && itemType !== 'subcategory') {
+          // Check if it looks like a line item (has productService and amount)
+          if (item.productService && item.amount) {
+            return true;
+          }
+        }
+        return false;
+      });
+      console.log(`[GET /api/orders/${orderId}/items] Items after filtering (excluding categories): ${allItems.length}`);
+
+      // Log sample items with their thisBill values (first 10 items)
+      const sampleItems = allItems.slice(0, 10).map(item => {
+        const thisBillRaw = item.thisBill;
+        const thisBillParsed = thisBillRaw ? parseFloat(String(thisBillRaw)) : 0;
+        const newProgressPct = item.newProgressPct ? parseFloat(String(item.newProgressPct)) : 0;
+        const amount = item.amount ? parseFloat(String(item.amount)) : 0;
+        const calculatedThisBill = newProgressPct > 0 && amount > 0 ? (newProgressPct / 100) * amount : 0;
+        
+        return {
+          id: item.id,
+          productService: item.productService?.substring(0, 50),
+          itemType: item.itemType,
+          thisBill_raw: thisBillRaw,
+          thisBill_parsed: thisBillParsed,
+          newProgressPct: item.newProgressPct,
+          amount: item.amount,
+          calculatedThisBill: calculatedThisBill,
+          progressOverallPct: item.progressOverallPct,
+          previouslyInvoicedPct: item.previouslyInvoicedPct,
+        };
+      });
+      console.log(`[GET /api/orders/${orderId}/items] Sample items with THIS BILL analysis:`, JSON.stringify(sampleItems, null, 2));
+
+      // Filter items with THIS BILL > 0 (handle decimal/string types)
+      // Calculate thisBill: thisBill = (newProgressPct / 100) * amount
+      // Where newProgressPct = progressOverallPct - previouslyInvoicedPct
+      const availableItems = allItems.filter(item => {
+        let thisBill = 0;
+        
+        // Try to get stored thisBill value first
+        if (item.thisBill) {
+          thisBill = parseFloat(String(item.thisBill));
+        }
+        
+        // If thisBill is 0 or missing, calculate it
+        if ((!thisBill || thisBill === 0) && item.amount) {
+          let newProgressPct = 0;
+          
+          // Try to get stored newProgressPct
+          if (item.newProgressPct) {
+            newProgressPct = parseFloat(String(item.newProgressPct));
+          }
+          
+          // If newProgressPct is missing, calculate it from progressOverallPct - previouslyInvoicedPct
+          // Handle cases where previouslyInvoicedPct is NULL/0 (treat as 0)
+          if ((!newProgressPct || newProgressPct === 0) && item.progressOverallPct !== null) {
+            const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
+            // Treat NULL/undefined previouslyInvoicedPct as 0
+            const previouslyInvoicedPct = item.previouslyInvoicedPct !== null && item.previouslyInvoicedPct !== undefined
+              ? parseFloat(String(item.previouslyInvoicedPct || 0))
+              : 0;
+            newProgressPct = progressOverallPct - previouslyInvoicedPct;
+          }
+          
+          // Calculate thisBill from newProgressPct and amount
+          if (newProgressPct > 0 && item.amount) {
+            const amount = parseFloat(String(item.amount));
+            if (!isNaN(newProgressPct) && !isNaN(amount) && amount > 0) {
+              thisBill = (newProgressPct / 100) * amount;
+            }
+          }
+        }
+        
+        return !isNaN(thisBill) && thisBill > 0;
+      });
+
+      console.log(`[GET /api/orders/${orderId}/items] Found ${allItems.length} items with itemType='item', ${availableItems.length} with THIS BILL > 0`);
+
+      // Get all invoices for this order to calculate existing invoice amounts per item
+      // Note: This will fail if migration hasn't been run (linked_line_items column missing)
+      let allInvoices: Array<{ id: string; linkedLineItems?: any }> = [];
+      try {
+        allInvoices = await db
+          .select()
+          .from(invoices)
+          .where(
+            and(
+              eq(invoices.orderId, orderId),
+              or(isNull(invoices.exclude), eq(invoices.exclude, false))
+            )
+          );
+      } catch (invoiceError) {
+        console.error(`[GET /api/orders/${orderId}/items] Error fetching invoices (migration may be needed):`, invoiceError);
+        // Continue without invoice data - items can still be shown, just without existing invoice amounts
+      }
+
+      // Calculate sum of invoice amounts per item
+      // Since invoice amount = sum of linked items' thisBillAmount, we sum the thisBillAmounts
+      // This represents the total amount billed for each item across all invoices
+      const itemInvoiceAmounts = new Map<string, number>();
+      for (const invoice of allInvoices) {
+        if (invoice.linkedLineItems && typeof invoice.linkedLineItems === 'object') {
+          const linkedItems = Array.isArray(invoice.linkedLineItems)
+            ? invoice.linkedLineItems
+            : [];
+          
+          for (const linkedItem of linkedItems) {
+            if (linkedItem && typeof linkedItem === 'object' && 'orderItemId' in linkedItem) {
+              const itemId = String(linkedItem.orderItemId);
+              const thisBillAmount = parseFloat(String(linkedItem.thisBillAmount || 0));
+              
+              // Sum the thisBillAmount values (which equals the portion of invoice amount for this item)
+              const current = itemInvoiceAmounts.get(itemId) || 0;
+              itemInvoiceAmounts.set(itemId, current + thisBillAmount);
+            }
+          }
+        }
+      }
+
+      // Filter and format items
+      const formattedItems = availableItems
+        .map(item => {
+          const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
+          const previouslyInvoicedPct = parseFloat(String(item.previouslyInvoicedPct || 0));
+          const amount = parseFloat(String(item.amount || 0));
+          
+          // Calculate thisBill (same logic as filter above)
+          let thisBill = 0;
+          if (item.thisBill) {
+            thisBill = parseFloat(String(item.thisBill));
+          }
+          if ((!thisBill || thisBill === 0) && item.amount) {
+            let newProgressPct = 0;
+            if (item.newProgressPct) {
+              newProgressPct = parseFloat(String(item.newProgressPct));
+            }
+            // Handle cases where previouslyInvoicedPct is NULL/0 (treat as 0)
+            if ((!newProgressPct || newProgressPct === 0) && item.progressOverallPct !== null) {
+              const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
+              // Treat NULL/undefined previouslyInvoicedPct as 0
+              const previouslyInvoicedPct = item.previouslyInvoicedPct !== null && item.previouslyInvoicedPct !== undefined
+                ? parseFloat(String(item.previouslyInvoicedPct || 0))
+                : 0;
+              newProgressPct = progressOverallPct - previouslyInvoicedPct;
+            }
+            if (newProgressPct > 0) {
+              const amountVal = parseFloat(String(item.amount));
+              if (!isNaN(newProgressPct) && !isNaN(amountVal) && amountVal > 0) {
+                thisBill = (newProgressPct / 100) * amountVal;
+              }
+            }
+          }
+          
+          const existingInvoiceAmounts = itemInvoiceAmounts.get(item.id) || 0;
+          const remainingBillable = amount - existingInvoiceAmounts;
+
+          // Check if fully completed and invoiced
+          const isFullyCompletedAndInvoiced = progressOverallPct >= 100 && previouslyInvoicedPct >= 100;
+
+          return {
+            id: item.id,
+            productService: item.productService,
+            amount,
+            thisBill,
+            progressOverallPct,
+            previouslyInvoicedPct,
+            existingInvoiceAmounts,
+            remainingBillable,
+            isFullyCompletedAndInvoiced,
+            canLink: !isFullyCompletedAndInvoiced && thisBill > 0 && remainingBillable >= thisBill,
+          };
+        })
+        .filter(item => item.canLink); // Only return items that can be linked
+
+      console.log(`[GET /api/orders/${orderId}/items] Returning ${formattedItems.length} available items`);
+      return NextResponse.json({
+        success: true,
+        items: formattedItems,
+      });
+    }
+
+    // Default: return all items (existing behavior)
+    const allItems = await db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId))
+      .orderBy(orderItems.rowIndex);
+
+    return NextResponse.json({ success: true, items: allItems });
+  } catch (error) {
+    console.error('[GET /api/orders/[id]/items] Error fetching order items:', error);
+    console.error('[GET /api/orders/[id]/items] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return NextResponse.json(
+      {
+        error: 'Failed to fetch order items',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: error instanceof Error && error.message.includes('linked_line_items') 
+          ? 'Database migration may be required. Run: npm run migrate'
+          : undefined,
+      },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PUT(
   request: NextRequest,
