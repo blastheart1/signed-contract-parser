@@ -15,6 +15,7 @@ import EditCustomerInfo from './EditCustomerInfo';
 import DeleteCustomerButton from './DeleteCustomerButton';
 import CustomerHistory from './CustomerHistory';
 import RestoreContractDialog from './RestoreContractDialog';
+import { mmddyyyyToYyyymmdd, yyyymmddToMmddyyyy, formatDateForDisplay } from '@/lib/utils/dateFormat';
 
 interface CustomerInfoProps {
   contract: StoredContract;
@@ -82,6 +83,67 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
     setProjectStartDate(newProjectStartDate);
     setProjectEndDate(newProjectEndDate);
   }, [contract]);
+
+  // Auto-populate First Build Invoice Date from first invoice
+  useEffect(() => {
+    // Only auto-populate if firstBuildInvoiceDate is empty and contract ID exists
+    if (firstBuildInvoiceDate || !currentContract?.id) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const fetchFirstInvoice = async () => {
+      try {
+        const response = await fetch(`/api/orders/${currentContract.id}/invoices`, {
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          console.warn('[CustomerInfo] Failed to fetch invoices for auto-populate');
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.success || !data.invoices || data.invoices.length === 0) {
+          return;
+        }
+
+        // Find first invoice (sorted by rowIndex, so first one is the earliest)
+        const firstInvoice = data.invoices[0];
+        if (!firstInvoice?.invoiceDate) {
+          return;
+        }
+
+        // Convert invoice timestamp to MM/DD/YYYY using InvoiceTable pattern
+        // Same pattern as InvoiceTable: new Date(invoiceDate).toISOString().split('T')[0]
+        try {
+          const yyyymmdd = new Date(firstInvoice.invoiceDate).toISOString().split('T')[0];
+          const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
+          
+          if (mmddyyyy && isMounted) {
+            console.log('[CustomerInfo] Auto-populating firstBuildInvoiceDate:', mmddyyyy);
+            setFirstBuildInvoiceDate(mmddyyyy);
+          }
+        } catch (conversionError) {
+          console.warn('[CustomerInfo] Failed to convert invoice date:', conversionError);
+        }
+      } catch (error) {
+        // Ignore abort errors (component unmounted)
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.warn('[CustomerInfo] Error fetching invoices for auto-populate:', error);
+        }
+      }
+    };
+
+    fetchFirstInvoice();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [currentContract?.id, firstBuildInvoiceDate]); // Only run when contract ID changes or firstBuildInvoiceDate is empty
 
   const handleSaveProjectStatus = async () => {
     if (!currentContract?.id) {
@@ -415,26 +477,22 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                       {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="contractDate"
-                          type="text"
-                          placeholder="MM/DD/YYYY"
-                          value={contractDate}
+                          type="date"
+                          value={mmddyyyyToYyyymmdd(contractDate)}
                           onChange={(e) => {
-                            let value = e.target.value;
-                            // Format as MM/DD/YYYY
-                            value = value.replace(/\D/g, '');
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2);
+                            const yyyymmdd = e.target.value;
+                            const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
+                            if (mmddyyyy) {
+                              setContractDate(mmddyyyy);
+                            } else if (yyyymmdd === '') {
+                              setContractDate('');
                             }
-                            if (value.length >= 5) {
-                              value = value.slice(0, 5) + '/' + value.slice(5, 9);
-                            }
-                            setContractDate(value);
                           }}
-                          maxLength={10}
                           className="flex-1"
+                          aria-label="Contract Date"
                         />
                       ) : (
-                        <div className="flex-1 text-sm text-foreground">{contractDate || '-'}</div>
+                        <div className="flex-1 text-sm text-foreground">{formatDateForDisplay(contractDate)}</div>
                       )}
                     </div>
                     {/* Row 3: First Build Invoice Date */}
@@ -443,26 +501,22 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                       {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="firstBuildInvoiceDate"
-                          type="text"
-                          placeholder="MM/DD/YYYY"
-                          value={firstBuildInvoiceDate}
+                          type="date"
+                          value={mmddyyyyToYyyymmdd(firstBuildInvoiceDate)}
                           onChange={(e) => {
-                            let value = e.target.value;
-                            // Format as MM/DD/YYYY
-                            value = value.replace(/\D/g, '');
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2);
+                            const yyyymmdd = e.target.value;
+                            const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
+                            if (mmddyyyy) {
+                              setFirstBuildInvoiceDate(mmddyyyy);
+                            } else if (yyyymmdd === '') {
+                              setFirstBuildInvoiceDate('');
                             }
-                            if (value.length >= 5) {
-                              value = value.slice(0, 5) + '/' + value.slice(5, 9);
-                            }
-                            setFirstBuildInvoiceDate(value);
                           }}
-                          maxLength={10}
                           className="flex-1"
+                          aria-label="First Build Invoice Date"
                         />
                       ) : (
-                        <div className="flex-1 text-sm text-foreground">{firstBuildInvoiceDate || '-'}</div>
+                        <div className="flex-1 text-sm text-foreground">{formatDateForDisplay(firstBuildInvoiceDate)}</div>
                       )}
                     </div>
                     {/* Row 4: Project Start Date */}
@@ -471,26 +525,22 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                       {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="projectStartDate"
-                          type="text"
-                          placeholder="MM/DD/YYYY"
-                          value={projectStartDate}
+                          type="date"
+                          value={mmddyyyyToYyyymmdd(projectStartDate)}
                           onChange={(e) => {
-                            let value = e.target.value;
-                            // Format as MM/DD/YYYY
-                            value = value.replace(/\D/g, '');
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2);
+                            const yyyymmdd = e.target.value;
+                            const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
+                            if (mmddyyyy) {
+                              setProjectStartDate(mmddyyyy);
+                            } else if (yyyymmdd === '') {
+                              setProjectStartDate('');
                             }
-                            if (value.length >= 5) {
-                              value = value.slice(0, 5) + '/' + value.slice(5, 9);
-                            }
-                            setProjectStartDate(value);
                           }}
-                          maxLength={10}
                           className="flex-1"
+                          aria-label="Project Start Date"
                         />
                       ) : (
-                        <div className="flex-1 text-sm text-foreground">{projectStartDate || '-'}</div>
+                        <div className="flex-1 text-sm text-foreground">{formatDateForDisplay(projectStartDate)}</div>
                       )}
                     </div>
                     {/* Row 5: Project End Date */}
@@ -499,26 +549,23 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                       {isEditingProjectStatus && !isDeleted ? (
                         <Input
                           id="projectEndDate"
-                          type="text"
-                          placeholder="MM/DD/YYYY"
-                          value={projectEndDate}
+                          type="date"
+                          value={mmddyyyyToYyyymmdd(projectEndDate)}
                           onChange={(e) => {
-                            let value = e.target.value;
-                            // Format as MM/DD/YYYY
-                            value = value.replace(/\D/g, '');
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2);
+                            const yyyymmdd = e.target.value;
+                            const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
+                            if (mmddyyyy) {
+                              setProjectEndDate(mmddyyyy);
+                            } else if (yyyymmdd === '') {
+                              setProjectEndDate('');
                             }
-                            if (value.length >= 5) {
-                              value = value.slice(0, 5) + '/' + value.slice(5, 9);
-                            }
-                            setProjectEndDate(value);
                           }}
-                          maxLength={10}
                           className="flex-1"
+                          aria-label="Project End Date"
+                          min={projectStartDate ? mmddyyyyToYyyymmdd(projectStartDate) : undefined}
                         />
                       ) : (
-                        <div className="flex-1 text-sm text-foreground">{projectEndDate || '-'}</div>
+                        <div className="flex-1 text-sm text-foreground">{formatDateForDisplay(projectEndDate)}</div>
                       )}
                     </div>
                     {/* Cancel and Save Buttons - Only show when editing and not deleted */}

@@ -42,6 +42,7 @@ interface OrderTableProps {
   orderId?: string; // Order ID for saving to database
   onSaveSuccess?: () => void; // Callback after successful save
   isDeleted?: boolean; // Whether the contract is deleted
+  projectStartDate?: string; // Project Start Date - required for edit mode
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -71,6 +72,7 @@ function SortableRow({
   isDeleted,
   onEnterEditMode,
   showActionsColumn,
+  canEdit = true, // Default to true for backward compatibility
 }: {
   item: EditableOrderItem;
   index: number;
@@ -87,6 +89,7 @@ function SortableRow({
   isFirstRow: boolean;
   onEnterEditMode?: () => void;
   showActionsColumn?: boolean;
+  canEdit?: boolean;
 }) {
   const {
     attributes,
@@ -226,11 +229,11 @@ function SortableRow({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: index * 0.02 }}
               onClick={() => {
-                if (!isEditing && !editingColumn && !isDeleted && isItem && onEnterEditMode) {
+                if (!isEditing && !editingColumn && canEdit !== false && isItem && onEnterEditMode) {
                   onEnterEditMode();
                 }
               }}
-              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing && !editingColumn ? 'cursor-pointer' : ''} ${isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing && !editingColumn && canEdit !== false ? 'cursor-pointer' : ''} ${isItem && canEdit !== false ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
             >
       <TableCell className="font-medium w-[300px] pl-2 align-top">
         <div className="flex items-start gap-2 min-w-0">
@@ -503,7 +506,7 @@ function SortableRow({
             </motion.tr>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{!isEditing && !editingColumn && !isDeleted && isItem ? 'Click to enter edit mode' : ''}</p>
+            <p>{!isEditing && !editingColumn && canEdit && isItem ? 'Click to enter edit mode' : !isEditing && !editingColumn && !canEdit && !isDeleted && isItem ? 'Update Project Start Date first' : ''}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -524,7 +527,7 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false }: OrderTableProps) {
+export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editingColumn, setEditingColumn] = useState<'progressOverall' | 'previouslyInvoiced' | null>(null);
@@ -534,6 +537,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [showActionsColumn, setShowActionsColumn] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Compute if edit mode is allowed (requires projectStartDate)
+  const canEdit = useMemo(() => {
+    return !isDeleted && !!projectStartDate && projectStartDate.trim() !== '';
+  }, [isDeleted, projectStartDate]);
   
   // Auto-compute rate if empty/null: Rate = Amount / Quantity
   const autoComputeRate = (item: OrderItem | EditableOrderItem): EditableOrderItem => {
@@ -860,10 +868,18 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         }
       }
       // Ctrl+E or Cmd+E to edit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !editingColumn && !isDeleted) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !editingColumn && canEdit) {
         e.preventDefault();
         setIsEditing(true);
         setEditingColumn(null);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !editingColumn && !canEdit && !isDeleted) {
+        // Show toast on mobile/desktop when edit is disabled
+        e.preventDefault();
+        toast({
+          title: 'Project Start Date Required',
+          description: 'Please update Project Start Date first before editing the table.',
+          variant: 'destructive',
+        });
       }
       // Esc to cancel
       if (e.key === 'Escape' && (isEditing || editingColumn)) {
@@ -1202,23 +1218,53 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {isDeleted ? (
-                      <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        Edit Table
-                      </Button>
-                    ) : (
-                      <Button onClick={() => {
-                        setIsEditing(true);
-                        setEditingColumn(null);
-                      }} variant="outline" size="sm" className="w-[130px]">
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        Edit Table
-                      </Button>
-                    )}
+                    <span className="inline-block">
+                      {isDeleted ? (
+                        <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Edit Table
+                        </Button>
+                      ) : !canEdit ? (
+                        <Button 
+                          onClick={() => {
+                            toast({
+                              title: 'Project Start Date Required',
+                              description: 'Please update Project Start Date first before editing the table.',
+                              variant: 'destructive',
+                            });
+                          }} 
+                          variant="outline" 
+                          size="sm" 
+                          className="opacity-50 cursor-not-allowed w-[130px]"
+                          aria-disabled="true"
+                        >
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Edit Table
+                        </Button>
+                      ) : (
+                        <Button onClick={() => {
+                          setIsEditing(true);
+                          setEditingColumn(null);
+                          toast({
+                            title: 'Edit Mode Enabled',
+                            description: 'You can now edit order items. Press Esc to cancel or Ctrl+S to save.',
+                            variant: 'default',
+                          });
+                        }} variant="outline" size="sm" className="w-[130px]">
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Edit Table
+                        </Button>
+                      )}
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{isDeleted ? 'Restore first before editing' : 'Edit order items (Ctrl+E)'}</p>
+                    <p>
+                      {isDeleted 
+                        ? 'Restore first before editing' 
+                        : !canEdit 
+                        ? 'Please update Project Start Date first' 
+                        : 'Edit order items (Ctrl+E)'}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1369,13 +1415,29 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       <TooltipTrigger asChild>
                         <TableHead 
                           className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[80px] h-8"
-                          onClick={() => !isDeleted && setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall')}
+                          onClick={() => {
+                            if (canEdit && !isDeleted) {
+                              setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall');
+                            } else if (!isDeleted) {
+                              toast({
+                                title: 'Project Start Date Required',
+                                description: 'Please update Project Start Date first before editing the table.',
+                                variant: 'destructive',
+                              });
+                            }
+                          }}
                         >
                           <span>% Progress<br />Overall</span>
                         </TableHead>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Click to edit: Set the overall progress percentage for items</p>
+                        <p>
+                          {isDeleted 
+                            ? 'Restore first before editing' 
+                            : !canEdit 
+                            ? 'Please update Project Start Date first' 
+                            : 'Click to edit: Set the overall progress percentage for items'}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1385,13 +1447,29 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       <TooltipTrigger asChild>
                         <TableHead 
                           className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[100px] h-8"
-                          onClick={() => !isDeleted && setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced')}
+                          onClick={() => {
+                            if (canEdit && !isDeleted) {
+                              setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced');
+                            } else if (!isDeleted) {
+                              toast({
+                                title: 'Project Start Date Required',
+                                description: 'Please update Project Start Date first before editing the table.',
+                                variant: 'destructive',
+                              });
+                            }
+                          }}
                         >
                           <span>% PREVIOUSLY<br />INVOICED</span>
                         </TableHead>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Click to edit: Set the previously invoiced percentage for items</p>
+                        <p>
+                          {isDeleted 
+                            ? 'Restore first before editing' 
+                            : !canEdit 
+                            ? 'Please update Project Start Date first' 
+                            : 'Click to edit: Set the previously invoiced percentage for items'}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1426,9 +1504,18 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         insertPosition={insertPosition}
                         isFirstRow={originalIndex === 0 || filteredItems.findIndex(fi => fi.id === item.id) === 0}
                         isDeleted={isDeleted}
+                        canEdit={canEdit}
                         onEnterEditMode={() => {
-                          setIsEditing(true);
-                          setEditingColumn(null);
+                          if (canEdit) {
+                            setIsEditing(true);
+                            setEditingColumn(null);
+                          } else if (!isDeleted) {
+                            toast({
+                              title: 'Project Start Date Required',
+                              description: 'Please update Project Start Date first before editing the table.',
+                              variant: 'destructive',
+                            });
+                          }
                         }}
                         showActionsColumn={showActionsColumn}
                       />

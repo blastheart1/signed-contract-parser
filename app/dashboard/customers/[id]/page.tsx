@@ -485,6 +485,7 @@ function CustomerDetailContent() {
               orderId={contract.id}
               onSaveSuccess={handleOrderItemsSave}
               isDeleted={isDeleted}
+              projectStartDate={(contract.order as any)?.projectStartDate}
             />
           </TabsContent>
           <TabsContent value="invoices" className="mt-6 space-y-6">
