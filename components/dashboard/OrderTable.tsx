@@ -936,6 +936,199 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     });
   }, [items, showMainCategories, showSubCategories, productFilter]);
 
+  // Calculate totals for progress and financial columns based on filtered items
+  // All totals use filteredItems so they reflect the current view (including filters)
+  const totalProgressOverallPct = useMemo(() => {
+    const itemItems = filteredItems.filter(item => item.type === 'item');
+    let totalAmountTimesPct = 0;
+    let totalAmount = 0;
+    
+    itemItems.forEach(item => {
+      const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+      const progressPct = typeof item.progressOverallPct === 'number' 
+        ? item.progressOverallPct 
+        : parseFloat(String(item.progressOverallPct || 0)) || 0;
+      
+      // Only include items with valid amounts and percentages
+      if (amount > 0 && progressPct !== null && progressPct !== undefined && !isNaN(progressPct)) {
+        totalAmountTimesPct += amount * progressPct;
+        totalAmount += amount;
+      }
+    });
+    
+    return totalAmount > 0 ? totalAmountTimesPct / totalAmount : 0;
+  }, [filteredItems]);
+
+  const totalCompletedAmount = useMemo(() => {
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+        const progressOverallPct = typeof item.progressOverallPct === 'number' 
+          ? item.progressOverallPct 
+          : parseFloat(String(item.progressOverallPct || 0)) || 0;
+        
+        // Calculate completed amount: % Progress Overall * Amount (same logic as SortableRow)
+        const hasProgressPct = (progressOverallPct !== null && progressOverallPct !== undefined && 
+          (typeof progressOverallPct === 'string' ? progressOverallPct !== '' : true) && 
+          !isNaN(Number(progressOverallPct)));
+        
+        if (hasProgressPct && amount > 0) {
+          const progressOverallDecimal = progressOverallPct / 100;
+          return sum + (progressOverallDecimal * amount);
+        }
+        
+        // Fallback to stored completedAmount if available
+        const completedAmount = item.completedAmount 
+          ? (typeof item.completedAmount === 'number' ? item.completedAmount : parseFloat(String(item.completedAmount)) || 0)
+          : 0;
+        return sum + completedAmount;
+      }, 0);
+  }, [filteredItems]);
+
+  const totalPreviouslyInvoicedPct = useMemo(() => {
+    const itemItems = filteredItems.filter(item => item.type === 'item');
+    let totalAmountTimesPct = 0;
+    let totalAmount = 0;
+    
+    itemItems.forEach(item => {
+      const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+      const previouslyInvoicedPct = typeof item.previouslyInvoicedPct === 'number'
+        ? item.previouslyInvoicedPct
+        : parseFloat(String(item.previouslyInvoicedPct || 0)) || 0;
+      
+      // Only include items with valid amounts and percentages
+      if (amount > 0 && previouslyInvoicedPct !== null && previouslyInvoicedPct !== undefined && !isNaN(previouslyInvoicedPct)) {
+        totalAmountTimesPct += amount * previouslyInvoicedPct;
+        totalAmount += amount;
+      }
+    });
+    
+    return totalAmount > 0 ? totalAmountTimesPct / totalAmount : 0;
+  }, [filteredItems]);
+
+  const totalPreviouslyInvoicedAmount = useMemo(() => {
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+        const previouslyInvoicedPct = typeof item.previouslyInvoicedPct === 'number'
+          ? item.previouslyInvoicedPct
+          : parseFloat(String(item.previouslyInvoicedPct || 0)) || 0;
+        
+        // Calculate previously invoiced amount: Amount * % Previously Invoiced (same logic as SortableRow)
+        const hasPreviouslyInvoicedPct = (previouslyInvoicedPct !== null && previouslyInvoicedPct !== undefined && 
+          (typeof previouslyInvoicedPct === 'string' ? previouslyInvoicedPct !== '' : true) && 
+          !isNaN(Number(previouslyInvoicedPct)));
+        
+        if (hasPreviouslyInvoicedPct && amount > 0) {
+          const previouslyInvoicedDecimal = previouslyInvoicedPct / 100;
+          return sum + (amount * previouslyInvoicedDecimal);
+        }
+        
+        // Fallback to stored previouslyInvoicedAmount if available
+        const previouslyInvoicedAmount = item.previouslyInvoicedAmount 
+          ? (typeof item.previouslyInvoicedAmount === 'number' ? item.previouslyInvoicedAmount : parseFloat(String(item.previouslyInvoicedAmount)) || 0)
+          : 0;
+        return sum + previouslyInvoicedAmount;
+      }, 0);
+  }, [filteredItems]);
+
+  const totalNewProgressPct = useMemo(() => {
+    const itemItems = filteredItems.filter(item => item.type === 'item');
+    let totalAmountTimesPct = 0;
+    let totalAmount = 0;
+    
+    itemItems.forEach(item => {
+      const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+      const progressOverallPct = typeof item.progressOverallPct === 'number' 
+        ? item.progressOverallPct 
+        : parseFloat(String(item.progressOverallPct || 0)) || 0;
+      const previouslyInvoicedPct = typeof item.previouslyInvoicedPct === 'number'
+        ? item.previouslyInvoicedPct
+        : parseFloat(String(item.previouslyInvoicedPct || 0)) || 0;
+      
+      // Calculate new progress: % Progress Overall - % Previously Invoiced (same logic as SortableRow)
+      const hasProgressPct = (progressOverallPct !== null && progressOverallPct !== undefined && 
+        (typeof progressOverallPct === 'string' ? progressOverallPct !== '' : true) && 
+        !isNaN(Number(progressOverallPct)));
+      const hasPreviouslyInvoicedPct = (previouslyInvoicedPct !== null && previouslyInvoicedPct !== undefined && 
+        (typeof previouslyInvoicedPct === 'string' ? previouslyInvoicedPct !== '' : true) && 
+        !isNaN(Number(previouslyInvoicedPct)));
+      
+      let newProgressPct = 0;
+      if (hasProgressPct && hasPreviouslyInvoicedPct) {
+        newProgressPct = progressOverallPct - previouslyInvoicedPct;
+      } else if (item.newProgressPct) {
+        newProgressPct = typeof item.newProgressPct === 'number' ? item.newProgressPct : parseFloat(String(item.newProgressPct)) || 0;
+      }
+      
+      // Only include items with valid amounts and new progress percentages
+      if (amount > 0 && newProgressPct !== null && newProgressPct !== undefined && !isNaN(newProgressPct)) {
+        totalAmountTimesPct += amount * newProgressPct;
+        totalAmount += amount;
+      }
+    });
+    
+    return totalAmount > 0 ? totalAmountTimesPct / totalAmount : 0;
+  }, [filteredItems]);
+
+  const totalThisBill = useMemo(() => {
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+        const progressOverallPct = typeof item.progressOverallPct === 'number' 
+          ? item.progressOverallPct 
+          : parseFloat(String(item.progressOverallPct || 0)) || 0;
+        const previouslyInvoicedPct = typeof item.previouslyInvoicedPct === 'number'
+          ? item.previouslyInvoicedPct
+          : parseFloat(String(item.previouslyInvoicedPct || 0)) || 0;
+        
+        // Calculate new progress: % Progress Overall - % Previously Invoiced
+        const hasProgressPct = (progressOverallPct !== null && progressOverallPct !== undefined && 
+          (typeof progressOverallPct === 'string' ? progressOverallPct !== '' : true) && 
+          !isNaN(Number(progressOverallPct)));
+        const hasPreviouslyInvoicedPct = (previouslyInvoicedPct !== null && previouslyInvoicedPct !== undefined && 
+          (typeof previouslyInvoicedPct === 'string' ? previouslyInvoicedPct !== '' : true) && 
+          !isNaN(Number(previouslyInvoicedPct)));
+        
+        let newProgressPct = 0;
+        if (hasProgressPct && hasPreviouslyInvoicedPct) {
+          newProgressPct = progressOverallPct - previouslyInvoicedPct;
+        } else if (item.newProgressPct) {
+          newProgressPct = typeof item.newProgressPct === 'number' ? item.newProgressPct : parseFloat(String(item.newProgressPct)) || 0;
+        }
+        
+        // Calculate this bill: % New Progress * Amount (same logic as SortableRow)
+        const hasNewProgressPct = (newProgressPct !== null && newProgressPct !== undefined && 
+          (typeof newProgressPct === 'string' ? newProgressPct !== '' : true) && 
+          !isNaN(Number(newProgressPct)));
+        
+        if (hasNewProgressPct && amount > 0) {
+          const newProgressDecimal = newProgressPct / 100;
+          return sum + (newProgressDecimal * amount);
+        }
+        
+        // Fallback to stored thisBill if available
+        const thisBill = item.thisBill 
+          ? (typeof item.thisBill === 'number' ? item.thisBill : parseFloat(String(item.thisBill)) || 0)
+          : 0;
+        return sum + thisBill;
+      }, 0);
+  }, [filteredItems]);
+
+  // Helper functions for formatting totals (matching SortableRow formatting)
+  const formatTotalNumber = (value: number): string => {
+    if (isNaN(value) || value === 0) return '';
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatTotalPercent = (value: number): string => {
+    if (isNaN(value)) return '';
+    return value.toFixed(2);
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1243,13 +1436,33 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                   })}
                   {/* Total row */}
                   <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
-                    <TableCell colSpan={isEditing ? 4 : 3} className="font-bold text-right">
-                      Total
+                    <TableCell className="font-bold text-right ">
+                      Total:
                     </TableCell>
-                    <TableCell className="text-right font-bold">
+                    <TableCell className="text-right"></TableCell>
+                    <TableCell className="text-right border-r border-black"></TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
                       ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell colSpan={isEditing ? (showActionsColumn ? 6 : 5) : 6}></TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
+                      {!isNaN(totalProgressOverallPct) && totalProgressOverallPct !== 0 ? `${formatTotalPercent(totalProgressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
+                      {!isNaN(totalCompletedAmount) && totalCompletedAmount !== 0 ? `$${formatTotalNumber(totalCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
+                      {!isNaN(totalPreviouslyInvoicedPct) && totalPreviouslyInvoicedPct !== 0 ? `${formatTotalPercent(totalPreviouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
+                      {!isNaN(totalPreviouslyInvoicedAmount) && totalPreviouslyInvoicedAmount !== 0 ? `$${formatTotalNumber(totalPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-bold border-r border-black">
+                      {!isNaN(totalNewProgressPct) && totalNewProgressPct !== 0 ? `${formatTotalPercent(totalNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
+                      {!isNaN(totalThisBill) && totalThisBill !== 0 ? `$${formatTotalNumber(totalThisBill)}` : <span className="text-muted-foreground/30">—</span>}
+                    </TableCell>
+                    {isEditing && showActionsColumn && <TableCell></TableCell>}
                   </TableRow>
                 </SortableContext>
               </TableBody>

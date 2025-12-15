@@ -903,9 +903,10 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                         id={`link-${index}`}
                         checked={link.selected}
                         onCheckedChange={(checked) => {
-                          const updated = [...extractedLinks];
-                          updated[index].selected = checked === true;
-                          setExtractedLinks(updated);
+                          // Fix: Only update the specific link by URL, not by index
+                          setExtractedLinks(extractedLinks.map(l => 
+                            l.url === link.url ? { ...l, selected: checked === true } : l
+                          ));
                         }}
                       />
                       <div className="flex-1 space-y-1">

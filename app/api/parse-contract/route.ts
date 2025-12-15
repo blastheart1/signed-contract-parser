@@ -57,15 +57,26 @@ export async function POST(request: NextRequest) {
       const includeMainCategories: boolean = body.includeMainCategories !== false;
       const includeSubcategories: boolean = body.includeSubcategories !== false;
       const returnData: boolean = body.returnData === true;
+      const includeOriginalContract: boolean = body.includeOriginalContract !== false; // Default: true for backward compatibility
+      const existingContractId: string | undefined = body.existingContractId;
       
       // LINKS-ONLY MODE: Process without .eml file
       if (mode === 'links') {
         const originalContractUrl: string = body.originalContractUrl || '';
         const addendumLinks: string[] = body.addendumLinks || [];
         
-        if (!originalContractUrl || !validateAddendumUrl(originalContractUrl)) {
+        // Original Contract is only required if includeOriginalContract is true
+        if (includeOriginalContract && (!originalContractUrl || !validateAddendumUrl(originalContractUrl))) {
           return NextResponse.json(
-            { error: 'Valid originalContractUrl is required for links-only mode' },
+            { error: 'Valid originalContractUrl is required when includeOriginalContract is true' },
+            { status: 400 }
+          );
+        }
+        
+        // If not including original contract, we need addendum links to process
+        if (!includeOriginalContract && addendumLinks.length === 0) {
+          return NextResponse.json(
+            { error: 'Addendum links are required when includeOriginalContract is false' },
             { status: 400 }
           );
         }
@@ -105,37 +116,83 @@ export async function POST(request: NextRequest) {
           zip: '',
         };
         
-        // Process Original Contract
-        try {
-          const originalContractHTML = await fetchAddendumHTML(originalContractUrl);
-          const contractId = extractAddendumNumber(originalContractUrl);
-          
-          // Parse items from Original Contract HTML using existing function
-          items = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
-          
-          // Try to extract location from contract HTML text using existing function
+        // Fetch existing contract items if existingContractId is provided
+        let existingItems: any[] = [];
+        if (existingContractId) {
           try {
-            // extractLocation expects email text, but we can try with HTML text
-            // If it doesn't work, location will be mostly empty (acceptable per requirements)
-            const locationText = originalContractHTML; // Use HTML as text, extractLocation will try to parse it
-            const extractedLocation = extractLocation(locationText);
-            if (extractedLocation.orderNo || extractedLocation.streetAddress) {
-              location = extractedLocation;
+            const { db, schema } = await import('@/lib/db');
+            const { convertDatabaseToStoredContract } = await import('@/lib/db/contractHelpers');
+            const { eq } = await import('drizzle-orm');
+            
+            // Try to find contract by ID
+            const order = await db
+              .select()
+              .from(schema.orders)
+              .where(eq(schema.orders.id, existingContractId))
+              .limit(1)
+              .then(rows => rows[0]);
+            
+            if (order) {
+              const orderItems = await db
+                .select()
+                .from(schema.orderItems)
+                .where(eq(schema.orderItems.orderId, order.id));
+              
+              const customer = await db
+                .select()
+                .from(schema.customers)
+                .where(eq(schema.customers.dbxCustomerId, order.customerId))
+                .limit(1)
+                .then(rows => rows[0]);
+              
+              if (customer) {
+                const existingContract = convertDatabaseToStoredContract(customer, order, orderItems);
+                existingItems = existingContract.items || [];
+                console.log(`[API] Found existing contract with ${existingItems.length} items`);
+              }
             }
-          } catch (locError) {
-            console.warn('[API] Could not extract location from contract HTML, location will be incomplete');
-            // Location remains with empty/default values - acceptable per requirements
+          } catch (fetchError) {
+            console.warn(`[API] Could not fetch existing contract: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
           }
-          
-          processingSummary.originalContract.status = 'success';
-          processingSummary.summary.successful++;
-          processingSummary.summary.totalLinks++;
-        } catch (error) {
-          processingSummary.originalContract.status = 'failed';
-          processingSummary.originalContract.error = error instanceof Error ? error.message : 'Unknown error';
-          processingSummary.summary.failed++;
-          processingSummary.summary.totalLinks++;
-          throw new Error(`Failed to process Original Contract: ${processingSummary.originalContract.error}`);
+        }
+        
+        // Process Original Contract (only if includeOriginalContract is true)
+        if (includeOriginalContract && originalContractUrl) {
+          try {
+            const originalContractHTML = await fetchAddendumHTML(originalContractUrl);
+            const contractId = extractAddendumNumber(originalContractUrl);
+            
+            // Parse items from Original Contract HTML using existing function
+            items = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
+            
+            // Try to extract location from contract HTML text using existing function
+            try {
+              // extractLocation expects email text, but we can try with HTML text
+              // If it doesn't work, location will be mostly empty (acceptable per requirements)
+              const locationText = originalContractHTML; // Use HTML as text, extractLocation will try to parse it
+              const extractedLocation = extractLocation(locationText);
+              if (extractedLocation.orderNo || extractedLocation.streetAddress) {
+                location = extractedLocation;
+              }
+            } catch (locError) {
+              console.warn('[API] Could not extract location from contract HTML, location will be incomplete');
+              // Location remains with empty/default values - acceptable per requirements
+            }
+            
+            processingSummary.originalContract.status = 'success';
+            processingSummary.summary.successful++;
+            processingSummary.summary.totalLinks++;
+          } catch (error) {
+            processingSummary.originalContract.status = 'failed';
+            processingSummary.originalContract.error = error instanceof Error ? error.message : 'Unknown error';
+            processingSummary.summary.failed++;
+            processingSummary.summary.totalLinks++;
+            throw new Error(`Failed to process Original Contract: ${processingSummary.originalContract.error}`);
+          }
+        } else {
+          // Skip original contract processing
+          console.log('[API] Skipping original contract processing (includeOriginalContract: false)');
+          processingSummary.originalContract.status = 'not_found';
         }
         
         // Process Addendums
@@ -159,6 +216,58 @@ export async function POST(request: NextRequest) {
               processingSummary.summary.failed++;
             }
           }
+        }
+        
+        // Merge with existing contract items if existingContractId is provided and only addendums were processed
+        // CRITICAL: This preserves ALL existing item data including progress updates, invoice links, and any user modifications
+        // We only APPEND new addendum items - we never modify or overwrite existing items
+        if (existingContractId && existingItems.length > 0 && !includeOriginalContract && addendumData.length > 0) {
+          console.log(`[API] Merging ${addendumData.length} addendum(s) with ${existingItems.length} existing items`);
+          console.log(`[API] CRITICAL: Preserving all existing item properties (progress fields, invoice links, etc.)`);
+          // Combine: existing items + 1 blank row + new addendum items
+          // Using spread operator creates new array but preserves all item object properties (shallow copy is safe since we don't modify items)
+          const mergedItems: any[] = existingItems.map(item => ({ ...item })); // Deep copy each item to ensure no accidental modifications
+          
+          // Add exactly 1 blank row before new addendums
+          mergedItems.push({
+            type: 'item',
+            productService: '',
+            qty: '',
+            rate: '',
+            amount: '',
+            columnBLabel: 'Initial',
+            isBlankRow: true,
+          });
+          
+          // Add addendum items
+          addendumData.forEach((addendum: AddendumData) => {
+            const addendumNum = addendum.addendumNumber;
+            const urlId = addendum.urlId || addendum.addendumNumber;
+            const headerText = `Addendum #${addendumNum} (${urlId})`;
+            
+            mergedItems.push({
+              type: 'maincategory',
+              productService: headerText,
+              qty: '',
+              rate: '',
+              amount: '',
+              columnBLabel: 'Addendum',
+              isAddendumHeader: true,
+              addendumNumber: addendumNum,
+              addendumUrlId: urlId,
+            });
+            
+            addendum.items.forEach((item: any) => {
+              mergedItems.push({
+                ...item,
+                columnBLabel: 'Addendum',
+              });
+            });
+          });
+          
+          // Replace items with merged items
+          items = mergedItems as any;
+          console.log(`[API] Merged items total: ${items.length}`);
         }
         
         // Apply filtering
@@ -258,8 +367,49 @@ export async function POST(request: NextRequest) {
       let items: ReturnType<typeof extractOrderItems> = [];
       let addendumData: AddendumData[] = [];
       
+      // Fetch existing contract items if existingContractId is provided
+      let existingItems: any[] = [];
+      if (existingContractId) {
+        try {
+          const { db, schema } = await import('@/lib/db');
+          const { convertDatabaseToStoredContract } = await import('@/lib/db/contractHelpers');
+          const { eq } = await import('drizzle-orm');
+          
+          // Try to find contract by ID
+          const order = await db
+            .select()
+            .from(schema.orders)
+            .where(eq(schema.orders.id, existingContractId))
+            .limit(1)
+            .then(rows => rows[0]);
+          
+          if (order) {
+            const orderItems = await db
+              .select()
+              .from(schema.orderItems)
+              .where(eq(schema.orderItems.orderId, order.id));
+            
+            const customer = await db
+              .select()
+              .from(schema.customers)
+              .where(eq(schema.customers.dbxCustomerId, order.customerId))
+              .limit(1)
+              .then(rows => rows[0]);
+            
+            if (customer) {
+              const existingContract = convertDatabaseToStoredContract(customer, order, orderItems);
+              existingItems = existingContract.items || [];
+              console.log(`[API] Found existing contract with ${existingItems.length} items`);
+            }
+          }
+        } catch (fetchError) {
+          console.warn(`[API] Could not fetch existing contract: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
+        }
+      }
+      
       // NEW FLOW: If originalContractUrl is provided in body, use it (from Step 2 selection)
-      if (originalContractUrlFromBody) {
+      // Only process if includeOriginalContract is true
+      if (originalContractUrlFromBody && includeOriginalContract) {
         processingSummary.originalContract.url = originalContractUrlFromBody;
         console.log(`[API] Using provided Original Contract link: ${originalContractUrlFromBody}`);
         
@@ -309,13 +459,14 @@ export async function POST(request: NextRequest) {
         }
       }
       // OLD FLOW: Auto-detect links if addAddendum checkbox is unchecked (backward compatibility)
+      // Only process original contract if includeOriginalContract is true
       else if (!addAddendum) {
         console.log('[API] Auto-detecting contract links from email...');
         const extractedLinks = extractContractLinks(parsed);
         console.log(`[API] Extracted links - Original Contract: ${extractedLinks.originalContractUrl || 'not found'}, Addendums: ${extractedLinks.addendumUrls.length}`);
         
-        // Process Original Contract if found
-        if (extractedLinks.originalContractUrl) {
+        // Process Original Contract if found and includeOriginalContract is true
+        if (extractedLinks.originalContractUrl && includeOriginalContract) {
           processingSummary.originalContract.url = extractedLinks.originalContractUrl;
           console.log(`[API] Found Original Contract link: ${extractedLinks.originalContractUrl}`);
           
@@ -390,7 +541,13 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Manual addendum links provided (existing behavior - backward compatibility)
-        items = extractOrderItems(parsed.html);
+        // Only extract items from email HTML if includeOriginalContract is true
+        if (includeOriginalContract) {
+          items = extractOrderItems(parsed.html);
+        } else {
+          items = [];
+          console.log('[API] Skipping original contract processing from email HTML (includeOriginalContract: false)');
+        }
         
         if (addendumLinks.length > 0) {
           console.log(`[API] Processing ${addendumLinks.length} manually entered addendum link(s)...`);
@@ -423,6 +580,58 @@ export async function POST(request: NextRequest) {
       // Update total links count (include Original Contract if it was processed)
       if (processingSummary.originalContract.status !== 'not_found') {
         processingSummary.summary.totalLinks++;
+      }
+      
+      // Merge with existing contract items if existingContractId is provided and only addendums were processed
+      // CRITICAL: This preserves ALL existing item data including progress updates, invoice links, and any user modifications
+      // We only APPEND new addendum items - we never modify or overwrite existing items
+      if (existingContractId && existingItems.length > 0 && !includeOriginalContract && addendumData.length > 0) {
+        console.log(`[API] Merging ${addendumData.length} addendum(s) with ${existingItems.length} existing items`);
+        console.log(`[API] CRITICAL: Preserving all existing item properties (progress fields, invoice links, etc.)`);
+        // Combine: existing items + 1 blank row + new addendum items
+        // Using map with spread creates deep copy of each item to ensure no accidental modifications
+        const mergedItems: any[] = existingItems.map(item => ({ ...item })); // Deep copy each item to ensure no accidental modifications
+        
+        // Add exactly 1 blank row before new addendums
+        mergedItems.push({
+          type: 'item',
+          productService: '',
+          qty: '',
+          rate: '',
+          amount: '',
+          columnBLabel: 'Initial',
+          isBlankRow: true,
+        });
+        
+        // Add addendum items
+        addendumData.forEach((addendum: AddendumData) => {
+          const addendumNum = addendum.addendumNumber;
+          const urlId = addendum.urlId || addendum.addendumNumber;
+          const headerText = `Addendum #${addendumNum} (${urlId})`;
+          
+          mergedItems.push({
+            type: 'maincategory',
+            productService: headerText,
+            qty: '',
+            rate: '',
+            amount: '',
+            columnBLabel: 'Addendum',
+            isAddendumHeader: true,
+            addendumNumber: addendumNum,
+            addendumUrlId: urlId,
+          });
+          
+          addendum.items.forEach((item: any) => {
+            mergedItems.push({
+              ...item,
+              columnBLabel: 'Addendum',
+            });
+          });
+        });
+        
+        // Replace items with merged items
+        items = mergedItems as any;
+        console.log(`[API] Merged items total: ${items.length}`);
       }
       
       // Apply filtering based on category inclusion flags

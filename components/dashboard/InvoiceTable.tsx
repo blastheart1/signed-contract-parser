@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, Save, X, Plus, Trash2, Loader2, Copy, Link2, Eye, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -309,6 +309,36 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     const payments = parseFloat(invoice.paymentsReceived?.toString() || '0');
     return amount - payments;
   };
+
+  // Calculate totals for Amount, Payments, and Open Balance
+  // Exclude invoices marked with exclude: true from totals
+  const totalAmount = useMemo(() => {
+    return invoices
+      .filter(invoice => !invoice.exclude)
+      .reduce((sum, invoice) => {
+        const amount = parseFloat(invoice.invoiceAmount?.toString() || '0');
+        return sum + amount;
+      }, 0);
+  }, [invoices]);
+
+  const totalPayments = useMemo(() => {
+    return invoices
+      .filter(invoice => !invoice.exclude)
+      .reduce((sum, invoice) => {
+        const payments = parseFloat(invoice.paymentsReceived?.toString() || '0');
+        return sum + payments;
+      }, 0);
+  }, [invoices]);
+
+  const totalOpenBalance = useMemo(() => {
+    return invoices
+      .filter(invoice => !invoice.exclude)
+      .reduce((sum, invoice) => {
+        const amount = parseFloat(invoice.invoiceAmount?.toString() || '0');
+        const payments = parseFloat(invoice.paymentsReceived?.toString() || '0');
+        return sum + (amount - payments);
+      }, 0);
+  }, [invoices]);
 
   if (loading) {
     return (
@@ -760,6 +790,27 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                     </TableRow>
                   );
                 })
+              )}
+              {/* Total row */}
+              {invoices.length > 0 && (
+                <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
+                  <TableCell className="font-bold text-right">
+                    Total:
+                  </TableCell>
+                  <TableCell></TableCell>
+                  <TableCell></TableCell>
+                  <TableCell className="text-right font-bold border-r border-black"></TableCell>
+                  <TableCell className="text-right font-bold border-r border-black">
+                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-bold border-r border-black">
+                    ${totalPayments.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-bold border-r border-black">
+                    ${totalOpenBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

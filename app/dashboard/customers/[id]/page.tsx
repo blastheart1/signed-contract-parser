@@ -4,13 +4,20 @@ import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, FileSpreadsheet, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Download, FileSpreadsheet, AlertTriangle, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { StoredContract } from '@/lib/store/contractStore';
 import CustomerInfo from '@/components/dashboard/CustomerInfo';
 import OrderTable from '@/components/dashboard/OrderTable';
@@ -18,6 +25,7 @@ import InvoiceTable from '@/components/dashboard/InvoiceTable';
 import InvoiceSummary from '@/components/dashboard/InvoiceSummary';
 import OrderItemsValidationAlert from '@/components/dashboard/OrderItemsValidationAlert';
 import DeleteCustomerButton from '@/components/dashboard/DeleteCustomerButton';
+import ReuploadContract from '@/components/dashboard/ReuploadContract';
 
 function CustomerDetailContent() {
   const params = useParams();
@@ -32,6 +40,7 @@ function CustomerDetailContent() {
   const [currentItems, setCurrentItems] = useState<any[]>([]);
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
   
   // Refresh invoice summary when order items are saved
   const handleOrderItemsSave = async () => {
@@ -404,6 +413,16 @@ function CustomerDetailContent() {
         </Button>
         <div className="flex gap-2">
           <Button
+            onClick={() => setShowUploadDialog(true)}
+            disabled={isDeleted}
+            size="lg"
+            variant="outline"
+            className="gap-2"
+          >
+            <Upload className="h-5 w-5" />
+            Upload Contract
+          </Button>
+          <Button
             onClick={handleGenerateSpreadsheet}
             disabled={generating}
             size="lg"
@@ -478,6 +497,28 @@ function CustomerDetailContent() {
           </TabsContent>
         </Tabs>
       </motion.div>
+
+      {/* Upload Contract Dialog */}
+      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Upload Contract</DialogTitle>
+            <DialogDescription>
+              Upload a new EML file or add DBX links to add addendums to this contract.
+            </DialogDescription>
+          </DialogHeader>
+          {contract && (
+            <ReuploadContract
+              contract={contract}
+              onSuccess={async () => {
+                await fetchContract();
+                setShowUploadDialog(false);
+              }}
+              onClose={() => setShowUploadDialog(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
     );
   } catch (renderError) {
