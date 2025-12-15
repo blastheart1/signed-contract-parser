@@ -57,31 +57,46 @@ TableFooter.displayName = "TableFooter"
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
-  <tr
-    ref={ref}
-    className={cn(
-      "border-b transition-colors duration-150 hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm data-[state=selected]:bg-muted",
-      className
-    )}
-    {...props}
-  />
-))
+>(({ className, ...props }, ref) => {
+  return (
+    <tr
+      ref={ref}
+      className={cn(
+        "border-b transition-colors duration-150",
+        // Hover is applied via CSS based on hover:bg-green-200 class (only for line items)
+        "data-[state=selected]:bg-muted",
+        className
+      )}
+      {...props}
+    />
+  );
+})
 TableRow.displayName = "TableRow"
 
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
-  <th
-    ref={ref}
-    className={cn(
-      "h-10 px-2 text-left align-middle font-semibold text-foreground bg-muted/50 dark:bg-muted/30 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-      className
-    )}
-    {...props}
-  />
-))
+>(({ className, scope = "col", ...props }, ref) => {
+  // Check if we're in Apple theme
+  const isAppleTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'apple';
+  
+  return (
+    <th
+      ref={ref}
+      scope={scope}
+      className={cn(
+        "h-10 px-2 text-left align-middle text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        // Apple theme: lighter background, medium font weight
+        isAppleTheme
+          ? "bg-muted font-medium"
+          : "font-semibold bg-muted/50 dark:bg-muted/30",
+        className
+      )}
+      style={{ fontFamily: 'var(--font-heading, var(--font-body))' }}
+      {...props}
+    />
+  );
+})
 TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<

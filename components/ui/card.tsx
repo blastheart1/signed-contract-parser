@@ -36,6 +36,7 @@ const CardTitle = React.forwardRef<
   <div
     ref={ref}
     className={cn("font-semibold leading-none tracking-tight", className)}
+    style={{ fontFamily: 'var(--font-heading, var(--font-body))' }}
     {...props}
   />
 ))

@@ -357,7 +357,7 @@ export default function CustomersPage() {
                                   window.location.href = `/dashboard/customers/${customer.id}`;
                                 }
                               }}
-                              className={`border-b transition-colors duration-150 hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm ${!showTrash ? 'cursor-pointer' : ''}`}
+                              className={`border-b transition-colors duration-150 hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150 ${!showTrash ? 'cursor-pointer' : ''}`}
                             >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -438,9 +438,9 @@ export default function CustomersPage() {
                         </TableCell>
                         <TableCell className="w-36">
                           {customer.status === 'completed' ? (
-                            <Badge variant="default" className="bg-green-600 text-center flex items-center justify-center">Completed</Badge>
+                            <Badge variant="default" className="bg-green-600 min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Completed</Badge>
                           ) : (
-                            <Badge variant="secondary" className="text-center flex items-center justify-center">Pending Updates</Badge>
+                            <Badge variant="secondary" className="min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Pending Updates</Badge>
                           )}
                         </TableCell>
                             </motion.tr>

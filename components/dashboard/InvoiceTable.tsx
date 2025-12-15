@@ -454,7 +454,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                   const openBalance = calculateOpenBalance(displayInvoice);
 
                   return (
-                    <TableRow key={invoice.id}>
+                    <TableRow key={invoice.id} className="hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm">
                       <TableCell className="w-[100px] min-h-[32px]">
                         <div className="min-h-[32px] flex items-center">
                           {status ? (

@@ -233,7 +233,14 @@ function SortableRow({
                   onEnterEditMode();
                 }
               }}
-              className={`${rowBgClass} ${isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : ''} ${isItem && !isEditing && !editingColumn && canEdit !== false ? 'cursor-pointer' : ''} ${isItem && canEdit !== false ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''} ${isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : ''} ${isActive ? 'opacity-50' : ''}`}
+              className={cn(
+                rowBgClass,
+                isMainCategory ? 'font-bold' : isSubCategory ? 'font-semibold' : '',
+                isItem && !isEditing && !editingColumn && canEdit !== false ? 'cursor-pointer' : '',
+                isItem && canEdit !== false ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : '',
+                isDragOver ? 'ring-2 ring-primary ring-inset bg-primary/10' : '',
+                isActive ? 'opacity-50' : ''
+              )}
             >
       <TableCell className="font-medium w-[300px] pl-2 align-top">
         <div className="flex items-start gap-2 min-w-0">
@@ -491,8 +498,9 @@ function SortableRow({
                     onClick={() => !isDeleted && onDeleteRow(item.id)}
                     disabled={isDeleted}
                     className={`h-7 w-7 p-0 text-destructive hover:text-destructive ${isDeleted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    aria-label={`Delete ${item.productService || 'row'}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>

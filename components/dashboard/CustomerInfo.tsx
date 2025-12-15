@@ -378,9 +378,9 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Status</dt>
                 <dd className="text-sm text-foreground font-medium text-right flex-1">
                   {(currentContract.customer as any).status === 'completed' ? (
-                    <Badge variant="default" className="bg-green-600 min-w-[120px] text-center">Completed</Badge>
+                    <Badge variant="default" className="bg-green-600 min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Completed</Badge>
                   ) : (
-                    <Badge variant="secondary" className="min-w-[120px] text-center">Pending Updates</Badge>
+                    <Badge variant="secondary" className="min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Pending Updates</Badge>
                   )}
                 </dd>
               </div>

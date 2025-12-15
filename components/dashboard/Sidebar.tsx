@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import SidebarNavigation from './SidebarNavigation';
 import { createPortal } from 'react-dom';
 import ChangelogModal from './ChangelogModal';
+import ThemeSelector from './ThemeSelector';
 
 export interface User {
   id: string;
@@ -268,11 +269,27 @@ export default function Sidebar({
         />
       </nav>
 
-      {/* Footer - User Info & Logout */}
+      {/* Footer - Theme Selector, User Info & Logout */}
       <div className={cn(
         "p-4",
         !(collapsed && !isMobile) && "border-t"
       )}>
+        {/* Theme Selector */}
+        <motion.div
+          initial={false}
+          animate={{ opacity: collapsed && !isMobile ? 0 : 1, height: collapsed && !isMobile ? 0 : 'auto' }}
+          transition={{ duration: 0.15 }}
+          className={cn(
+            'mb-3',
+            collapsed && !isMobile ? 'overflow-hidden' : ''
+          )}
+        >
+          {(!collapsed || isMobile) && (
+            <ThemeSelector />
+          )}
+        </motion.div>
+        
+        {/* User Info */}
         <motion.div
           initial={false}
           animate={{ opacity: collapsed && !isMobile ? 0 : 1, height: collapsed && !isMobile ? 0 : 'auto' }}
@@ -289,6 +306,8 @@ export default function Sidebar({
             </>
           )}
         </motion.div>
+        
+        {/* Logout Button */}
         <Button
           variant="ghost"
           className={cn(
