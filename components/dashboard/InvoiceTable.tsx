@@ -40,8 +40,9 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Partial<Invoice>>({});
-  const [selectedLineItemIds, setSelectedLineItemIds] = useState<string[]>([]);
-  const [linkedItemsTotal, setLinkedItemsTotal] = useState<number>(0); // Sum of linked items' THIS BILL values
+  const [selectedLineItemIds, setSelectedLineItemIds] = useState<string[]>([]); // Backward compatibility
+  const [selectedLineItems, setSelectedLineItems] = useState<Array<{ itemId: string; amount: number }>>([]); // New format with amounts
+  const [linkedItemsTotal, setLinkedItemsTotal] = useState<number>(0); // Sum of linked items' amounts
   const [lineItemSelectorOpen, setLineItemSelectorOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedInvoiceForDetails, setSelectedInvoiceForDetails] = useState<Invoice | null>(null);
@@ -110,20 +111,23 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
   const handleEdit = (invoice: Invoice) => {
     setEditingId(invoice.id);
     setEditingInvoice({ ...invoice });
-    // Load existing linked line item IDs if any
+    // Load existing linked line items if any
     if (invoice.linkedLineItems && Array.isArray(invoice.linkedLineItems)) {
       const linkedIds = invoice.linkedLineItems.map(item => item.orderItemId);
-      setSelectedLineItemIds(linkedIds);
+      const linkedItems = invoice.linkedLineItems.map(item => ({
+        itemId: item.orderItemId,
+        amount: parseFloat(String(item.thisBillAmount || 0)),
+      }));
+      setSelectedLineItemIds(linkedIds); // For backward compatibility
+      setSelectedLineItems(linkedItems); // New format
       // Calculate total from linked items' thisBillAmount values
-      const total = invoice.linkedLineItems.reduce((sum, item) => {
-        const amount = parseFloat(String(item.thisBillAmount || 0));
-        return sum + amount;
-      }, 0);
+      const total = linkedItems.reduce((sum, item) => sum + item.amount, 0);
       setLinkedItemsTotal(total);
       // Auto-populate invoice amount with the total
       setEditingInvoice({ ...invoice, invoiceAmount: total > 0 ? total.toString() : invoice.invoiceAmount });
     } else {
       setSelectedLineItemIds([]);
+      setSelectedLineItems([]);
       setLinkedItemsTotal(0);
     }
   };
@@ -132,6 +136,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     setEditingId(null);
     setEditingInvoice({});
     setSelectedLineItemIds([]);
+    setSelectedLineItems([]);
     setLinkedItemsTotal(0);
     // If it was a new invoice, remove it from the list
     setInvoices(invoices.filter(inv => inv.id !== editingId || !inv.id.startsWith('new-')));
@@ -159,8 +164,8 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
         exclude: invoiceData.exclude || false,
       };
 
-      // Handle invoiceAmount - ensure it's null not empty string
-      if (selectedLineItemIds.length > 0 && linkedItemsTotal > 0) {
+      // Handle invoiceAmount - use linked items total if available, otherwise use manual entry
+      if (selectedLineItems.length > 0 && linkedItemsTotal > 0) {
         requestBody.invoiceAmount = linkedItemsTotal.toString();
       } else {
         requestBody.invoiceAmount = invoiceData.invoiceAmount && invoiceData.invoiceAmount.trim() !== '' 
@@ -168,17 +173,17 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
           : null;
       }
 
-      // Handle linkedLineItemIds
-      // For PATCH: send empty array to clear, or array with IDs to set
+      // Handle linkedLineItems (new format with amounts)
+      // For PATCH: send empty array to clear, or array with items to set
       // For POST: only include if there are items to link
       if (isNew) {
         // POST: only include if there are items
-        if (selectedLineItemIds.length > 0) {
-          requestBody.linkedLineItemIds = selectedLineItemIds;
+        if (selectedLineItems.length > 0) {
+          requestBody.linkedLineItems = selectedLineItems;
         }
       } else {
-        // PATCH: always include to allow clearing (empty array) or setting (array with IDs)
-        requestBody.linkedLineItemIds = selectedLineItemIds;
+        // PATCH: always include to allow clearing (empty array) or setting (array with items)
+        requestBody.linkedLineItems = selectedLineItems;
       }
 
       const response = await fetch(url, {
@@ -213,6 +218,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
         setEditingId(null);
         setEditingInvoice({});
         setSelectedLineItemIds([]);
+        setSelectedLineItems([]);
         setLinkedItemsTotal(0);
         // Show success toast
         toast({
@@ -545,7 +551,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                               onChange={(e) => {
                                 const newValue = e.target.value;
                                 // If items are linked, prevent exceeding the linked items total
-                                if (selectedLineItemIds.length > 0 && linkedItemsTotal > 0) {
+                                if (selectedLineItems.length > 0 && linkedItemsTotal > 0) {
                                   const numValue = parseFloat(newValue);
                                   if (!isNaN(numValue) && numValue > linkedItemsTotal) {
                                     // Don't allow exceeding the total - set to max
@@ -562,10 +568,10 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                               }}
                               placeholder="0.00"
                               className="w-full h-8 text-right pl-7 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
-                              readOnly={selectedLineItemIds.length > 0}
-                              max={selectedLineItemIds.length > 0 ? linkedItemsTotal : undefined}
-                              title={selectedLineItemIds.length > 0 
-                                ? `Amount calculated from ${selectedLineItemIds.length} linked item(s). Total: $${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              readOnly={selectedLineItems.length > 0}
+                              max={selectedLineItems.length > 0 ? linkedItemsTotal : undefined}
+                              title={selectedLineItems.length > 0 
+                                ? `Amount calculated from ${selectedLineItems.length} linked item(s). Total: $${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                 : ''}
                             />
                           </div>
@@ -638,7 +644,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                       <TableCell className="w-[140px] min-h-[32px]">
                         {isEditing ? (
                           <div className="flex gap-2 items-center">
-                            {selectedLineItemIds.length > 0 && (
+                            {selectedLineItems.length > 0 && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -647,7 +653,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
                                     </div>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>{selectedLineItemIds.length} item{selectedLineItemIds.length !== 1 ? 's' : ''} linked (${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
+                                    <p>{selectedLineItems.length} item{selectedLineItems.length !== 1 ? 's' : ''} linked (${linkedItemsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -823,11 +829,14 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
         onOpenChange={setLineItemSelectorOpen}
         orderId={orderId}
         selectedItemIds={selectedLineItemIds}
-        onSave={(itemIds, totalAmount) => {
-          setSelectedLineItemIds(itemIds);
+        selectedItemsWithAmounts={selectedLineItems}
+        onSave={(selectedItems, totalAmount) => {
+          // Update both formats for backward compatibility
+          setSelectedLineItemIds(selectedItems.map(item => item.itemId));
+          setSelectedLineItems(selectedItems);
           setLinkedItemsTotal(totalAmount);
           // Auto-populate invoice amount with the total
-          if (itemIds.length > 0 && totalAmount > 0) {
+          if (selectedItems.length > 0 && totalAmount > 0) {
             setEditingInvoice({ ...editingInvoice, invoiceAmount: totalAmount.toString() });
           } else {
             // Clear invoice amount if no items linked

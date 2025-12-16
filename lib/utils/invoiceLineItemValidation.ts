@@ -65,38 +65,36 @@ export function calculateThisBill(item: OrderItemForValidation): number {
 }
 
 /**
- * Validate if an order item can be linked to an invoice
+ * Validate if an order item can be linked to an invoice with a specific amount
+ * Simplified validation: focuses on cumulative total protection
  */
-export function validateItemForLinking(
+export function validateItemForLinkingWithAmount(
   item: OrderItemForValidation,
+  invoiceAmount: number, // User-entered invoice amount for this item
   existingInvoiceAmounts: number = 0 // Sum of invoice amounts already linked to this item
 ): { valid: boolean; error?: string } {
-  // Calculate thisBill (may be from stored value or calculated from percentages)
-  const thisBill = calculateThisBill(item);
   const amount = parseDecimal(item.amount);
   const progressOverallPct = parseDecimal(item.progressOverallPct);
-  const previouslyInvoicedPct = parseDecimal(item.previouslyInvoicedPct);
 
-  // Rule 1: Item must have THIS BILL > 0
-  if (thisBill <= 0) {
+  // Rule 1: Item must have Progress Overall % > 0
+  if (progressOverallPct <= 0) {
     return {
       valid: false,
-      error: 'Item must have a THIS BILL value greater than 0',
+      error: 'Item must have Progress Overall % greater than 0',
     };
   }
 
-  // Rule 2: Item cannot be fully completed and invoiced
-  // Both percentages must be at 100% to block
-  if (progressOverallPct >= 100 && previouslyInvoicedPct >= 100) {
+  // Rule 2: Invoice amount must be > 0
+  if (invoiceAmount <= 0) {
     return {
       valid: false,
-      error: 'Item is fully completed and invoiced (both percentages at 100%)',
+      error: 'Invoice amount must be greater than 0',
     };
   }
 
-  // Rule 3: Cannot exceed item's amount
+  // Rule 3: Cannot exceed item's amount (hard limit)
   // The sum of all invoice amounts for this item cannot exceed the item's amount
-  if (existingInvoiceAmounts + thisBill > amount) {
+  if (existingInvoiceAmounts + invoiceAmount > amount) {
     const remaining = amount - existingInvoiceAmounts;
     return {
       valid: false,
@@ -105,6 +103,19 @@ export function validateItemForLinking(
   }
 
   return { valid: true };
+}
+
+/**
+ * Validate if an order item can be linked to an invoice (backward compatibility)
+ * @deprecated Use validateItemForLinkingWithAmount for new code
+ */
+export function validateItemForLinking(
+  item: OrderItemForValidation,
+  existingInvoiceAmounts: number = 0 // Sum of invoice amounts already linked to this item
+): { valid: boolean; error?: string } {
+  // Calculate thisBill (may be from stored value or calculated from percentages)
+  const thisBill = calculateThisBill(item);
+  return validateItemForLinkingWithAmount(item, thisBill, existingInvoiceAmounts);
 }
 
 /**
@@ -144,7 +155,23 @@ export function calculateInvoiceAmountFromItems(
 }
 
 /**
- * Create linked line items array from order item IDs
+ * Create linked line items array from order item IDs with amounts
+ * @param itemsWithAmounts Array of { itemId, amount } pairs
+ */
+export function createLinkedLineItemsFromAmounts(
+  itemsWithAmounts: Array<{ itemId: string; amount: number }>
+): LinkedLineItem[] {
+  return itemsWithAmounts
+    .filter(item => item.amount > 0)
+    .map(item => ({
+      orderItemId: item.itemId,
+      thisBillAmount: item.amount,
+    }));
+}
+
+/**
+ * Create linked line items array from order item IDs (backward compatibility)
+ * @deprecated Use createLinkedLineItemsFromAmounts for new code
  */
 export function createLinkedLineItems(
   orderItemIds: string[],

@@ -93,50 +93,14 @@ export async function GET(
       });
       console.log(`[GET /api/orders/${orderId}/items] Sample items with THIS BILL analysis:`, JSON.stringify(sampleItems, null, 2));
 
-      // Filter items with THIS BILL > 0 (handle decimal/string types)
-      // Calculate thisBill: thisBill = (newProgressPct / 100) * amount
-      // Where newProgressPct = progressOverallPct - previouslyInvoicedPct
+      // Filter items with Progress Overall % > 0 (simplified filtering)
+      // This allows users to see all items with progress and manually set invoice amounts
       const availableItems = allItems.filter(item => {
-        let thisBill = 0;
-        
-        // Try to get stored thisBill value first
-        if (item.thisBill) {
-          thisBill = parseFloat(String(item.thisBill));
-        }
-        
-        // If thisBill is 0 or missing, calculate it
-        if ((!thisBill || thisBill === 0) && item.amount) {
-          let newProgressPct = 0;
-          
-          // Try to get stored newProgressPct
-          if (item.newProgressPct) {
-            newProgressPct = parseFloat(String(item.newProgressPct));
-          }
-          
-          // If newProgressPct is missing, calculate it from progressOverallPct - previouslyInvoicedPct
-          // Handle cases where previouslyInvoicedPct is NULL/0 (treat as 0)
-          if ((!newProgressPct || newProgressPct === 0) && item.progressOverallPct !== null) {
-            const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
-            // Treat NULL/undefined previouslyInvoicedPct as 0
-            const previouslyInvoicedPct = item.previouslyInvoicedPct !== null && item.previouslyInvoicedPct !== undefined
-              ? parseFloat(String(item.previouslyInvoicedPct || 0))
-              : 0;
-            newProgressPct = progressOverallPct - previouslyInvoicedPct;
-          }
-          
-          // Calculate thisBill from newProgressPct and amount
-          if (newProgressPct > 0 && item.amount) {
-            const amount = parseFloat(String(item.amount));
-            if (!isNaN(newProgressPct) && !isNaN(amount) && amount > 0) {
-              thisBill = (newProgressPct / 100) * amount;
-            }
-          }
-        }
-        
-        return !isNaN(thisBill) && thisBill > 0;
+        const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
+        return !isNaN(progressOverallPct) && progressOverallPct > 0;
       });
 
-      console.log(`[GET /api/orders/${orderId}/items] Found ${allItems.length} items with itemType='item', ${availableItems.length} with THIS BILL > 0`);
+      console.log(`[GET /api/orders/${orderId}/items] Found ${allItems.length} items with itemType='item', ${availableItems.length} with Progress Overall % > 0`);
 
       // Get all invoices for this order to calculate existing invoice amounts per item
       // Note: This will fail if migration hasn't been run (linked_line_items column missing)
@@ -223,16 +187,16 @@ export async function GET(
             id: item.id,
             productService: item.productService,
             amount,
-            thisBill,
+            thisBill, // Auto-populated value, user can override
             progressOverallPct,
             previouslyInvoicedPct,
             existingInvoiceAmounts,
             remainingBillable,
             isFullyCompletedAndInvoiced,
-            canLink: !isFullyCompletedAndInvoiced && thisBill > 0 && remainingBillable >= thisBill,
+            canLink: remainingBillable > 0, // Can link if there's remaining billable amount
           };
         })
-        .filter(item => item.canLink); // Only return items that can be linked
+        .filter(item => item.canLink); // Only return items with remaining billable amount
 
       console.log(`[GET /api/orders/${orderId}/items] Returning ${formattedItems.length} available items`);
       return NextResponse.json({

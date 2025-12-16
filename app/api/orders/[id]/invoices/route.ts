@@ -6,8 +6,10 @@ import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus
 import { logInvoiceChange, valueToString } from '@/lib/services/changeHistory';
 import {
   validateItemsForLinking,
+  validateItemForLinkingWithAmount,
   calculateInvoiceAmountFromItems,
   createLinkedLineItems,
+  createLinkedLineItemsFromAmounts,
   type OrderItemForValidation,
 } from '@/lib/utils/invoiceLineItemValidation';
 
@@ -68,16 +70,29 @@ export async function POST(
       paymentsReceived: body.paymentsReceived,
       exclude: body.exclude,
       linkedLineItemIds: body.linkedLineItemIds,
+      linkedLineItems: body.linkedLineItems,
       linkedLineItemIdsLength: body.linkedLineItemIds?.length || 0,
+      linkedLineItemsLength: body.linkedLineItems?.length || 0,
     });
 
-    // Validate request body
+    // Validate request body - support both old format (linkedLineItemIds) and new format (linkedLineItems with amounts)
     if (body.linkedLineItemIds !== undefined && !Array.isArray(body.linkedLineItemIds)) {
       console.error(`[POST /api/orders/${orderId}/invoices] Invalid linkedLineItemIds format:`, typeof body.linkedLineItemIds, body.linkedLineItemIds);
       return NextResponse.json(
         {
           error: 'Invalid request format',
           message: 'linkedLineItemIds must be an array',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (body.linkedLineItems !== undefined && !Array.isArray(body.linkedLineItems)) {
+      console.error(`[POST /api/orders/${orderId}/invoices] Invalid linkedLineItems format:`, typeof body.linkedLineItems, body.linkedLineItems);
+      return NextResponse.json(
+        {
+          error: 'Invalid request format',
+          message: 'linkedLineItems must be an array',
         },
         { status: 400 }
       );
@@ -134,12 +149,138 @@ export async function POST(
     }
 
     // Handle line item linking if provided
+    // Support both formats: new format (linkedLineItems with amounts) and old format (linkedLineItemIds)
     let linkedLineItems = null;
     let calculatedInvoiceAmount = body.invoiceAmount;
 
-    if (body.linkedLineItemIds !== undefined && Array.isArray(body.linkedLineItemIds)) {
+    // New format: linkedLineItems with amounts [{ itemId, amount }, ...]
+    if (body.linkedLineItems !== undefined && Array.isArray(body.linkedLineItems) && body.linkedLineItems.length > 0) {
+      console.log(`[POST /api/orders/${orderId}/invoices] Processing ${body.linkedLineItems.length} linked line items (new format with amounts)`);
+      
+      // Fetch the order items to validate
+      const itemsToLink = await db
+        .select()
+        .from(orderItems)
+        .where(
+          and(
+            eq(orderItems.orderId, orderId),
+            eq(orderItems.itemType, 'item')
+          )
+        );
+
+      const itemMap = new Map(itemsToLink.map(item => [item.id, item]));
+      
+      // Get existing invoice amounts for each item
+      let allInvoices = [];
+      try {
+        allInvoices = await db
+          .select()
+          .from(invoices)
+          .where(
+            and(
+              eq(invoices.orderId, orderId),
+              or(isNull(invoices.exclude), eq(invoices.exclude, false))
+            )
+          );
+      } catch (invoiceError) {
+        console.error(`[POST /api/orders/${orderId}/invoices] Error fetching invoices (migration may be needed):`, invoiceError);
+        return NextResponse.json(
+          {
+            error: 'Database migration required',
+            message: 'Please run "npm run migrate" to add the linked_line_items column to the invoices table',
+            details: invoiceError instanceof Error ? invoiceError.message : 'Unknown error'
+          },
+          { status: 500 }
+        );
+      }
+
+      const itemInvoiceAmounts = new Map<string, number>();
+      for (const invoice of allInvoices) {
+        if (invoice.linkedLineItems && typeof invoice.linkedLineItems === 'object') {
+          const linkedItems = Array.isArray(invoice.linkedLineItems)
+            ? invoice.linkedLineItems
+            : [];
+          
+          for (const linkedItem of linkedItems) {
+            if (linkedItem && typeof linkedItem === 'object' && 'orderItemId' in linkedItem) {
+              const itemId = String(linkedItem.orderItemId);
+              const thisBillAmount = parseFloat(String(linkedItem.thisBillAmount || 0));
+              const current = itemInvoiceAmounts.get(itemId) || 0;
+              itemInvoiceAmounts.set(itemId, current + thisBillAmount);
+            }
+          }
+        }
+      }
+
+      // Validate each item with its amount
+      const validationErrors: Array<{ orderItemId: string; reason: string }> = [];
+      const validItems: Array<{ itemId: string; amount: number }> = [];
+
+      for (const linkedItem of body.linkedLineItems) {
+        if (!linkedItem || typeof linkedItem !== 'object' || !linkedItem.itemId) {
+          validationErrors.push({
+            orderItemId: 'unknown',
+            reason: 'Invalid item format. Expected { itemId, amount }',
+          });
+          continue;
+        }
+
+        const itemId = String(linkedItem.itemId);
+        const invoiceAmount = parseFloat(String(linkedItem.amount || 0));
+        const dbItem = itemMap.get(itemId);
+
+        if (!dbItem) {
+          validationErrors.push({
+            orderItemId: itemId,
+            reason: 'Item not found',
+          });
+          continue;
+        }
+
+        const existingAmounts = itemInvoiceAmounts.get(itemId) || 0;
+        const validation = validateItemForLinkingWithAmount(
+          {
+            id: dbItem.id,
+            amount: dbItem.amount,
+            thisBill: null,
+            progressOverallPct: dbItem.progressOverallPct,
+            previouslyInvoicedPct: dbItem.previouslyInvoicedPct,
+          },
+          invoiceAmount,
+          existingAmounts
+        );
+
+        if (!validation.valid) {
+          validationErrors.push({
+            orderItemId: itemId,
+            reason: validation.error || 'Validation failed',
+          });
+        } else {
+          validItems.push({ itemId, amount: invoiceAmount });
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        console.error(`[POST /api/orders/${orderId}/invoices] Validation failed:`, validationErrors);
+        return NextResponse.json(
+          {
+            error: 'Validation failed',
+            validationErrors: validationErrors,
+            message: `Validation failed for ${validationErrors.length} item(s)`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Create linked line items array
+      linkedLineItems = createLinkedLineItemsFromAmounts(validItems);
+      calculatedInvoiceAmount = validItems.reduce((sum, item) => sum + item.amount, 0).toString();
+      console.log(`[POST /api/orders/${orderId}/invoices] Created ${linkedLineItems.length} linked line items with total amount: ${calculatedInvoiceAmount}`);
+    }
+    // Old format: linkedLineItemIds (backward compatibility)
+    else if (body.linkedLineItemIds !== undefined && Array.isArray(body.linkedLineItemIds)) {
       if (body.linkedLineItemIds.length > 0) {
-        console.log(`[POST /api/orders/${orderId}/invoices] Processing ${body.linkedLineItemIds.length} linked line items`);
+        console.log(`[POST /api/orders/${orderId}/invoices] Processing ${body.linkedLineItemIds.length} linked line items (old format)`);
       // Fetch the order items to validate and calculate amounts
       const itemsToLink = await db
         .select()

@@ -389,6 +389,48 @@ body {
     font-weight: 500; /* Medium instead of Semibold */
   }
   
+  /* Active tabs: theme-specific colors */
+  /* Original theme: black background with white text */
+  [data-theme="original"] [role="tablist"] button[data-state="active"],
+  [data-theme="original"] [role="tablist"] [role="tab"][data-state="active"],
+  [data-theme="original"] [data-orientation] button[data-state="active"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  
+  [data-theme="original"] [role="tablist"] button[data-state="active"] *,
+  [data-theme="original"] [role="tablist"] [role="tab"][data-state="active"] *,
+  [data-theme="original"] [data-orientation] button[data-state="active"] * {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  
+  /* Calimingo theme: navy blue background with white text */
+  [data-theme="calimingo"] [role="tablist"] button[data-state="active"],
+  [data-theme="calimingo"] [role="tablist"] [role="tab"][data-state="active"],
+  [data-theme="calimingo"] [data-orientation] button[data-state="active"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  
+  [data-theme="calimingo"] [role="tablist"] button[data-state="active"] *,
+  [data-theme="calimingo"] [role="tablist"] [role="tab"][data-state="active"] *,
+  [data-theme="calimingo"] [data-orientation] button[data-state="active"] * {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  
+  /* Apple theme: blue background with white text */
+  [data-theme="apple"] [role="tablist"] button[data-state="active"],
+  [data-theme="apple"] [role="tablist"] [role="tab"][data-state="active"],
+  [data-theme="apple"] [data-orientation] button[data-state="active"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  
+  [data-theme="apple"] [role="tablist"] button[data-state="active"] *,
+  [data-theme="apple"] [role="tablist"] [role="tab"][data-state="active"] *,
+  [data-theme="apple"] [data-orientation] button[data-state="active"] * {
+    color: hsl(var(--primary-foreground)) !important;
+  }
   
   /* WCAG AA Compliance Notes:
    * - Normal text requires 4.5:1 contrast ratio minimum
