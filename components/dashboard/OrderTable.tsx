@@ -1227,11 +1227,11 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-block">
-                      {isDeleted ? (
-                        <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
-                          <Edit2 className="mr-2 h-4 w-4" />
-                          Edit Table
-                        </Button>
+                    {isDeleted ? (
+                      <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Edit Table
+                      </Button>
                       ) : !canEdit ? (
                         <Button 
                           onClick={() => {
@@ -1249,20 +1249,20 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           <Edit2 className="mr-2 h-4 w-4" />
                           Edit Table
                         </Button>
-                      ) : (
-                        <Button onClick={() => {
-                          setIsEditing(true);
-                          setEditingColumn(null);
+                    ) : (
+                      <Button onClick={() => {
+                        setIsEditing(true);
+                        setEditingColumn(null);
                           toast({
                             title: 'Edit Mode Enabled',
                             description: 'You can now edit order items. Press Esc to cancel or Ctrl+S to save.',
                             variant: 'default',
                           });
-                        }} variant="outline" size="sm" className="w-[130px]">
-                          <Edit2 className="mr-2 h-4 w-4" />
-                          Edit Table
-                        </Button>
-                      )}
+                      }} variant="outline" size="sm" className="w-[130px]">
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Edit Table
+                      </Button>
+                    )}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -1515,8 +1515,8 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         canEdit={canEdit}
                         onEnterEditMode={() => {
                           if (canEdit) {
-                            setIsEditing(true);
-                            setEditingColumn(null);
+                          setIsEditing(true);
+                          setEditingColumn(null);
                           } else if (!isDeleted) {
                             toast({
                               title: 'Project Start Date Required',

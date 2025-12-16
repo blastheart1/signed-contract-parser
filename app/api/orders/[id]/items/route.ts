@@ -96,7 +96,7 @@ export async function GET(
       // Filter items with Progress Overall % > 0 (simplified filtering)
       // This allows users to see all items with progress and manually set invoice amounts
       const availableItems = allItems.filter(item => {
-        const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
+            const progressOverallPct = parseFloat(String(item.progressOverallPct || 0));
         return !isNaN(progressOverallPct) && progressOverallPct > 0;
       });
 

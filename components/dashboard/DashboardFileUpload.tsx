@@ -36,19 +36,31 @@ type ProcessingStage = 'idle' | 'uploading' | 'parsing' | 'storing' | 'validatin
 
 type UploadMode = 'links' | 'eml';
 
+interface DetectedSection {
+  type: 'original' | 'optional-package' | 'addendum';
+  number?: number;
+  name?: string;
+  selected?: boolean; // Default selection state
+}
+
 interface LinkValidationResult {
   url: string;
-  type: 'original' | 'addendum';
-  isValid: boolean;
-  error?: string;
-  isChecking: boolean;
+  type?: 'original' | 'optional-package' | 'addendum'; // NEW: Optional field, detected from API (for backward compatibility)
+  number?: number; // NEW: Package number or addendum number (for backward compatibility)
+  name?: string; // NEW: Optional package name (for backward compatibility)
+  sections?: DetectedSection[]; // NEW: Array of all detected sections in this link
+  isValid: boolean; // EXISTING
+  error?: string; // EXISTING
+  isChecking: boolean; // EXISTING
 }
 
 interface ExtractedLink {
   url: string;
-  type: 'original' | 'addendum';
-  selected: boolean;
-  validation?: LinkValidationResult;
+  type?: 'original' | 'optional-package' | 'addendum'; // NEW: Optional field, detected from validation
+  number?: number; // NEW: Package number or addendum number
+  name?: string; // NEW: Optional package name
+  selected: boolean; // EXISTING
+  validation?: LinkValidationResult; // EXISTING
 }
 
 export default function DashboardFileUpload() {
@@ -70,6 +82,8 @@ export default function DashboardFileUpload() {
   const [isValidatingLinks, setIsValidatingLinks] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingLinks, setPendingLinks] = useState<{ originalContractUrl: string; addendumLinks: string[] } | null>(null);
+  // NEW: Track selected sections (url + section type + number = unique key)
+  const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
   
   // EML Upload mode state
   const [file, setFile] = useState<File | null>(null);
@@ -80,11 +94,11 @@ export default function DashboardFileUpload() {
   const [emlStep, setEmlStep] = useState<'upload' | 'select' | 'confirm'>('upload');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Validate a single link (format and accessibility)
-  const validateLink = async (url: string, type: 'original' | 'addendum'): Promise<LinkValidationResult> => {
+  // Validate a single link (format, accessibility, and detect type)
+  // NEW: No longer requires type parameter - type is detected from API
+  const validateLink = async (url: string): Promise<LinkValidationResult> => {
     const result: LinkValidationResult = {
       url: url.trim(),
-      type,
       isValid: false,
       isChecking: true,
     };
@@ -97,7 +111,7 @@ export default function DashboardFileUpload() {
       return result;
     }
 
-    // Check accessibility by attempting to fetch
+    // Check accessibility and detect type
     try {
       // Use API endpoint for validation (client-side fetch may have CORS issues)
       const response = await fetch('/api/validate-link', {
@@ -114,6 +128,34 @@ export default function DashboardFileUpload() {
       // The API returns status 200 for both success and format validation failures
       if (response.ok && responseData.valid === true) {
         result.isValid = true;
+        // NEW: Extract sections array (primary) or fall back to single type (backward compatibility)
+        if (responseData.sections && Array.isArray(responseData.sections)) {
+          result.sections = responseData.sections;
+          // Also set type/number/name from first section for backward compatibility
+          if (responseData.sections.length > 0) {
+            result.type = responseData.sections[0].type;
+            result.number = responseData.sections[0].number;
+            result.name = responseData.sections[0].name;
+          }
+        } else {
+          // Backward compatibility: single type detection
+          if (responseData.type) {
+            result.type = responseData.type;
+          }
+          if (responseData.number !== undefined) {
+            result.number = responseData.number;
+          }
+          if (responseData.name) {
+            result.name = responseData.name;
+          }
+          // Convert single type to sections array
+          result.sections = [{
+            type: responseData.type || 'original',
+            number: responseData.number,
+            name: responseData.name,
+            selected: responseData.type !== 'optional-package', // Optional packages not selected by default
+          }];
+        }
       } else {
         result.isValid = false;
         result.error = responseData.error || responseData.message || `Failed to access link (${response.status})`;
@@ -139,9 +181,12 @@ export default function DashboardFileUpload() {
     setProcessingStage('validating');
 
     try {
-      const linksToValidate: Array<{ url: string; type: 'original' | 'addendum' }> = [
-        { url: originalContractUrl, type: 'original' },
-      ];
+      // Collect all links to validate (type will be detected by API)
+      const linksToValidate: string[] = [];
+      
+      if (originalContractUrl.trim()) {
+        linksToValidate.push(originalContractUrl.trim());
+      }
 
       // Add addendum links
       if (addendumLinksInput.trim()) {
@@ -150,15 +195,28 @@ export default function DashboardFileUpload() {
           .map(link => link.trim())
           .filter(link => link.length > 0);
         
-        addendumUrls.forEach(url => {
-          linksToValidate.push({ url, type: 'addendum' });
-        });
+        linksToValidate.push(...addendumUrls);
       }
 
-      // Validate all links
-      const validationPromises = linksToValidate.map(({ url, type }) => validateLink(url, type));
+      // Validate all links (sections will be detected by API)
+      const validationPromises = linksToValidate.map((url) => validateLink(url));
       const results = await Promise.all(validationPromises);
-
+      
+      // Initialize selected sections based on default selection state
+      const initialSelected = new Set<string>();
+      results.forEach((result) => {
+        if (result.isValid && result.sections) {
+          result.sections.forEach((section) => {
+            if (section.selected !== false) {
+              // Only add if selected is true or undefined (default true for original/addendum)
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              initialSelected.add(sectionKey);
+            }
+          });
+        }
+      });
+      setSelectedSections(initialSelected);
+      
       setLinkValidationResults(results);
 
       // Check if all validations passed
@@ -217,23 +275,71 @@ export default function DashboardFileUpload() {
 
           const links: ExtractedLink[] = [];
           
-          if (extractedLinksData.originalContractUrl) {
-            links.push({
-              url: extractedLinksData.originalContractUrl,
-              type: 'original',
-              selected: true, // Default: checked
+          // NEW: Use links array if available, otherwise fall back to old format
+          if (extractedLinksData.links && Array.isArray(extractedLinksData.links)) {
+            // Use new links array (type will be determined by validation)
+            extractedLinksData.links.forEach((link: { url: string }) => {
+              links.push({
+                url: link.url,
+                selected: true, // Default: all checked (user can deselect)
+                // type, number, name will be set during validation
+              });
+            });
+          } else {
+            // EXISTING: Fall back to old format for backward compatibility
+            if (extractedLinksData.originalContractUrl) {
+              links.push({
+                url: extractedLinksData.originalContractUrl,
+                selected: true, // Default: checked
+                // type will be determined by validation
+              });
+            }
+
+            extractedLinksData.addendumUrls.forEach((url: string) => {
+              links.push({
+                url,
+                selected: true, // Default: all checked
+                // type will be determined by validation
+              });
             });
           }
+          
+          // Step 2: Validate all links immediately (sections will be detected by API)
+          setProcessingStage('validating');
+          const validationPromises = links.map((link: ExtractedLink) => validateLink(link.url));
+          const validationResults = await Promise.all(validationPromises);
 
-          extractedLinksData.addendumUrls.forEach((url: string) => {
-            links.push({
-              url,
-              type: 'addendum',
-              selected: true, // Default: all checked
-            });
+          // Update links with validation results and detected type/number
+          const validatedLinks = links.map(link => {
+            const validation = validationResults.find(r => r.url === link.url);
+            if (validation) {
+              return {
+                ...link,
+                validation,
+                // NEW: Update type, number, and name from validation
+                type: validation.type || link.type,
+                number: validation.number || link.number,
+                name: validation.name || link.name,
+              };
+            }
+            return link;
           });
+          
+          // Initialize selected sections for EML mode based on validation results
+          const initialSelected = new Set<string>();
+          validatedLinks.forEach((link) => {
+            if (link.selected && link.validation?.isValid && link.validation.sections) {
+              link.validation.sections.forEach((section) => {
+                if (section.selected !== false) {
+                  const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+                  initialSelected.add(sectionKey);
+                }
+              });
+            }
+          });
+          setSelectedSections(initialSelected);
 
-          setExtractedLinks(links);
+          setExtractedLinks(validatedLinks);
           setShowExtractedLinks(true);
           setEmlStep('select');
         } catch (err) {
@@ -271,18 +377,39 @@ export default function DashboardFileUpload() {
     setProcessingStage('validating');
 
     try {
-      // Validate each selected link
-      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url, link.type));
+      // Validate each selected link (sections will be detected by API)
+      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url));
       const results = await Promise.all(validationPromises);
 
-      // Update extractedLinks with validation results
+      // Update extractedLinks with validation results and detected sections
       const updatedLinks = extractedLinks.map(link => {
         const validation = results.find(r => r.url === link.url);
-        return {
-          ...link,
-          validation,
-        };
+        if (validation) {
+          return {
+            ...link,
+            validation,
+            // NEW: Update type, number, and name from validation
+            type: validation.type || link.type,
+            number: validation.number || link.number,
+            name: validation.name || link.name,
+          };
+        }
+        return link;
       });
+      
+      // Update selected sections based on validation results
+      const newSelected = new Set<string>();
+      updatedLinks.forEach((link) => {
+        if (link.selected && link.validation?.isValid && link.validation.sections) {
+          link.validation.sections.forEach((section) => {
+            if (section.selected !== false) {
+              const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+              newSelected.add(sectionKey);
+            }
+          });
+        }
+      });
+      setSelectedSections(newSelected);
 
       setExtractedLinks(updatedLinks);
 
@@ -348,8 +475,26 @@ export default function DashboardFileUpload() {
     try {
       if (uploadMode === 'links') {
         // DBX Links Only mode
-        if (!pendingLinks) {
-          setError('No links to process');
+        // Collect selected sections from validation results
+        const formattedSelectedLinks: Array<{ url: string; type: string; number?: number }> = [];
+        
+        linkValidationResults.forEach((result) => {
+          if (result.isValid && result.sections) {
+            result.sections.forEach((section) => {
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              if (selectedSections.has(sectionKey)) {
+                formattedSelectedLinks.push({
+                  url: result.url,
+                  type: section.type,
+                  number: section.number,
+                });
+              }
+            });
+          }
+        });
+        
+        if (formattedSelectedLinks.length === 0) {
+          setError('Please select at least one section to include');
           setIsProcessing(false);
           return;
         }
@@ -363,8 +508,8 @@ export default function DashboardFileUpload() {
           },
           body: JSON.stringify({
             mode: 'links',
-            originalContractUrl: pendingLinks.originalContractUrl,
-            addendumLinks: pendingLinks.addendumLinks,
+            // NEW: Pass selectedLinks array with sections
+            selectedLinks: formattedSelectedLinks,
             deleteExtraRows: deleteExtraRows,
             includeMainCategories: includeMainCategories,
             includeSubcategories: includeSubcategories,
@@ -382,8 +527,45 @@ export default function DashboardFileUpload() {
         }
 
         const selectedLinks = extractedLinks.filter(link => link.selected);
-        const originalContract = selectedLinks.find(l => l.type === 'original');
-        const addendumUrls = selectedLinks.filter(l => l.type === 'addendum').map(l => l.url);
+        
+        if (selectedLinks.length === 0) {
+          setError('Please select at least one link to process');
+          setIsProcessing(false);
+          return;
+        }
+
+        // NEW: Format selected links with type information from validation sections
+        const formattedSelectedLinks: Array<{ url: string; type: string; number?: number }> = [];
+        
+        selectedLinks.forEach((link) => {
+          if (link.validation?.isValid && link.validation.sections) {
+            // Use sections from validation if available
+            link.validation.sections.forEach((section) => {
+              const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+              // Check if this section was selected
+              if (selectedSections.has(sectionKey)) {
+                formattedSelectedLinks.push({
+                  url: link.url,
+                  type: section.type,
+                  number: section.number,
+                });
+              }
+            });
+          } else {
+            // Fallback: use link type if sections not available
+            formattedSelectedLinks.push({
+              url: link.url,
+              type: link.type || 'original',
+              number: link.number,
+            });
+          }
+        });
+        
+        if (formattedSelectedLinks.length === 0) {
+          setError('Please select at least one section to include');
+          setIsProcessing(false);
+          return;
+        }
 
         setProcessingStage('uploading');
 
@@ -406,8 +588,11 @@ export default function DashboardFileUpload() {
                 mode: 'eml',
               file: base64Data,
               filename: file.name,
-                originalContractUrl: originalContract?.url,
-                addendumLinks: addendumUrls.length > 0 ? addendumUrls : undefined,
+              // NEW: Pass selectedLinks array
+              selectedLinks: formattedSelectedLinks,
+              // EXISTING: Keep old format for backward compatibility (will be ignored if selectedLinks is provided)
+              originalContractUrl: selectedLinks.find(l => l.type === 'original')?.url,
+              addendumLinks: selectedLinks.filter(l => l.type === 'addendum').map(l => l.url),
               deleteExtraRows: deleteExtraRows,
               includeMainCategories: includeMainCategories,
               includeSubcategories: includeSubcategories,
@@ -586,21 +771,39 @@ export default function DashboardFileUpload() {
   };
 
   // Prepare links for confirmation (DBX Links Only mode)
+  // NOTE: This function is no longer needed since we now pass selectedLinks directly
+  // But keeping it for backward compatibility with the confirmation dialog
   const handlePrepareConfirm = () => {
-    const addendumUrls = addendumLinksInput
-      .split('\n')
-      .map(link => link.trim())
-      .filter(link => link.length > 0);
-
-    // Verify all links are validated and valid
-    const allValid = linkValidationResults.every(r => r.isValid);
-    if (!allValid || linkValidationResults.length === 0) {
-      setError('Please validate all links first and ensure they pass validation');
+    // Collect selected sections
+    const formattedSelectedLinks: Array<{ url: string; type: string; number?: number }> = [];
+    
+    linkValidationResults.forEach((result) => {
+      if (result.isValid && result.sections) {
+        result.sections.forEach((section) => {
+          const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+          if (selectedSections.has(sectionKey)) {
+            formattedSelectedLinks.push({
+              url: result.url,
+              type: section.type,
+              number: section.number,
+            });
+          }
+        });
+      }
+    });
+    
+    if (formattedSelectedLinks.length === 0) {
+      setError('Please select at least one section to include');
       return;
     }
 
+    // Format for confirmation dialog (backward compatibility)
+    const addendumUrls = formattedSelectedLinks
+      .filter(l => l.type === 'addendum')
+      .map(l => l.url);
+
     setPendingLinks({
-      originalContractUrl: originalContractUrl.trim(),
+      originalContractUrl: formattedSelectedLinks.find(l => l.type === 'original')?.url || originalContractUrl.trim(),
       addendumLinks: addendumUrls,
     });
     setShowConfirmDialog(true);
@@ -677,7 +880,7 @@ export default function DashboardFileUpload() {
 
   const allLinksValidatedAndValid = uploadMode === 'links' 
     ? linkValidationResults.length > 0 && linkValidationResults.every(r => r.isValid)
-    : extractedLinks.filter(l => l.selected).every(l => l.validation?.isValid === true);
+    : extractedLinks.filter(l => l.selected).length > 0 && extractedLinks.filter(l => l.selected).every(l => l.validation?.isValid === true);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -733,34 +936,81 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                 )}
               </Button>
 
-              {/* Validation Results */}
+              {/* Validation Results - Show all sections from each link */}
               {linkValidationResults.length > 0 && (
-                <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[200px] overflow-y-auto">
-                  <Label className="text-sm font-medium">Validation Results:</Label>
-                  <div className="space-y-2">
-                    {linkValidationResults.map((result, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm">
-                      {result.isChecking ? (
-                        <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
-                      ) : result.isValid ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">
-                            {result.type === 'original' ? 'Original Contract' : `Addendum ${index}`}:
-                          </span>
-                          {result.isValid && <span className="text-green-600">Valid</span>}
+                <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[400px] overflow-y-auto">
+                  <Label className="text-sm font-medium">Validation Results - Select sections to include:</Label>
+                  <div className="space-y-3">
+                    {linkValidationResults.map((result, resultIndex) => {
+                      if (!result.isValid || !result.sections || result.sections.length === 0) {
+                        // Show error or invalid link
+                        return (
+                          <div key={resultIndex} className="flex items-start gap-2 text-sm border-b pb-2">
+                            {result.isChecking ? (
+                              <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                            )}
+                            <div className="flex-1">
+                              <div className="text-xs text-muted-foreground break-all">{result.url}</div>
+                              {result.error && (
+                                <div className="text-xs text-red-600 mt-1">{result.error}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // Show all sections from this link
+                      return (
+                        <div key={resultIndex} className="border-b pb-3 last:border-b-0">
+                          <div className="text-xs text-muted-foreground break-all mb-2">{result.url}</div>
+                          <div className="space-y-2 pl-4">
+                            {result.sections.map((section, sectionIndex) => {
+                              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+                              const isSelected = selectedSections.has(sectionKey);
+                              
+                              // Format display name
+                              let displayName = 'Unknown';
+                              if (section.type === 'optional-package') {
+                                displayName = section.number 
+                                  ? `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`
+                                  : 'Optional Package';
+                              } else if (section.type === 'addendum') {
+                                displayName = section.number 
+                                  ? `Addendum #${section.number}`
+                                  : 'Addendum';
+                              } else {
+                                displayName = 'Original Contract';
+                              }
+                              
+                              return (
+                                <div key={sectionIndex} className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={(checked) => {
+                                      const newSelected = new Set(selectedSections);
+                                      if (checked) {
+                                        newSelected.add(sectionKey);
+                                      } else {
+                                        newSelected.delete(sectionKey);
+                                      }
+                                      setSelectedSections(newSelected);
+                                    }}
+                                  />
+                                  <Label className="flex-1 cursor-pointer text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      <span className="font-medium">{displayName}</span>
+                                    </div>
+                                  </Label>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground break-all">{result.url}</div>
-                        {result.error && (
-                          <div className="text-xs text-red-600 mt-1">{result.error}</div>
-                        )}
-                      </div>
-                    </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -897,38 +1147,120 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
 
                 {/* Checkboxes - takes available space, scrollable */}
                 <div className="space-y-3 overflow-y-auto pr-2 flex-1 min-h-0 mb-3" style={{ order: 2, flex: '1 1 auto' }}>
-                  {extractedLinks.map((link, index) => (
-                    <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
-                      <Checkbox
-                        id={`link-${index}`}
-                        checked={link.selected}
-                        onCheckedChange={(checked) => {
-                          // Fix: Only update the specific link by URL, not by index
-                          setExtractedLinks(extractedLinks.map(l => 
-                            l.url === link.url ? { ...l, selected: checked === true } : l
-                          ));
-                        }}
-                      />
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Label htmlFor={`link-${index}`} className="cursor-pointer font-medium">
-                            {link.type === 'original' ? 'Original Contract' : `Addendum ${index}`}
-                          </Label>
-                          {link.validation && (
-                            link.validation.isValid ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <XCircle className="h-4 w-4 text-red-600" />
-                            )
+                  {extractedLinks.map((link, linkIndex) => {
+                    // Show sections if validation has them, otherwise show as single link
+                    if (link.validation?.sections && link.validation.sections.length > 0) {
+                      return (
+                        <div key={linkIndex} className="border rounded-lg p-3">
+                          <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
+                          <div className="space-y-2 pl-4">
+                            {link.validation.sections.map((section, sectionIndex) => {
+                              const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+                              const isSelected = selectedSections.has(sectionKey);
+                              
+                              // Format display name
+                              let displayName = 'Unknown';
+                              if (section.type === 'optional-package') {
+                                displayName = section.number 
+                                  ? `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`
+                                  : 'Optional Package';
+                              } else if (section.type === 'addendum') {
+                                displayName = section.number 
+                                  ? `Addendum #${section.number}`
+                                  : 'Addendum';
+                              } else {
+                                displayName = 'Original Contract';
+                              }
+                              
+                              return (
+                                <div key={sectionIndex} className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={(checked) => {
+                                      const newSelected = new Set(selectedSections);
+                                      if (checked) {
+                                        newSelected.add(sectionKey);
+                                      } else {
+                                        newSelected.delete(sectionKey);
+                                      }
+                                      setSelectedSections(newSelected);
+                                      // Also update link.selected if all sections are selected/deselected
+                                      const allSections = link.validation?.sections || [];
+                                      const selectedCount = Array.from(newSelected).filter(key => key.startsWith(`${link.url}::`)).length;
+                                      const newLinkSelected = selectedCount > 0;
+                                      setExtractedLinks(extractedLinks.map(l => 
+                                        l.url === link.url ? { ...l, selected: newLinkSelected } : l
+                                      ));
+                                    }}
+                                  />
+                                  <Label className="flex-1 cursor-pointer text-sm">
+                                    <div className="flex items-center gap-2">
+                                      {link.validation?.isValid ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      ) : (
+                                        <XCircle className="h-4 w-4 text-red-600" />
+                                      )}
+                                      <span className="font-medium">{displayName}</span>
+                                    </div>
+                                  </Label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {link.validation?.error && (
+                            <div className="text-xs text-red-600 mt-2">{link.validation.error}</div>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground break-all">{link.url}</div>
-                        {link.validation?.error && (
-                          <div className="text-xs text-red-600">{link.validation.error}</div>
-                        )}
+                      );
+                    }
+                    
+                    // Fallback: show as single link (backward compatibility)
+                    return (
+                      <div key={linkIndex} className="flex items-start gap-3 p-3 border rounded-lg">
+                        <Checkbox
+                          id={`link-${linkIndex}`}
+                          checked={link.selected}
+                          onCheckedChange={(checked) => {
+                            setExtractedLinks(extractedLinks.map(l => 
+                              l.url === link.url ? { ...l, selected: checked === true } : l
+                            ));
+                          }}
+                        />
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`link-${linkIndex}`} className="cursor-pointer font-medium">
+                              {(() => {
+                                // Format display name based on detected type
+                                if (link.type === 'optional-package') {
+                                  return link.number 
+                                    ? `Optional Package ${link.number}${link.name ? `: ${link.name}` : ''}`
+                                    : 'Optional Package';
+                                } else if (link.type === 'addendum') {
+                                  return link.number 
+                                    ? `Addendum #${link.number}`
+                                    : `Addendum ${linkIndex}`;
+                                } else {
+                                  // original or undefined (default to original)
+                                  return 'Original Contract';
+                                }
+                              })()}
+                            </Label>
+                            {link.validation && (
+                              link.validation.isValid ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-600" />
+                              )
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground break-all">{link.url}</div>
+                          {link.validation?.error && (
+                            <div className="text-xs text-red-600">{link.validation.error}</div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
           </motion.div>
@@ -1034,24 +1366,48 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
               <AlertDialogTitle>Confirm Contract Parsing</AlertDialogTitle>
               <AlertDialogDescription>
                 <div className="space-y-2 mt-2">
-                  <div>
-                    <strong>Original Contract:</strong>
-                    <div className="text-xs text-muted-foreground break-all mt-1">
-                      {pendingLinks?.originalContractUrl}
-                    </div>
-                  </div>
-                  {pendingLinks && pendingLinks.addendumLinks.length > 0 && (
-                    <div>
-                      <strong>Addendums ({pendingLinks.addendumLinks.length}):</strong>
-                      <div className="space-y-1 mt-1">
-                        {pendingLinks.addendumLinks.map((url, idx) => (
-                          <div key={idx} className="text-xs text-muted-foreground break-all">
-                            {idx + 1}. {url}
-                          </div>
-                        ))}
+                  {linkValidationResults.filter(r => r.isValid).flatMap((result) => {
+                    if (!result.sections || result.sections.length === 0) {
+                      return [{
+                        key: result.url,
+                        displayName: result.type === 'original' ? 'Original Contract' : 'Unknown',
+                        url: result.url,
+                      }];
+                    }
+                    
+                    return result.sections
+                      .map((section, idx) => {
+                        const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+                        if (!selectedSections.has(sectionKey)) return null;
+                        
+                        let displayName = 'Unknown';
+                        if (section.type === 'optional-package') {
+                          displayName = section.number 
+                            ? `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`
+                            : 'Optional Package';
+                        } else if (section.type === 'addendum') {
+                          displayName = section.number 
+                            ? `Addendum #${section.number}`
+                            : 'Addendum';
+                        } else {
+                          displayName = 'Original Contract';
+                        }
+                        
+                        return {
+                          key: sectionKey,
+                          displayName,
+                          url: result.url,
+                        };
+                      })
+                      .filter((item): item is { key: string; displayName: string; url: string } => item !== null);
+                  }).map((item, idx) => (
+                    <div key={item.key || idx}>
+                      <strong>{item.displayName}:</strong>
+                      <div className="text-xs text-muted-foreground break-all mt-1">
+                        {item.url}
                       </div>
                     </div>
-                  )}
+                  ))}
                   <p className="text-sm mt-3">
                     Ready to parse and store this contract in the database. Continue?
                   </p>

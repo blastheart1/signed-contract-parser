@@ -294,7 +294,7 @@ export default function InvoiceLineItemSelector({
                         </TableCell>
                         <TableCell className="text-right font-medium align-top">
                           <span className={item.remainingBillable <= 0 ? 'text-destructive' : ''}>
-                            {formatCurrency(item.remainingBillable)}
+                          {formatCurrency(item.remainingBillable)}
                           </span>
                         </TableCell>
                       </TableRow>

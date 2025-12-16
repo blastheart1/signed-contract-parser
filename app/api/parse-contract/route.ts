@@ -62,37 +62,86 @@ export async function POST(request: NextRequest) {
       
       // LINKS-ONLY MODE: Process without .eml file
       if (mode === 'links') {
-        const originalContractUrl: string = body.originalContractUrl || '';
-        const addendumLinks: string[] = body.addendumLinks || [];
+        // NEW: Extract links from selectedLinks array (backward compatible)
+        let originalContractUrl: string = '';
+        let addendumLinks: string[] = [];
+        let optionalPackageLinks: Array<{ url: string; number: number }> = [];
+        
+        if (body.selectedLinks && Array.isArray(body.selectedLinks)) {
+          // NEW: Process selectedLinks - group by URL to avoid duplicate parsing
+          const urlSections = new Map<string, Array<{ type: string; number?: number }>>();
+          
+          body.selectedLinks.forEach((link: any) => {
+            if (!link.url || typeof link.url !== 'string') return;
+            
+            if (!urlSections.has(link.url)) {
+              urlSections.set(link.url, []);
+            }
+            urlSections.get(link.url)!.push({
+              type: link.type,
+              number: link.number,
+            });
+          });
+          
+          // Process grouped sections
+          for (const [url, sections] of urlSections.entries()) {
+            const hasOriginal = sections.some(s => s.type === 'original');
+            const hasAddendum = sections.some(s => s.type === 'addendum');
+            const optionalPackages = sections.filter(s => s.type === 'optional-package');
+            
+            if (hasOriginal) {
+              originalContractUrl = url;
+            }
+            if (hasAddendum) {
+              addendumLinks.push(url);
+            }
+            optionalPackages.forEach(pkg => {
+              if (pkg.number && pkg.number > 0) {
+                optionalPackageLinks.push({ url, number: pkg.number });
+              }
+            });
+          }
+        } else {
+          // EXISTING: Fall back to old format (backward compatibility)
+          originalContractUrl = body.originalContractUrl || '';
+          addendumLinks = body.addendumLinks || [];
+        }
+        
+        // Validate that we have at least one link to process
+        const hasOriginalContract = originalContractUrl && validateAddendumUrl(originalContractUrl);
+        const hasAddendums = addendumLinks.length > 0;
+        const hasOptionalPackages = optionalPackageLinks.length > 0;
+        
+        if (!hasOriginalContract && !hasAddendums && !hasOptionalPackages) {
+          return NextResponse.json(
+            { error: 'At least one valid link is required (original contract, addendum, or optional package)' },
+            { status: 400 }
+          );
+        }
         
         // Original Contract is only required if includeOriginalContract is true
-        if (includeOriginalContract && (!originalContractUrl || !validateAddendumUrl(originalContractUrl))) {
+        if (includeOriginalContract && !hasOriginalContract) {
           return NextResponse.json(
             { error: 'Valid originalContractUrl is required when includeOriginalContract is true' },
             { status: 400 }
           );
         }
         
-        // If not including original contract, we need addendum links to process
-        if (!includeOriginalContract && addendumLinks.length === 0) {
+        // Validate all link formats
+        const allLinks = [
+          ...(originalContractUrl ? [originalContractUrl] : []),
+          ...addendumLinks,
+          ...optionalPackageLinks.map(p => p.url),
+        ];
+        const invalidLinks = allLinks.filter(link => !validateAddendumUrl(link));
+        if (invalidLinks.length > 0) {
           return NextResponse.json(
-            { error: 'Addendum links are required when includeOriginalContract is false' },
+            { 
+              error: 'Invalid URL format',
+              message: `The following links are invalid: ${invalidLinks.join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
+            },
             { status: 400 }
           );
-        }
-        
-        // Validate addendum links format if provided
-        if (addendumLinks.length > 0) {
-          const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link));
-          if (invalidLinks.length > 0) {
-            return NextResponse.json(
-              { 
-                error: 'Invalid addendum URL format',
-                message: `The following links are invalid: ${invalidLinks.join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
-              },
-              { status: 400 }
-            );
-          }
         }
         
         // Process links-only mode
@@ -156,14 +205,31 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Process Original Contract (only if includeOriginalContract is true)
-        if (includeOriginalContract && originalContractUrl) {
+        // Process Original Contract (if selected)
+        if (originalContractUrl) {
           try {
             const originalContractHTML = await fetchAddendumHTML(originalContractUrl);
             const contractId = extractAddendumNumber(originalContractUrl);
             
             // Parse items from Original Contract HTML using existing function
-            items = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
+            // This will parse ALL items including optional packages, but optional packages will be marked
+            const allItems = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
+            
+            // NEW: Filter items to include only original contract items (exclude optional packages if not selected)
+            // Check if optional packages from this URL are selected
+            const selectedOptionalPackages = optionalPackageLinks
+              .filter(pkg => pkg.url === originalContractUrl)
+              .map(pkg => pkg.number);
+            
+            if (selectedOptionalPackages.length > 0) {
+              // Include original contract items + selected optional package items
+              items = allItems.filter(item => 
+                !item.isOptional || (item.isOptional && item.optionalPackageNumber && selectedOptionalPackages.includes(item.optionalPackageNumber))
+              );
+            } else {
+              // Only include original contract items (exclude all optional packages)
+              items = allItems.filter(item => !item.isOptional);
+            }
             
             // Try to extract location from contract HTML text using existing function
             try {
@@ -191,11 +257,46 @@ export async function POST(request: NextRequest) {
           }
         } else {
           // Skip original contract processing
-          console.log('[API] Skipping original contract processing (includeOriginalContract: false)');
+          console.log('[API] Skipping original contract processing (not selected)');
           processingSummary.originalContract.status = 'not_found';
         }
         
-        // Process Addendums
+        // NEW: Process Optional Packages (only if not already included from original contract parsing)
+        // Group by URL to avoid duplicate parsing
+        const standaloneOptionalPackages = optionalPackageLinks.filter(pkg => pkg.url !== originalContractUrl);
+        
+        if (standaloneOptionalPackages.length > 0) {
+          processingSummary.summary.totalLinks += standaloneOptionalPackages.length;
+          
+          for (const pkgLink of standaloneOptionalPackages) {
+            try {
+              const pkgHTML = await fetchAddendumHTML(pkgLink.url);
+              const contractId = `optional-package-${pkgLink.number}`;
+              
+              // Use existing parseOriginalContract function (it works for any contract HTML)
+              // CRITICAL: This is the existing parsing function, called as-is
+              const pkgItems = parseOriginalContract(pkgHTML, contractId, pkgLink.url);
+              
+              // NEW: Mark all items as optional (metadata addition, not parsing change)
+              const markedItems = pkgItems.map(item => ({
+                ...item, // Preserve all existing fields
+                isOptional: true, // NEW: Add optional flag
+                optionalPackageNumber: pkgLink.number, // NEW: Add package number
+              }));
+              
+              // Add to items array
+              items.push(...markedItems);
+              
+              processingSummary.summary.successful++;
+            } catch (error) {
+              console.error(`[API] Failed to parse optional package ${pkgLink.number}:`, error);
+              processingSummary.summary.failed++;
+              // Continue with other packages (graceful degradation)
+            }
+          }
+        }
+        
+        // Process Addendums (EXISTING CODE - NO CHANGES)
         if (addendumLinks.length > 0) {
           processingSummary.summary.totalLinks += addendumLinks.length;
           
@@ -218,17 +319,18 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Merge with existing contract items if existingContractId is provided and only addendums were processed
+        // Merge with existing contract items if existingContractId is provided and only addendums/optional packages were processed
         // CRITICAL: This preserves ALL existing item data including progress updates, invoice links, and any user modifications
-        // We only APPEND new addendum items - we never modify or overwrite existing items
-        if (existingContractId && existingItems.length > 0 && !includeOriginalContract && addendumData.length > 0) {
+        // We only APPEND new addendum/optional package items - we never modify or overwrite existing items
+        const hasNewItems = addendumData.length > 0 || optionalPackageLinks.length > 0;
+        if (existingContractId && existingItems.length > 0 && !includeOriginalContract && hasNewItems) {
           console.log(`[API] Merging ${addendumData.length} addendum(s) with ${existingItems.length} existing items`);
           console.log(`[API] CRITICAL: Preserving all existing item properties (progress fields, invoice links, etc.)`);
           // Combine: existing items + 1 blank row + new addendum items
           // Using spread operator creates new array but preserves all item object properties (shallow copy is safe since we don't modify items)
           const mergedItems: any[] = existingItems.map(item => ({ ...item })); // Deep copy each item to ensure no accidental modifications
           
-          // Add exactly 1 blank row before new addendums
+          // Add exactly 1 blank row before new items
           mergedItems.push({
             type: 'item',
             productService: '',
@@ -238,6 +340,16 @@ export async function POST(request: NextRequest) {
             columnBLabel: 'Initial',
             isBlankRow: true,
           });
+          
+          // NEW: Add optional package items (already marked with metadata)
+          // Optional package items are already in the items array with isOptional flag
+          if (items.length > 0) {
+            // Filter for optional package items
+            const optionalItems = items.filter(item => item.isOptional === true);
+            if (optionalItems.length > 0) {
+              mergedItems.push(...optionalItems);
+            }
+          }
           
           // Add addendum items
           addendumData.forEach((addendum: AddendumData) => {
@@ -321,10 +433,32 @@ export async function POST(request: NextRequest) {
       // Extract addAddendum flag (optional, default: false) - for backward compatibility
       const addAddendum: boolean = body.addAddendum === true;
       
-      // Extract addendumLinks array (optional, only used when addAddendum is true)
-      // OR use originalContractUrl and addendumLinks from EML mode Step 2 selection
-      const addendumLinks: string[] = body.addendumLinks || [];
-      const originalContractUrlFromBody: string | undefined = body.originalContractUrl;
+      // NEW: Extract links from selectedLinks array (backward compatible)
+      let addendumLinks: string[] = [];
+      let originalContractUrlFromBody: string | undefined = undefined;
+      let optionalPackageLinks: Array<{ url: string; number: number }> = [];
+      
+      if (body.selectedLinks && Array.isArray(body.selectedLinks)) {
+        // NEW: Process selectedLinks
+        body.selectedLinks.forEach((link: any) => {
+          if (!link.url || typeof link.url !== 'string') return;
+          
+          if (link.type === 'original') {
+            originalContractUrlFromBody = link.url;
+          } else if (link.type === 'addendum') {
+            addendumLinks.push(link.url);
+          } else if (link.type === 'optional-package') {
+            const pkgNumber = typeof link.number === 'number' ? link.number : 0;
+            if (pkgNumber > 0) {
+              optionalPackageLinks.push({ url: link.url, number: pkgNumber });
+            }
+          }
+        });
+      } else {
+        // EXISTING: Fall back to old format (backward compatibility)
+        addendumLinks = body.addendumLinks || [];
+        originalContractUrlFromBody = body.originalContractUrl;
+      }
       
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
@@ -436,7 +570,39 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Process provided addendum links
+        // NEW: Process Optional Packages (uses existing parsing function)
+        if (optionalPackageLinks.length > 0) {
+          processingSummary.summary.totalLinks += optionalPackageLinks.length;
+          
+          for (const pkgLink of optionalPackageLinks) {
+            try {
+              const pkgHTML = await fetchAddendumHTML(pkgLink.url);
+              const contractId = `optional-package-${pkgLink.number}`;
+              
+              // Use existing parseOriginalContract function (it works for any contract HTML)
+              // CRITICAL: This is the existing parsing function, called as-is
+              const pkgItems = parseOriginalContract(pkgHTML, contractId, pkgLink.url);
+              
+              // NEW: Mark all items as optional (metadata addition, not parsing change)
+              const markedItems = pkgItems.map(item => ({
+                ...item, // Preserve all existing fields
+                isOptional: true, // NEW: Add optional flag
+                optionalPackageNumber: pkgLink.number, // NEW: Add package number
+              }));
+              
+              // Add to items array
+              items.push(...markedItems);
+              
+              processingSummary.summary.successful++;
+            } catch (error) {
+              console.error(`[API] Failed to parse optional package ${pkgLink.number}:`, error);
+              processingSummary.summary.failed++;
+              // Continue with other packages (graceful degradation)
+            }
+          }
+        }
+        
+        // Process provided addendum links (EXISTING CODE - NO CHANGES)
         if (addendumLinks.length > 0) {
           processingSummary.summary.totalLinks += addendumLinks.length;
           for (const url of addendumLinks) {
@@ -543,10 +709,42 @@ export async function POST(request: NextRequest) {
         // Manual addendum links provided (existing behavior - backward compatibility)
         // Only extract items from email HTML if includeOriginalContract is true
         if (includeOriginalContract) {
-          items = extractOrderItems(parsed.html);
+        items = extractOrderItems(parsed.html);
         } else {
           items = [];
           console.log('[API] Skipping original contract processing from email HTML (includeOriginalContract: false)');
+        }
+        
+        // NEW: Process Optional Packages (uses existing parsing function)
+        if (optionalPackageLinks.length > 0) {
+          processingSummary.summary.totalLinks += optionalPackageLinks.length;
+          
+          for (const pkgLink of optionalPackageLinks) {
+            try {
+              const pkgHTML = await fetchAddendumHTML(pkgLink.url);
+              const contractId = `optional-package-${pkgLink.number}`;
+              
+              // Use existing parseOriginalContract function (it works for any contract HTML)
+              // CRITICAL: This is the existing parsing function, called as-is
+              const pkgItems = parseOriginalContract(pkgHTML, contractId, pkgLink.url);
+              
+              // NEW: Mark all items as optional (metadata addition, not parsing change)
+              const markedItems = pkgItems.map(item => ({
+                ...item, // Preserve all existing fields
+                isOptional: true, // NEW: Add optional flag
+                optionalPackageNumber: pkgLink.number, // NEW: Add package number
+              }));
+              
+              // Add to items array
+              items.push(...markedItems);
+              
+              processingSummary.summary.successful++;
+            } catch (error) {
+              console.error(`[API] Failed to parse optional package ${pkgLink.number}:`, error);
+              processingSummary.summary.failed++;
+              // Continue with other packages (graceful degradation)
+            }
+          }
         }
         
         if (addendumLinks.length > 0) {

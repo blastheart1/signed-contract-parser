@@ -3,8 +3,13 @@ import { ParsedEmail } from './emlParser';
 import { validateAddendumUrl } from './addendumParser';
 
 export interface ExtractedContractLinks {
-  originalContractUrl: string | null;
-  addendumUrls: string[];
+  originalContractUrl: string | null; // EXISTING - unchanged
+  addendumUrls: string[]; // EXISTING - unchanged
+  // NEW: Additional field for enhanced detection
+  links?: Array<{ // NEW: Optional field, doesn't break existing code
+    url: string;
+    // Type will be determined by validation API, not here
+  }>;
 }
 
 /**
@@ -345,8 +350,9 @@ function extractAddendumUrlsFromHTML($: any): string[] {
  */
 export function extractContractLinks(parsedEmail: ParsedEmail): ExtractedContractLinks {
   const result: ExtractedContractLinks = {
-    originalContractUrl: null,
-    addendumUrls: [],
+    originalContractUrl: null, // EXISTING
+    addendumUrls: [], // EXISTING
+    links: [], // NEW: Additional field
   };
   
   // Try HTML first (more reliable)
@@ -354,10 +360,10 @@ export function extractContractLinks(parsedEmail: ParsedEmail): ExtractedContrac
     try {
       const $ = load(parsedEmail.html);
       
-      // Extract Original Contract URL (separate function)
+      // EXISTING: Extract Original Contract URL (unchanged)
       result.originalContractUrl = extractOriginalContractUrlFromHTML($);
       
-      // Extract Addendum URLs (separate function)
+      // EXISTING: Extract Addendum URLs (unchanged)
       result.addendumUrls = extractAddendumUrlsFromHTML($);
       
     } catch (error) {
@@ -390,14 +396,27 @@ export function extractContractLinks(parsedEmail: ParsedEmail): ExtractedContrac
     }
   }
   
-  // Remove original contract URL from addendums if it appears there
+  // NEW: Extract all ProDBX URLs into links array (for validation)
+  // This is additional information, doesn't replace existing extraction
+  try {
+    const text = parsedEmail.html || parsedEmail.text || '';
+    const allUrls = extractUrlsFromText(text);
+    // Remove duplicates
+    const uniqueUrls = Array.from(new Set(allUrls));
+    result.links = uniqueUrls.map(url => ({ url })); // Type determined later by validation
+  } catch (error) {
+    console.warn('[Contract Link Extractor] Error extracting all URLs:', error);
+    // Continue without links array (backward compatible)
+  }
+  
+  // EXISTING: Remove original contract URL from addendums if it appears there (unchanged)
   if (result.originalContractUrl) {
     result.addendumUrls = result.addendumUrls.filter(
       url => url !== result.originalContractUrl
     );
   }
   
-  // Remove duplicates from addendums
+  // EXISTING: Remove duplicates from addendums (unchanged)
   result.addendumUrls = Array.from(new Set(result.addendumUrls));
   
   return result;

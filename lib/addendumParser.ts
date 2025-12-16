@@ -229,8 +229,9 @@ export function parseAddendum(html: string, addendumNumber: string, url: string)
       }
       
       // Skip header row (first row with "Description", "Qty", "Extended")
-      const rowText = $row.text().toLowerCase();
-      if (rowText.includes('description') && rowText.includes('qty') && rowText.includes('extended')) {
+      const rowText = $row.text();
+      const rowTextLower = rowText.toLowerCase();
+      if (rowTextLower.includes('description') && rowTextLower.includes('qty') && rowTextLower.includes('extended')) {
         return;
       }
       
@@ -435,7 +436,12 @@ export function parseOriginalContract(html: string, contractId: string, url: str
     let currentMainCategory: string | null = null;
     let currentSubCategory: string | null = null;
     
-    // Process all rows
+    // NEW: Track optional package state
+    // When we encounter "-OPTIONAL PACKAGE X-" marker, mark subsequent items
+    let currentOptionalPackageNumber: number | undefined = undefined;
+    const pageText = $.text();
+    
+      // Process all rows
     rows.each((index, row) => {
       const $row = $(row);
       const cells = $row.find('td');
@@ -445,9 +451,26 @@ export function parseOriginalContract(html: string, contractId: string, url: str
         return;
       }
       
+      // NEW: Check if this row contains an optional package marker
+      const rowText = $row.text();
+      const optionalPackageMatch = rowText.match(/-OPTIONAL\s+PACKAGE\s+(\d+)-/i);
+      if (optionalPackageMatch && optionalPackageMatch[1]) {
+        const packageNumber = parseInt(optionalPackageMatch[1], 10);
+        if (!isNaN(packageNumber) && packageNumber > 0) {
+          currentOptionalPackageNumber = packageNumber;
+          console.log(`[Original Contract Parser] Detected Optional Package ${packageNumber}`);
+        }
+      }
+      
+      // Also check if we've passed the optional package section (reset if we see "PACKAGE TOTAL")
+      if (rowText.includes('PACKAGE TOTAL')) {
+        // Keep the current package number until we see a new one or the section ends
+        // Don't reset here - let it continue marking items until we see a new package or contract section
+      }
+      
       // Skip header row (first row with "Description", "Qty", "Extended")
-      const rowText = $row.text().toLowerCase();
-      if (rowText.includes('description') && rowText.includes('qty') && rowText.includes('extended')) {
+      const rowTextLower = rowText.toLowerCase();
+      if (rowTextLower.includes('description') && rowTextLower.includes('qty') && rowTextLower.includes('extended')) {
         return;
       }
       
@@ -503,8 +526,13 @@ export function parseOriginalContract(html: string, contractId: string, url: str
           amount: '',
           mainCategory: currentMainCategory,
           subCategory: subCategoryName,
+          // NEW: Mark as optional if we're in an optional package section
+          ...(currentOptionalPackageNumber ? {
+            isOptional: true,
+            optionalPackageNumber: currentOptionalPackageNumber,
+          } : {}),
         });
-        console.log(`[Original Contract Parser] Added subcategory: "${subCategoryName}"`);
+        console.log(`[Original Contract Parser] Added subcategory: "${subCategoryName}"${currentOptionalPackageNumber ? ` (Optional Package ${currentOptionalPackageNumber})` : ''}`);
         return;
       }
       
@@ -558,8 +586,13 @@ export function parseOriginalContract(html: string, contractId: string, url: str
               amount: extended,
               mainCategory: fullCategoryName,
               subCategory: null,
+              // NEW: Mark as optional if we're in an optional package section
+              ...(currentOptionalPackageNumber ? {
+                isOptional: true,
+                optionalPackageNumber: currentOptionalPackageNumber,
+              } : {}),
             });
-            console.log(`[Original Contract Parser] Added main category: "${fullCategoryName}"`);
+            console.log(`[Original Contract Parser] Added main category: "${fullCategoryName}"${currentOptionalPackageNumber ? ` (Optional Package ${currentOptionalPackageNumber})` : ''}`);
             return;
           }
         }
@@ -629,6 +662,11 @@ export function parseOriginalContract(html: string, contractId: string, url: str
             amount: extended,
             mainCategory: currentMainCategory,
             subCategory: currentSubCategory,
+            // NEW: Mark as optional if we're in an optional package section
+            ...(currentOptionalPackageNumber ? {
+              isOptional: true,
+              optionalPackageNumber: currentOptionalPackageNumber,
+            } : {}),
           });
         }
       }

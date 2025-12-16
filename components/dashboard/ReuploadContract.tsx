@@ -44,21 +44,33 @@ type ProcessingStage = 'idle' | 'uploading' | 'parsing' | 'storing' | 'validatin
 
 type UploadMode = 'links' | 'eml';
 
+interface DetectedSection {
+  type: 'original' | 'optional-package' | 'addendum';
+  number?: number;
+  name?: string;
+  selected?: boolean; // Default selection state
+}
+
 interface LinkValidationResult {
   url: string;
-  type: 'original' | 'addendum';
-  isValid: boolean;
-  error?: string;
-  isChecking: boolean;
-  addendumNumber?: string; // Addendum # from page
+  type?: 'original' | 'optional-package' | 'addendum'; // NEW: Optional field, detected from API (for backward compatibility)
+  number?: number; // NEW: Package number or addendum number (for backward compatibility)
+  name?: string; // NEW: Optional package name (for backward compatibility)
+  sections?: DetectedSection[]; // NEW: Array of all detected sections in this link
+  isValid: boolean; // EXISTING
+  error?: string; // EXISTING
+  isChecking: boolean; // EXISTING
+  addendumNumber?: string; // EXISTING - for backward compatibility
 }
 
 interface ExtractedLink {
   url: string;
-  type: 'original' | 'addendum';
-  selected: boolean;
-  validation?: LinkValidationResult;
-  addendumNumber?: string; // For sorting
+  type?: 'original' | 'optional-package' | 'addendum'; // NEW: Optional field, detected from validation
+  number?: number; // NEW: Package number or addendum number
+  name?: string; // NEW: Optional package name
+  selected: boolean; // EXISTING
+  validation?: LinkValidationResult; // EXISTING
+  addendumNumber?: string; // EXISTING - for sorting
 }
 
 interface ReuploadContractProps {
@@ -83,6 +95,8 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   const [linksInput, setLinksInput] = useState(''); // Single textarea for all links
   const [linkValidationResults, setLinkValidationResults] = useState<LinkValidationResult[]>([]);
   const [isValidatingLinks, setIsValidatingLinks] = useState(false);
+  // NEW: Track selected sections (url + section type + number = unique key)
+  const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
   
   // EML Upload mode state
   const [file, setFile] = useState<File | null>(null);
@@ -93,11 +107,11 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   const [emlStep, setEmlStep] = useState<'upload' | 'select' | 'confirm'>('upload');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Validate a single link (format, accessibility, and extract addendum number)
-  const validateLink = async (url: string, type: 'original' | 'addendum'): Promise<LinkValidationResult> => {
+  // Validate a single link (format, accessibility, and detect type)
+  // NEW: No longer requires type parameter - type is detected from API
+  const validateLink = async (url: string): Promise<LinkValidationResult> => {
     const result: LinkValidationResult = {
       url: url.trim(),
-      type,
       isValid: false,
       isChecking: true,
     };
@@ -110,7 +124,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
       return result;
     }
 
-    // Check accessibility and extract addendum number
+    // Check accessibility and detect type
     try {
       const response = await fetch('/api/validate-link', {
         method: 'POST',
@@ -124,27 +138,73 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
       
       if (response.ok && responseData.valid === true) {
         result.isValid = true;
-        // Extract addendum number from response if available
+        // NEW: Extract sections array (primary) or fall back to single type (backward compatibility)
+        if (responseData.sections && Array.isArray(responseData.sections)) {
+          result.sections = responseData.sections;
+          // Also set type/number/name from first section for backward compatibility
+          if (responseData.sections.length > 0) {
+            result.type = responseData.sections[0].type;
+            result.number = responseData.sections[0].number;
+            result.name = responseData.sections[0].name;
+          }
+        } else {
+          // Backward compatibility: single type detection
+          if (responseData.type) {
+            result.type = responseData.type;
+          }
+          if (responseData.number !== undefined) {
+            result.number = responseData.number;
+          }
+          if (responseData.name) {
+            result.name = responseData.name;
+          }
+          // Convert single type to sections array
+          result.sections = [{
+            type: responseData.type || 'original',
+            number: responseData.number,
+            name: responseData.name,
+            selected: responseData.type !== 'optional-package', // Optional packages not selected by default
+          }];
+        }
+        // EXISTING: Extract addendum number from response if available (backward compatibility)
         if (responseData.addendumNumber) {
           result.addendumNumber = responseData.addendumNumber;
-        } else if (type === 'addendum') {
+        } else if (result.type === 'addendum' && result.number) {
+          // Fallback: use number as addendumNumber for backward compatibility
+          result.addendumNumber = String(result.number);
+        } else if (result.type === 'addendum') {
           // Fallback to URL extraction
           result.addendumNumber = extractAddendumNumberFromUrl(url);
         }
       } else {
         result.isValid = false;
         result.error = responseData.error || responseData.message || `Failed to access link (${response.status})`;
-        // Still try to extract from URL as fallback
-        if (type === 'addendum') {
-          result.addendumNumber = extractAddendumNumberFromUrl(url);
+        // Still try to extract from URL as fallback for addendums
+        try {
+          const fallbackNumber = extractAddendumNumberFromUrl(url);
+          if (fallbackNumber && fallbackNumber !== 'Unknown') {
+            result.addendumNumber = fallbackNumber;
+            // Assume it's an addendum if we can extract a number
+            result.type = 'addendum';
+            result.number = parseInt(fallbackNumber, 10);
+          }
+        } catch {
+          // Ignore fallback errors
         }
       }
     } catch (err) {
       result.isValid = false;
       result.error = err instanceof Error ? err.message : 'Failed to validate link';
       // Fallback to URL extraction
-      if (type === 'addendum') {
-        result.addendumNumber = extractAddendumNumberFromUrl(url);
+      try {
+        const fallbackNumber = extractAddendumNumberFromUrl(url);
+        if (fallbackNumber && fallbackNumber !== 'Unknown') {
+          result.addendumNumber = fallbackNumber;
+          result.type = 'addendum';
+          result.number = parseInt(fallbackNumber, 10);
+        }
+      } catch {
+        // Ignore fallback errors
       }
     }
 
@@ -176,15 +236,28 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
         return;
       }
 
-      // Validate all links (no separation between original and addendums)
+      // Validate all links (sections will be detected by API)
       const validationPromises = linksToValidate.map((url) => {
-        // Try to determine type by checking if it's likely an original contract
-        // For now, treat all as addendums since original contract is not required
-        return validateLink(url, 'addendum');
+        return validateLink(url);
       });
       
       const results = await Promise.all(validationPromises);
-
+      
+      // Initialize selected sections based on default selection state
+      const initialSelected = new Set<string>();
+      results.forEach((result) => {
+        if (result.isValid && result.sections) {
+          result.sections.forEach((section) => {
+            if (section.selected !== false) {
+              // Only add if selected is true or undefined (default true for original/addendum)
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              initialSelected.add(sectionKey);
+            }
+          });
+        }
+      });
+      setSelectedSections(initialSelected);
+      
       setLinkValidationResults(results);
 
       // Check if all validations passed
@@ -244,37 +317,55 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
 
           const links: ExtractedLink[] = [];
           
-          // Only add original contract link if includeOriginalContract is checked
-          if (includeOriginalContract && extractedLinksData.originalContractUrl) {
-            links.push({
-              url: extractedLinksData.originalContractUrl,
-              type: 'original',
-              selected: false, // Default: unchecked for re-upload
+          // NEW: Use links array if available, otherwise fall back to old format
+          if (extractedLinksData.links && Array.isArray(extractedLinksData.links)) {
+            // Use new links array (type will be determined by validation)
+            extractedLinksData.links.forEach((link: { url: string }) => {
+              links.push({
+                url: link.url,
+                selected: true, // Default: checked (user can deselect)
+                // type, number, name will be set during validation
+                addendumNumber: extractAddendumNumberFromUrl(link.url), // Initial fallback for sorting
+              });
+            });
+          } else {
+            // EXISTING: Fall back to old format for backward compatibility
+            // Only add original contract link if includeOriginalContract is checked
+            if (includeOriginalContract && extractedLinksData.originalContractUrl) {
+              links.push({
+                url: extractedLinksData.originalContractUrl,
+                selected: false, // Default: unchecked for re-upload
+                // type will be determined by validation
+              });
+            }
+
+            // Add all addendum links
+            extractedLinksData.addendumUrls.forEach((url: string) => {
+              links.push({
+                url,
+                selected: true, // Default: checked
+                addendumNumber: extractAddendumNumberFromUrl(url), // Initial fallback
+                // type will be determined by validation
+              });
             });
           }
 
-          // Add all addendum links
-          extractedLinksData.addendumUrls.forEach((url: string) => {
-            links.push({
-              url,
-              type: 'addendum',
-              selected: true, // Default: checked
-              addendumNumber: extractAddendumNumberFromUrl(url), // Initial fallback
-            });
-          });
-
-          // Step 2: Validate all links immediately
+          // Step 2: Validate all links immediately (type will be detected by API)
           setProcessingStage('validating');
-          const validationPromises = links.map((link: ExtractedLink) => validateLink(link.url, link.type));
+          const validationPromises = links.map((link: ExtractedLink) => validateLink(link.url));
           const validationResults = await Promise.all(validationPromises);
 
-          // Update links with validation results and addendum numbers
+          // Update links with validation results and detected type/number
           const validatedLinks = links.map(link => {
             const validation = validationResults.find(r => r.url === link.url);
             if (validation) {
               return {
                 ...link,
                 validation,
+                // NEW: Update type, number, and name from validation
+                type: validation.type || link.type,
+                number: validation.number || link.number,
+                name: validation.name || link.name,
                 addendumNumber: validation.addendumNumber || link.addendumNumber, // Use validated number if available
               };
             }
@@ -334,17 +425,21 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     setProcessingStage('validating');
 
     try {
-      // Validate each selected link
-      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url, link.type));
+      // Validate each selected link (type will be detected by API)
+      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url));
       const results = await Promise.all(validationPromises);
 
-      // Update extractedLinks with validation results and addendum numbers
+      // Update extractedLinks with validation results and detected type/number
       const updatedLinks = extractedLinks.map(link => {
         const validation = results.find(r => r.url === link.url);
         if (validation) {
           return {
             ...link,
             validation,
+            // NEW: Update type, number, and name from validation
+            type: validation.type || link.type,
+            number: validation.number || link.number,
+            name: validation.name || link.name,
             addendumNumber: validation.addendumNumber || link.addendumNumber,
           };
         }
@@ -369,17 +464,28 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     }
   };
 
-  // Sort links by addendum number in ascending order
+  // Sort links by type and number in ascending order
   const sortLinksByAddendumNumber = (links: ExtractedLink[]): ExtractedLink[] => {
     return [...links].sort((a, b) => {
       // Original contract links go first
       if (a.type === 'original' && b.type !== 'original') return -1;
       if (a.type !== 'original' && b.type === 'original') return 1;
       
+      // Optional packages go after original, before addendums
+      if (a.type === 'optional-package' && b.type === 'addendum') return -1;
+      if (a.type === 'addendum' && b.type === 'optional-package') return 1;
+      
+      // For optional packages, sort by number in ascending order
+      if (a.type === 'optional-package' && b.type === 'optional-package') {
+        const numA = a.number || 0;
+        const numB = b.number || 0;
+        return numA - numB; // Ascending order
+      }
+      
       // For addendums, sort by number in ascending order
       if (a.type === 'addendum' && b.type === 'addendum') {
-        const numA = parseInt(a.addendumNumber || '0', 10);
-        const numB = parseInt(b.addendumNumber || '0', 10);
+        const numA = a.number || parseInt(a.addendumNumber || '0', 10);
+        const numB = b.number || parseInt(b.addendumNumber || '0', 10);
         return numA - numB; // Ascending order
       }
       
@@ -432,19 +538,29 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     try {
       if (uploadMode === 'links') {
         // DBX Links Only mode
-        const selectedLinks = linkValidationResults.filter(r => r.isValid);
+        // Collect selected sections from validation results
+        const formattedSelectedLinks: Array<{ url: string; type: string; number?: number }> = [];
         
-        if (selectedLinks.length === 0) {
-          setError('Please validate and select at least one valid link');
+        linkValidationResults.forEach((result) => {
+          if (result.isValid && result.sections) {
+            result.sections.forEach((section) => {
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              if (selectedSections.has(sectionKey)) {
+                formattedSelectedLinks.push({
+                  url: result.url,
+                  type: section.type,
+                  number: section.number,
+                });
+              }
+            });
+          }
+        });
+        
+        if (formattedSelectedLinks.length === 0) {
+          setError('Please select at least one section to include');
           setIsProcessing(false);
           return;
         }
-
-        // Separate original contract and addendums (if any)
-        const originalContractLink = selectedLinks.find(l => l.type === 'original');
-        const addendumLinks = selectedLinks
-          .filter(l => l.type === 'addendum')
-          .map(l => l.url);
 
         // Process contract
         setProcessingStage('parsing');
@@ -456,9 +572,8 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
           },
           body: JSON.stringify({
             mode: 'links',
-            originalContractUrl: originalContractLink?.url || undefined,
-            addendumLinks: addendumLinks.length > 0 ? addendumLinks : undefined,
-            includeOriginalContract: !!originalContractLink,
+            // NEW: Pass selectedLinks array with sections
+            selectedLinks: formattedSelectedLinks,
             existingContractId: contract.id,
             deleteExtraRows: deleteExtraRows,
             includeMainCategories: includeMainCategories,
@@ -484,11 +599,12 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
           return;
         }
 
-        // Separate original contract and addendums
-        const originalContractLink = selectedLinks.find(l => l.type === 'original');
-        const addendumLinks = selectedLinks
-          .filter(l => l.type === 'addendum')
-          .map(l => l.url);
+        // NEW: Format selected links with type information
+        const formattedSelectedLinks = selectedLinks.map(link => ({
+          url: link.url,
+          type: link.type || 'original', // Default to original if type not detected
+          number: link.number, // Package number or addendum number
+        }));
 
         setProcessingStage('parsing');
 
@@ -508,9 +624,12 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
                 mode: 'eml',
                 file: base64Data,
                 filename: file.name,
-                originalContractUrl: originalContractLink?.url,
-                addendumLinks: addendumLinks.length > 0 ? addendumLinks : undefined,
-                includeOriginalContract: !!originalContractLink,
+                // NEW: Pass selectedLinks array
+                selectedLinks: formattedSelectedLinks,
+                // EXISTING: Keep old format for backward compatibility (will be ignored if selectedLinks is provided)
+                originalContractUrl: selectedLinks.find(l => l.type === 'original')?.url,
+                addendumLinks: selectedLinks.filter(l => l.type === 'addendum').map(l => l.url),
+                includeOriginalContract: selectedLinks.some(l => l.type === 'original'),
                 existingContractId: contract.id,
                 deleteExtraRows: deleteExtraRows,
                 includeMainCategories: includeMainCategories,
@@ -645,13 +764,28 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   // Get sorted links for display
   const sortedExtractedLinks = sortLinksByAddendumNumber(extractedLinks);
   const sortedValidationResults = [...linkValidationResults].sort((a, b) => {
+    // Original contract links go first
     if (a.type === 'original' && b.type !== 'original') return -1;
     if (a.type !== 'original' && b.type === 'original') return 1;
-    if (a.type === 'addendum' && b.type === 'addendum') {
-      const numA = parseInt(a.addendumNumber || '0', 10);
-      const numB = parseInt(b.addendumNumber || '0', 10);
-      return numA - numB; // Ascending order
+    
+    // Optional packages go after original, before addendums
+    if (a.type === 'optional-package' && b.type === 'addendum') return -1;
+    if (a.type === 'addendum' && b.type === 'optional-package') return 1;
+    
+    // For optional packages, sort by number in ascending order
+    if (a.type === 'optional-package' && b.type === 'optional-package') {
+      const numA = a.number || 0;
+      const numB = b.number || 0;
+      return numA - numB;
     }
+    
+    // For addendums, sort by number in ascending order
+    if (a.type === 'addendum' && b.type === 'addendum') {
+      const numA = a.number || parseInt(a.addendumNumber || '0', 10);
+      const numB = b.number || parseInt(b.addendumNumber || '0', 10);
+      return numA - numB;
+    }
+    
     return 0;
   });
 
@@ -701,38 +835,81 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
               )}
             </Button>
 
-            {/* Validation Results - sorted by addendum number descending */}
+            {/* Validation Results - Show all sections from each link */}
             {sortedValidationResults.length > 0 && (
-              <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[300px] overflow-y-auto">
-                <Label className="text-sm font-medium">Validation Results:</Label>
-                <div className="space-y-2">
-                  {sortedValidationResults.map((result, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm">
-                      {result.isChecking ? (
-                        <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
-                      ) : result.isValid ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">
-                            {result.type === 'original' 
-                              ? 'Original Contract' 
-                              : result.addendumNumber 
-                                ? `Addendum #${result.addendumNumber}` 
-                                : `Addendum ${index}`}:
-                          </span>
-                          {result.isValid && <span className="text-green-600">Valid</span>}
+              <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[400px] overflow-y-auto">
+                <Label className="text-sm font-medium">Validation Results - Select sections to include:</Label>
+                <div className="space-y-3">
+                  {sortedValidationResults.map((result, resultIndex) => {
+                    if (!result.isValid || !result.sections || result.sections.length === 0) {
+                      // Show error or invalid link
+                      return (
+                        <div key={resultIndex} className="flex items-start gap-2 text-sm border-b pb-2">
+                          {result.isChecking ? (
+                            <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                          )}
+                          <div className="flex-1">
+                            <div className="text-xs text-muted-foreground break-all">{result.url}</div>
+                            {result.error && (
+                              <div className="text-xs text-red-600 mt-1">{result.error}</div>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground break-all">{result.url}</div>
-                        {result.error && (
-                          <div className="text-xs text-red-600 mt-1">{result.error}</div>
-                        )}
+                      );
+                    }
+                    
+                    // Show all sections from this link
+                    return (
+                      <div key={resultIndex} className="border-b pb-3 last:border-b-0">
+                        <div className="text-xs text-muted-foreground break-all mb-2">{result.url}</div>
+                        <div className="space-y-2 pl-4">
+                          {result.sections.map((section, sectionIndex) => {
+                            const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+                            const isSelected = selectedSections.has(sectionKey);
+                            
+                            // Format display name
+                            let displayName = 'Unknown';
+                            if (section.type === 'optional-package') {
+                              displayName = section.number 
+                                ? `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`
+                                : 'Optional Package';
+                            } else if (section.type === 'addendum') {
+                              displayName = section.number 
+                                ? `Addendum #${section.number}`
+                                : 'Addendum';
+                            } else {
+                              displayName = 'Original Contract';
+                            }
+                            
+                            return (
+                              <div key={sectionIndex} className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => {
+                                    const newSelected = new Set(selectedSections);
+                                    if (checked) {
+                                      newSelected.add(sectionKey);
+                                    } else {
+                                      newSelected.delete(sectionKey);
+                                    }
+                                    setSelectedSections(newSelected);
+                                  }}
+                                />
+                                <Label className="flex-1 cursor-pointer text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium">{displayName}</span>
+                                  </div>
+                                </Label>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -925,11 +1102,23 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-sm">
-                          {link.type === 'original' 
-                            ? 'Original Contract' 
-                            : link.addendumNumber 
-                              ? `Addendum #${link.addendumNumber}` 
-                              : `Addendum`}:
+                          {(() => {
+                            // Format display name based on detected type
+                            if (link.type === 'optional-package') {
+                              return link.number 
+                                ? `Optional Package ${link.number}${link.name ? `: ${link.name}` : ''}`
+                                : 'Optional Package';
+                            } else if (link.type === 'addendum') {
+                              return link.number 
+                                ? `Addendum #${link.number}`
+                                : link.addendumNumber 
+                                  ? `Addendum #${link.addendumNumber}`
+                                  : 'Addendum';
+                            } else {
+                              // original or undefined (default to original)
+                              return 'Original Contract';
+                            }
+                          })()}:
                         </span>
                         {link.validation && (
                           <>

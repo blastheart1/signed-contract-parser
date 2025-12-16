@@ -38,6 +38,9 @@ export interface OrderItem {
   previouslyInvoicedAmount?: number | string;
   newProgressPct?: number | string;
   thisBill?: number | string;
+  // NEW: Optional package fields (backward compatible)
+  isOptional?: boolean; // true if item belongs to an optional package
+  optionalPackageNumber?: number; // Package number (1, 2, etc.) if optional
 }
 
 /**
