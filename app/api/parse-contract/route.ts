@@ -332,8 +332,9 @@ export async function POST(request: NextRequest) {
         // Merge with existing contract items if existingContractId is provided and only addendums/optional packages were processed
         // CRITICAL: This preserves ALL existing item data including progress updates, invoice links, and any user modifications
         // We only APPEND new addendum/optional package items - we never modify or overwrite existing items
+        // Removed !includeOriginalContract requirement - merge should happen for reupload even if items is empty
         const hasNewItems = addendumData.length > 0 || optionalPackageLinks.length > 0;
-        if (existingContractId && existingItems.length > 0 && !includeOriginalContract && hasNewItems) {
+        if (existingContractId && existingItems.length > 0 && hasNewItems) {
           console.log(`[API] Merging ${addendumData.length} addendum(s) with ${existingItems.length} existing items`);
           console.log(`[API] CRITICAL: Preserving all existing item properties (progress fields, invoice links, etc.)`);
           // Combine: existing items + 1 blank row + new addendum items
@@ -460,7 +461,8 @@ export async function POST(request: NextRequest) {
       }> = body.selectedSections || [];
       
       // NEW: Extract links from selectedLinks array (backward compatible)
-      let addendumLinks: string[] = [];
+      // Changed to track addendum numbers for filtering
+      let addendumLinks: Array<{ url: string; number?: number }> = [];
       let originalContractUrlFromBody: string | undefined = undefined;
       let optionalPackageLinks: Array<{ url: string; number: number }> = [];
       
@@ -471,7 +473,8 @@ export async function POST(request: NextRequest) {
             if (section.type === 'original') {
               originalContractUrlFromBody = section.url;
             } else if (section.type === 'addendum') {
-              addendumLinks.push(section.url);
+              // Track addendum number to filter results later
+              addendumLinks.push({ url: section.url, number: section.number });
             } else if (section.type === 'optional-package' && section.number) {
               optionalPackageLinks.push({ url: section.url, number: section.number });
             }
@@ -485,7 +488,8 @@ export async function POST(request: NextRequest) {
           if (link.type === 'original') {
             originalContractUrlFromBody = link.url;
           } else if (link.type === 'addendum') {
-            addendumLinks.push(link.url);
+            // Track addendum number to filter results later
+            addendumLinks.push({ url: link.url, number: link.number });
           } else if (link.type === 'optional-package') {
             const pkgNumber = typeof link.number === 'number' ? link.number : 0;
             if (pkgNumber > 0) {
@@ -495,18 +499,20 @@ export async function POST(request: NextRequest) {
         });
       } else {
         // EXISTING: Fall back to old format (backward compatibility)
-        addendumLinks = body.addendumLinks || [];
+        // Convert string array to new format
+        const oldAddendumLinks = body.addendumLinks || [];
+        addendumLinks = oldAddendumLinks.map((url: string) => ({ url }));
         originalContractUrlFromBody = body.originalContractUrl;
       }
       
       // Validate addendum links if provided
       if (addendumLinks.length > 0) {
-        const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link));
+        const invalidLinks = addendumLinks.filter(link => !validateAddendumUrl(link.url));
         if (invalidLinks.length > 0) {
           return NextResponse.json(
             { 
               error: 'Invalid addendum URL format',
-              message: `The following links are invalid: ${invalidLinks.join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
+              message: `The following links are invalid: ${invalidLinks.map(l => l.url).join(', ')}. Expected format: https://l1.prodbx.com/go/view/?...`
             },
             { status: 400 }
           );
@@ -675,23 +681,58 @@ export async function POST(request: NextRequest) {
         // (selectedSections will only contain link sections for addendums/optional packages)
         const linkSections = selectedSections.filter(s => s.source === 'link');
         
-        // Process addendums from links
-        const addendumUrls = linkSections
-          .filter(s => s.type === 'addendum' && s.url)
-          .map(s => s.url!);
+        // Build a map of selected addendum numbers per URL for filtering
+        const selectedAddendumNumbersByUrl = new Map<string, Set<number>>();
+        linkSections
+          .filter(s => s.type === 'addendum' && s.url && s.number !== undefined)
+          .forEach(s => {
+            const url = s.url!;
+            const number = s.number!;
+            if (!selectedAddendumNumbersByUrl.has(url)) {
+              selectedAddendumNumbersByUrl.set(url, new Set());
+            }
+            selectedAddendumNumbersByUrl.get(url)!.add(number);
+          });
+        
+        // Get unique URLs to process
+        const addendumUrls = Array.from(new Set(
+          linkSections
+            .filter(s => s.type === 'addendum' && s.url)
+            .map(s => s.url!)
+        ));
         
         if (addendumUrls.length > 0) {
           processingSummary.summary.totalLinks += addendumUrls.length;
           for (const url of addendumUrls) {
             try {
               const addendumResult = await fetchAndParseAddendums([url]);
-              if (addendumResult.length > 0) {
-                addendumData.push(...addendumResult);
+              
+              // Filter results to only include selected addendum numbers
+              const selectedNumbers = selectedAddendumNumbersByUrl.get(url);
+              let filteredResults: AddendumData[] = [];
+              
+              if (selectedNumbers && selectedNumbers.size > 0) {
+                // Only include addendums whose numbers match selected sections
+                filteredResults = addendumResult.filter(addendum => {
+                  const addendumNum = parseInt(addendum.addendumNumber || '0', 10);
+                  const isSelected = selectedNumbers.has(addendumNum);
+                  console.log(`[API] Filtering addendum - URL: ${url}, parsed number: ${addendumNum}, selected numbers: [${Array.from(selectedNumbers).join(', ')}], isSelected: ${isSelected}`);
+                  return isSelected;
+                });
+              } else {
+                // If no specific numbers selected, include all (backward compatibility)
+                console.log(`[API] No specific addendum numbers selected for URL ${url}, including all addendums`);
+                filteredResults = addendumResult;
+              }
+              
+              if (filteredResults.length > 0) {
+                addendumData.push(...filteredResults);
                 processingSummary.addendums.push({ url, status: 'success' });
                 processingSummary.summary.successful++;
               } else {
-                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No matching addendums found' });
                 processingSummary.summary.failed++;
+                console.warn(`[API] No matching addendums found for URL ${url} (filtered out)`);
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -726,6 +767,106 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+      // NEW FLOW: Process selected addendums only (reupload scenario - no original contract)
+      // This handles when user selects only addendums without original contract
+      else if (selectedSections.length > 0 && selectedSections.some(s => s.type === 'addendum' && s.source === 'link') && !originalContractUrlFromBody) {
+        console.log('[API] Processing selected addendums only (reupload scenario)');
+        
+        // Process selected addendums and optional packages from links
+        const linkSections = selectedSections.filter(s => s.source === 'link');
+        
+        // Build a map of selected addendum numbers per URL for filtering
+        const selectedAddendumNumbersByUrl = new Map<string, Set<number>>();
+        linkSections
+          .filter(s => s.type === 'addendum' && s.url && s.number !== undefined)
+          .forEach(s => {
+            const url = s.url!;
+            const number = s.number!;
+            if (!selectedAddendumNumbersByUrl.has(url)) {
+              selectedAddendumNumbersByUrl.set(url, new Set());
+            }
+            selectedAddendumNumbersByUrl.get(url)!.add(number);
+          });
+        
+        // Get unique URLs to process
+        const addendumUrls = Array.from(new Set(
+          linkSections
+            .filter(s => s.type === 'addendum' && s.url)
+            .map(s => s.url!)
+        ));
+        
+        if (addendumUrls.length > 0) {
+          processingSummary.summary.totalLinks += addendumUrls.length;
+          for (const url of addendumUrls) {
+            try {
+              const addendumResult = await fetchAndParseAddendums([url]);
+              
+              // Filter results to only include selected addendum numbers
+              const selectedNumbers = selectedAddendumNumbersByUrl.get(url);
+              let filteredResults: AddendumData[] = [];
+              
+              if (selectedNumbers && selectedNumbers.size > 0) {
+                // Only include addendums whose numbers match selected sections
+                filteredResults = addendumResult.filter(addendum => {
+                  const addendumNum = parseInt(addendum.addendumNumber || '0', 10);
+                  const isSelected = selectedNumbers.has(addendumNum);
+                  console.log(`[API] Filtering addendum - URL: ${url}, parsed number: ${addendumNum}, selected numbers: [${Array.from(selectedNumbers).join(', ')}], isSelected: ${isSelected}`);
+                  return isSelected;
+                });
+              } else {
+                // If no specific numbers selected, include all (backward compatibility)
+                console.log(`[API] No specific addendum numbers selected for URL ${url}, including all addendums`);
+                filteredResults = addendumResult;
+              }
+              
+              if (filteredResults.length > 0) {
+                addendumData.push(...filteredResults);
+                processingSummary.addendums.push({ url, status: 'success' });
+                processingSummary.summary.successful++;
+                console.log(`[API] Successfully processed ${filteredResults.length} selected addendum(s) from ${url}`);
+              } else {
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No matching addendums found' });
+                processingSummary.summary.failed++;
+                console.warn(`[API] No matching addendums found for URL ${url} (filtered out)`);
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              processingSummary.addendums.push({ url, status: 'failed', error: errorMessage });
+              processingSummary.summary.failed++;
+              console.error(`[API] Failed to process addendum URL ${url}:`, errorMessage);
+            }
+          }
+        }
+        
+        // Process optional packages from links if selected
+        const linkOptionalPackages = linkSections
+          .filter(s => s.type === 'optional-package' && s.url && s.number)
+          .map(s => ({ url: s.url!, number: s.number! }));
+        
+        if (linkOptionalPackages.length > 0) {
+          processingSummary.summary.totalLinks += linkOptionalPackages.length;
+          for (const pkgLink of linkOptionalPackages) {
+            try {
+              const pkgHTML = await fetchAddendumHTML(pkgLink.url);
+              const contractId = `optional-package-${pkgLink.number}`;
+              const pkgItems = parseOriginalContract(pkgHTML, contractId, pkgLink.url);
+              const markedItems = pkgItems.map(item => ({
+                ...item,
+                isOptional: true,
+                optionalPackageNumber: pkgLink.number,
+              }));
+              items.push(...markedItems);
+              processingSummary.summary.successful++;
+            } catch (error) {
+              console.error(`[API] Failed to parse optional package ${pkgLink.number} from link:`, error);
+              processingSummary.summary.failed++;
+            }
+          }
+        }
+        
+        // items array remains empty (will be merged with existing items later)
+        console.log(`[API] Processed ${addendumData.length} selected addendum(s), items array: ${items.length} (will merge with existing)`);
       }
       // NEW FLOW: If originalContractUrl is provided in body, use it (from Step 2 selection)
       // Only process if includeOriginalContract is true
@@ -788,19 +929,54 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Process provided addendum links (EXISTING CODE - NO CHANGES)
+        // Process provided addendum links with filtering by selected addendum numbers
         if (addendumLinks.length > 0) {
           processingSummary.summary.totalLinks += addendumLinks.length;
-          for (const url of addendumLinks) {
+          
+          // Build a map of selected addendum numbers per URL for filtering
+          const selectedAddendumNumbersByUrl = new Map<string, Set<number>>();
+          addendumLinks.forEach(link => {
+            if (link.number !== undefined) {
+              if (!selectedAddendumNumbersByUrl.has(link.url)) {
+                selectedAddendumNumbersByUrl.set(link.url, new Set());
+              }
+              selectedAddendumNumbersByUrl.get(link.url)!.add(link.number);
+            }
+          });
+          
+          // Get unique URLs to process (deduplicate)
+          const uniqueUrls = Array.from(new Set(addendumLinks.map(link => link.url)));
+          
+          for (const url of uniqueUrls) {
             try {
               const addendumResult = await fetchAndParseAddendums([url]);
-              if (addendumResult.length > 0) {
-                addendumData.push(...addendumResult);
+              
+              // Filter results to only include selected addendum numbers
+              const selectedNumbers = selectedAddendumNumbersByUrl.get(url);
+              let filteredResults: AddendumData[] = [];
+              
+              if (selectedNumbers && selectedNumbers.size > 0) {
+                // Only include addendums whose numbers match selected sections
+                filteredResults = addendumResult.filter(addendum => {
+                  const addendumNum = parseInt(addendum.addendumNumber || '0', 10);
+                  const isSelected = selectedNumbers.has(addendumNum);
+                  console.log(`[API] Filtering addendum - URL: ${url}, parsed number: ${addendumNum}, selected numbers: [${Array.from(selectedNumbers).join(', ')}], isSelected: ${isSelected}`);
+                  return isSelected;
+                });
+              } else {
+                // If no specific numbers selected, include all (backward compatibility)
+                console.log(`[API] No specific addendum numbers selected for URL ${url}, including all addendums`);
+                filteredResults = addendumResult;
+              }
+              
+              if (filteredResults.length > 0) {
+                addendumData.push(...filteredResults);
                 processingSummary.addendums.push({ url, status: 'success' });
                 processingSummary.summary.successful++;
               } else {
-                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No matching addendums found' });
                 processingSummary.summary.failed++;
+                console.warn(`[API] No matching addendums found for URL ${url} (filtered out)`);
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -937,19 +1113,52 @@ export async function POST(request: NextRequest) {
           console.log(`[API] Processing ${addendumLinks.length} manually entered addendum link(s)...`);
           processingSummary.summary.totalLinks = addendumLinks.length;
           
+          // Build a map of selected addendum numbers per URL for filtering
+          const selectedAddendumNumbersByUrl = new Map<string, Set<number>>();
+          addendumLinks.forEach(link => {
+            if (link.number !== undefined) {
+              if (!selectedAddendumNumbersByUrl.has(link.url)) {
+                selectedAddendumNumbersByUrl.set(link.url, new Set());
+              }
+              selectedAddendumNumbersByUrl.get(link.url)!.add(link.number);
+            }
+          });
+          
+          // Get unique URLs to process (deduplicate)
+          const uniqueUrls = Array.from(new Set(addendumLinks.map(link => link.url)));
+          
           // Process each addendum and track status
-          for (const url of addendumLinks) {
+          for (const url of uniqueUrls) {
             try {
               const addendumResult = await fetchAndParseAddendums([url]);
-              if (addendumResult.length > 0) {
-                addendumData.push(...addendumResult);
+              
+              // Filter results to only include selected addendum numbers
+              const selectedNumbers = selectedAddendumNumbersByUrl.get(url);
+              let filteredResults: AddendumData[] = [];
+              
+              if (selectedNumbers && selectedNumbers.size > 0) {
+                // Only include addendums whose numbers match selected sections
+                filteredResults = addendumResult.filter(addendum => {
+                  const addendumNum = parseInt(addendum.addendumNumber || '0', 10);
+                  const isSelected = selectedNumbers.has(addendumNum);
+                  console.log(`[API] Filtering addendum - URL: ${url}, parsed number: ${addendumNum}, selected numbers: [${Array.from(selectedNumbers).join(', ')}], isSelected: ${isSelected}`);
+                  return isSelected;
+                });
+              } else {
+                // If no specific numbers selected, include all (backward compatibility)
+                console.log(`[API] No specific addendum numbers selected for URL ${url}, including all addendums`);
+                filteredResults = addendumResult;
+              }
+              
+              if (filteredResults.length > 0) {
+                addendumData.push(...filteredResults);
                 processingSummary.addendums.push({ url, status: 'success' });
                 processingSummary.summary.successful++;
-                console.log(`[API] Successfully processed addendum: ${url}`);
+                console.log(`[API] Successfully processed ${filteredResults.length} selected addendum(s) from ${url}`);
               } else {
-                processingSummary.addendums.push({ url, status: 'failed', error: 'No items found' });
+                processingSummary.addendums.push({ url, status: 'failed', error: 'No matching addendums found' });
                 processingSummary.summary.failed++;
-                console.warn(`[API] Failed to process addendum: ${url} - No items found`);
+                console.warn(`[API] No matching addendums found for URL ${url} (filtered out)`);
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -969,7 +1178,9 @@ export async function POST(request: NextRequest) {
       // Merge with existing contract items if existingContractId is provided and only addendums were processed
       // CRITICAL: This preserves ALL existing item data including progress updates, invoice links, and any user modifications
       // We only APPEND new addendum items - we never modify or overwrite existing items
-      if (existingContractId && existingItems.length > 0 && !includeOriginalContract && addendumData.length > 0) {
+      // Merge condition: If we have existing contract, existing items, and new addendums, merge them
+      // Removed !includeOriginalContract requirement - merge should happen for reupload even if items is empty
+      if (existingContractId && existingItems.length > 0 && addendumData.length > 0) {
         console.log(`[API] Merging ${addendumData.length} addendum(s) with ${existingItems.length} existing items`);
         console.log(`[API] CRITICAL: Preserving all existing item properties (progress fields, invoice links, etc.)`);
         // Combine: existing items + 1 blank row + new addendum items
@@ -1016,6 +1227,10 @@ export async function POST(request: NextRequest) {
         // Replace items with merged items
         items = mergedItems as any;
         console.log(`[API] Merged items total: ${items.length}`);
+      } else if (existingContractId && existingItems.length > 0 && items.length === 0 && addendumData.length === 0) {
+        // Safety check: If we have existing items but no new data, preserve existing items
+        console.warn(`[API] No new addendums to add, but existing items found. Preserving existing items.`);
+        items = existingItems.map(item => ({ ...item }));
       }
       
       // Apply filtering based on category inclusion flags
@@ -1039,6 +1254,24 @@ export async function POST(request: NextRequest) {
       const orderItemsValidation = validateOrderItemsTotal(filteredItems, location.orderGrandTotal);
       if (!orderItemsValidation.isValid) {
         console.warn('[API] Order items total validation failed:', orderItemsValidation.message);
+      }
+
+      // Final safety check: Prevent overwriting existing contract with empty items during reupload
+      if (existingContractId && filteredItems.length === 0 && existingItems.length > 0 && addendumData.length === 0) {
+        console.warn(`[API] SAFETY CHECK: Would overwrite existing contract with empty items. Preserving existing items instead.`);
+        // Use existing items instead of empty array
+        const existingFilteredItems = filterItems(existingItems, includeMainCategories, includeSubcategories);
+        return NextResponse.json({
+          success: true,
+          data: {
+            location,
+            items: existingFilteredItems,
+            addendums: [],
+            isLocationParsed,
+            orderItemsValidation,
+          },
+          processingSummary,
+        });
       }
 
       // If returnData is true, return JSON data instead of Excel file
