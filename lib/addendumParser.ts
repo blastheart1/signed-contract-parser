@@ -441,7 +441,7 @@ export function parseOriginalContract(html: string, contractId: string, url: str
     let currentOptionalPackageNumber: number | undefined = undefined;
     const pageText = $.text();
     
-      // Process all rows
+    // Process all rows
     rows.each((index, row) => {
       const $row = $(row);
       const cells = $row.find('td');

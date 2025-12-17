@@ -1,0 +1,3828 @@
+Delivered-To: billing@calimingo.com
+Received: by 2002:a05:6919:db92:b0:405:ca73:cfd1 with SMTP id fg18csp1165820ysc;
+        Sun, 14 Dec 2025 11:07:12 -0800 (PST)
+X-Google-Smtp-Source: AGHT+IEP554XeMfF4ED9XuV5Gqt+owO+dSpLFEU0U1MAmZn2P9wNOSAmJddCO9uBybh0/UKN51vg
+X-Received: by 2002:a05:622a:a11:b0:4eb:9df6:5d6f with SMTP id d75a77b69052e-4f1d065088amr124639401cf.74.1765739231877;
+        Sun, 14 Dec 2025 11:07:11 -0800 (PST)
+ARC-Seal: i=1; a=rsa-sha256; t=1765739231; cv=none;
+        d=google.com; s=arc-20240605;
+        b=T7mF3EDC5iYhzfs4DWEQ/xBBrpCnPS44g2dIpm1h6PsosDD/bkYKAPsnJoHSqRY93I
+         QNK2sykN6b+kwoWIj7WGCaWu/tmOdL3JUX3oqIFAPBDEz17C/GEbrGPkbS3WGKfF1B5W
+         tRPuvP/9liuuhtPgLOiOU3Dl0LqJcIPSxNvBXu+YRbDZvSkwyo3NoZnhTNITUiVsLoh6
+         8GRXa4lmCkEuyOu/Gogxlqb4RPmLyXCsBcx/UIk9sQ6ccPLeAC3f+AFBVl0loWKzuzQ0
+         xe46x/swJMOILpfXx3W8AUoZwemPcXTS8lhKkIquXoEsOC9eKVKqkd0bmvh1cl9qobeo
+         ob4A==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=mime-version:feedback-id:to:reply-to:message-id:subject:date:from
+         :dkim-signature:dkim-signature;
+        bh=FEHf9fS2KHXrsATB6E8y5xINfj9GdJAZH+wg4pi9Xso=;
+        fh=1LxDB8EHz8U6dDZU635uM+KH6fCL2jEFSj+dE75F7/w=;
+        b=Idd3SzIVaQnoBHxQcmKbkP1nIAUiL1d8d0twoi4mD4n8tEfTpYsZBAGouWYsnbeSzH
+         GyTS4qiVZ1hnW0OaLY4ydTkQe+DIrmeOf7vlo6O7T+4C62m1pwRgkftDl95JOZcb+4lZ
+         6L3aro7zPleIt2wDfiCh2kQVzRSOQxwyryDJQFT63iM3S4s4BFPM8s294kgzzwna29T/
+         M4opsSzi+kJ2BoD1CwQcpppqap3AJLvCcxwm47imWN2W205tw/j6IxjSXotAYr1Tk/GX
+         /VBHuBNJDOFf9lWZtl1v/XJ67RuMRQURERGXPxvSeqsoGdNXC2aP0wd75pB19V0SbYI+
+         K6PQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@ab.mtasv.net header.s=ab20250324 header.b=HwJpIVmR;
+       dkim=pass header.i=@tx.clientimagedbx.com header.s=20251015170914pm header.b=FWNl7rDo;
+       spf=pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.14 as permitted sender) smtp.mailfrom=pm_bounces@pm-bounces.tx.clientimagedbx.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=clientimagedbx.com
+Return-Path: <pm_bounces@pm-bounces.tx.clientimagedbx.com>
+Received: from mta14-ab1.mtasv.net (mta14-ab1.mtasv.net. [50.31.205.14])
+        by mx.google.com with ESMTPS id af79cd13be357-8bab61563e8si1490081085a.617.2025.12.14.11.07.11
+        for <billing@calimingo.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Sun, 14 Dec 2025 11:07:11 -0800 (PST)
+Received-SPF: pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.14 as permitted sender) client-ip=50.31.205.14;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@ab.mtasv.net header.s=ab20250324 header.b=HwJpIVmR;
+       dkim=pass header.i=@tx.clientimagedbx.com header.s=20251015170914pm header.b=FWNl7rDo;
+       spf=pass (google.com: domain of pm_bounces@pm-bounces.tx.clientimagedbx.com designates 50.31.205.14 as permitted sender) smtp.mailfrom=pm_bounces@pm-bounces.tx.clientimagedbx.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=clientimagedbx.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; s=ab20250324; d=ab.mtasv.net;
+ h=From:Date:Subject:Message-Id:Reply-To:To:MIME-Version:Content-Type:Date:
+ From:Message-ID:Reply-To:Sender:Subject:To:CC; t=1765739231; x=1765825631;
+ bh=FEHf9fS2KHXrsATB6E8y5xINfj9GdJAZH+wg4pi9Xso=;
+ b=HwJpIVmRuLl/nOF2bhUpkHZlLlJvnXWlhCmwIOnJwF/CaZpgmSpChQQ51V4rkzcC5HHKj4RYQ0xz
+   D3PMgDsj13mSWrvhiLeFHMVdrceuicgfgAdusVITaKYqGjcLGMcYE/krIRyFy4robNhGY6p3IpPZ
+   MCP7TY60LmrlL3Eqhc4S21ho7ZLOH+VBiSMnLe0pdQgX2zHQZeIdg12+e8p2bOa/gDAQLkeHwI1j
+   oPp+CTK2E3wb2vuUwnZvTf1jNkZTVHUv5zsd/7JNZ0MFB+8tD+lU4/C7H4yZ6fUTJau3hVl1xAqm
+   2TeVigrywaWiulBiRPelRV0MPMi2yeDmXGnKzQ==
+Received: by mta14-ab1.mtasv.net id h7s5du3b84kc for <billing@calimingo.com>; Sun, 14 Dec 2025 14:07:11 -0500 (envelope-from <pm_bounces@pm-bounces.tx.clientimagedbx.com>)
+X-PM-IP: 50.31.205.14
+X-IADB-IP: 50.31.205.14
+X-IADB-IP-REVERSE: 14.205.31.50
+DKIM-Signature: v=1; a=rsa-sha256; d=tx.clientimagedbx.com;
+	s=20251015170914pm; c=relaxed/relaxed; i=do-not-reply@tx.clientimagedbx.com;
+	t=1765739231; x=1765912031;
+	h=date:date:from:from:message-id:reply-to:reply-to:sender:subject:subject:to:
+	to:cc:feedback-id:mime-version:content-type;
+	bh=FEHf9fS2KHXrsATB6E8y5xINfj9GdJAZH+wg4pi9Xso=;
+	b=FWNl7rDoC+vYoCb5WlBFQ5ciYYCFva6iRmHA1kxL1jk5Kfo9Xmmg9XuxO4jYrC+CGh4kdxyDfEu
+	IaTbQ8HdVv1k2dwCIxwcGjBHvaskMNMbjRALi/Hc3rZ1y+OffkLmtjdfajO6ehI91kXt/4kjaQdqv
+	t6lqvuziznUeL4kHqMc=
+From: Zapier Bot <do-not-reply@tx.clientimagedbx.com>
+Date: Sun, 14 Dec 2025 19:07:02 +0000
+Subject: Build Contract Signed
+Message-Id: <fbc73506-f445-4746-982b-26943278a7c4@mtasv.net>
+Reply-To: Zapier Bot <Zapier@Calimingo.com>
+To: Calimingo Billing <billing@calimingo.com>
+X-Mailer: PHPMailer 6.9.3 (https://github.com/PHPMailer/PHPMailer)
+X-PM-Message-Stream: notifications
+Feedback-ID: s9616014-_:s9616014:a250858:postmark
+X-Complaints-To: abuse@postmarkapp.com
+X-PM-Message-Id: fbc73506-f445-4746-982b-26943278a7c4
+X-PM-RCPT: |bTB8MjUwODU4fDk2MTYwMTR8YmlsbGluZ0BjYWxpbWluZ28uY29t|
+X-PM-Message-Options: v1;1.irHcDkN7PZvWZ3zRp9vo2Q.L3Za8Bpaw-5y0_89xd4_eu3elIyO7zSbg7Vv8uMaqIo1wgsduDKZxbiDP1gQgXtK5CA2qbaPuJoRf1sU8Cn2ZIqnKGChPFUpfGmR-MIDASgMBtWCuM6M_TyJWF72QKjaYn1c4S-5LF7z2BQYMqy7j-omrpY7aN7Pc_Y13TFbR_ie_wdT655PYwZR-b4DVCtyFuHXn8p7q8raMC1CjHB0wg
+MIME-Version: 1.0
+X-PM-MTA-Pool: application-bulk-2
+Content-Type: multipart/alternative;
+	boundary=mk3-b4bf2dd53125477d93f039547a246b2e; charset=UTF-8
+
+--mk3-b4bf2dd53125477d93f039547a246b2e
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+
+
+
+
+Hey,
+
+=C2=A0
+
+A new contract has been signed. Please see all the
+details about the job Below
+
+=C2=A0
+
+-- Customer Info --
+
+
+DBX Customer ID:10453
+
+
+Client:Giuseppe Cesta
+Email:Joe.Cesta@cbre.com
+
+
+Phone:(949) 226-9088
+
+
+Address:315 Signal Rd
+
+
+City:Newport Beach
+
+
+State:California
+
+
+Zip:92663
+
+
+Full Address: 315 Signal Rd Newport
+Beach,=C2=A0California=C2=A092663
+
+=C2=A0
+
+-- Job Info --
+
+
+Order Id:10480
+
+
+Order Date:0
+
+Order Po:
+
+
+Order Due Date:0
+
+Order Type:
+
+
+Order Delivered:0
+
+
+Quote Expiration Date:3/5/2026
+
+
+Order Grand Total:301,166.16
+
+
+Progress Payments:
+
+
+
+Balance Due:301,166.16
+
+
+Sales Rep:Mike Self
+
+=C2=A0
+
+
+Order Items Table:
+
+       =20
+                       =20
+
+                                      =20
+Description                        Qty           =20
+           Extended
+
+            	=09
+		=09
+	=09
+
+
+   =20
+	=09
+       =20
+           =20
+                0020 Calimingo - Pools and Spas:
+R2               =20
+                1
+                97,849.39
+
+   =20
+
+       =20
+			           =20
+                EXCAVATION           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Mini Cat  Excavation- 36" Access
+for Mini Bobcat
+- Excavation and Grading
+- Haul Off-Site
+** If we need to use another type of machinery to
+complete the excavation, we will need to adjust
+the cost at that time.
+
+Pricing subject to change based on engineering
+requirements               =20
+                331=C2=A0SF
+                10,923.00
+
+   =20
+
+       =20
+			           =20
+                PLUMBING           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Pool Shell Jet Plumbing- 6 Jet
+Plumbing System
+- Air Ventures,=20
+- All Schedule 40 Pipe
+- Dual Intake Drains
+- Mechanical Auto Fill
+- Skimmer, Vacuum Line
+all Line Runs Up To 50=E2=80=99               =20
+                1=C2=A0EA
+                8,470.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                3=E2=80=9D Intakes &amp; Returns Over 50
+LF=E2=80=99- Intake &amp; Return Lines for Pool
+Equipment Further Than 50'               =20
+                30=C2=A0LF
+                1,166.40
+
+   =20
+
+       =20
+			           =20
+                SHELL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Rebar- #3 Rebar Cage=20
+- 12=E2=80=9D O/c in the Field=20
+- Engineering per Standard Detail 100 / 101
+- Subject to adjustment after Engineering / Soils
+Review               =20
+                78=C2=A0LF
+                5,156.58
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Shotcrete Per Cubic Yard30 Yard
+Minimum               =20
+                30=C2=A0CY
+                18,180.00
+
+   =20
+
+       =20
+			           =20
+                INTERIOR FINISH           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Colorscape Pool Interior-
+Colorscape Interior
+- Acid Wash=20
+- Pool Startup=20
+- New Jets Tips, Intake Covers, and Trim         =20
+    =20
+                100=C2=A0LF
+                9,215.90
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Floating Step or Stool Plaster
+Detail- Wrap floating step column with pool finish
+- Finish to match pool finish specified          =20
+   =20
+                6=C2=A0EA
+                3,600.00
+
+   =20
+
+       =20
+			           =20
+                BORDER           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Turndown CopingInclude Coping and
+waterline tile               =20
+                75
+                6,825.00
+
+   =20
+
+       =20
+			           =20
+                VENEER           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Tile Veneer- Installation Material
+and Labor
+- Hand laid application over mortar bed
+- Sealed grout
+- Includes $10/SF Material Allowance             =20
+=20
+                70=C2=A0SF
+                5,171.60
+
+   =20
+
+       =20
+			           =20
+                LIGHTS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Nitchless RGB LED Pool Lights- 4"
+Jandy LED Color Changing RGBW Fixture=20
+- Grounded Light Nitch=20
+- Wired Directly to the Main Panel
+- Includes 50' Conduit Run               =20
+                3=C2=A0EA
+                6,943.11
+
+   =20
+
+       =20
+			           =20
+                EQUIPMENT           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                4 Channel Control Panel- 4 Channel
+Control Panel=20
+- Installation
+- Integrated Circuit Breaker=E2=80=99s=20
+- Ground Fault Circuit Interrupter               =20
+                1=C2=A0EA
+                4,384.30
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Smartphone Interface- Smart Phone
+Control Module=20
+- Added to New Control Panel Installation
+- Programming and Mounting               =20
+                1=C2=A0EA
+                1,458.60
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Cartridge Filter- Plumbed Into New
+Pump Station=20
+- Backwash Valve Manifold               =20
+                1=C2=A0EA
+                2,512.40
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Heater- 400,000 Btu Natural Gas
+- Stainless Steel Upgraded Manifold
+- Built in Flow Bypass=20
+- Integrated Control Panel
+
+***ATTENTION: If required building permits for
+this project are not submitted to the appropriate
+jurisdiction by December 31, 2025, the project
+will be subject to compliance with California=E2=80=99s
+updated Title 24 Energy Code. This may require the
+addition of a heat pump system, associated
+electrical upgrades, and/or a meter upgrade to
+meet the revised state energy efficiency
+standards. Any additional costs, design
+modifications, or delays resulting from compliance
+with the updated code will be the responsibility
+of the homeowner.***               =20
+                1=C2=A0EA
+                6,355.80
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                3 HP Variable Speed ePump (VSP)-
+Variable Speed Pump=20
+- Integrated Control Panel
+- Plumbed Into Pump Station=20
+- Connected to Junction Box
+- Anti Entrapment Dual Intakes
+- 2"-3=E2=80=9D Intake &amp; Return Lines              =20
+
+                1=C2=A0EA
+                3,280.20
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Salt Chlorinator System- Up to
+60,000 Gallons
+- Automatic Chlorine Generator               =20
+                1=C2=A0EA
+                3,206.50
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Chemical Start-Up and Pool School=20
+             =20
+                1
+                1,000.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0021 Calimingo - Weeping Wall    =20
+         =20
+                1
+                25,213.73
+
+   =20
+
+       =20
+			           =20
+                STRUCTURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Attached to A New Pool or Spa-
+Built Into New Pool or Spa Bond Beam
+- Steel Rebar Reinforcement
+- Floating Soffit=20
+- Concrete Construction
+- Plumbed for Water Feature               =20
+                75=C2=A0SF
+                5,858.66
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Columns- 16=E2=80=9D CMU Structure=20
+- Concrete Cells=20
+- Steel Rebar Reinforcement=20
+- 2500 Psi Concrete Footings               =20
+                9=C2=A0VF
+                1,745.08
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Horizontal Bond Beam- Formed &amp;
+Poured in Place
+- Steel Support Channeling
+- 2500 Psi Concrete
+- Rebar Steel Reinforcement               =20
+                12.5=C2=A0LF
+                3,626.75
+
+   =20
+
+       =20
+			           =20
+                VENEER           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Tile Backsplash Veneer- Labor and
+install materials only
+- Hand laid application over mortar bed
+- Sealed grout               =20
+                48=C2=A0SF
+                3,066.24
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Limestone Rubble VeneerHand
+chiseled Stone
+CALIMINGO TO PROVIDE ALL STONE MATERIAL          =20
+   =20
+                80
+                3,840.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Limewash Rubble Veneer           =20
+  =20
+                80
+                400.00
+
+   =20
+
+       =20
+			           =20
+                EQUIPMENT           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                2 HP Jandy VSR- 2 Horsepower Pump=20
+- Wired to the Junction Box               =20
+                1=C2=A0EA
+                2,750.00
+
+   =20
+
+       =20
+			           =20
+                LIGHTS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                RGB LED - Under Cap Halo Lighting-
+RGB LED
+- Low Voltage Halo Strip Lights               =20
+                6=C2=A0LF
+                602.40
+
+   =20
+
+       =20
+			           =20
+                WATER FEATURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                1=E2=80=9D-2" Intakes &amp; Returns -
+Plumbing Run- Intake &amp; Return Lines for Pool
+Equipment               =20
+                90=C2=A0LF
+                3,324.60
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0030 Calimingo - Fireplace       =20
+      =20
+                1
+                34,963.08
+
+   =20
+
+       =20
+			           =20
+                STRUCTURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Up to 5=E2=80=99 CMU &amp; Concrete
+Structure- CMU Structure=20
+- Concrete Cells=20
+- Steel Rebar Reinforcement=20
+- 2500 Psi Concrete Footings               =20
+                25=C2=A0LF
+                8,382.50
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Brick Firebox &amp; Direct Vent
+Flue- Fire Clay Mortar Bed
+- Fire Brick Veneer (Soldier Coarse)
+- Fire-resistant Grout
+- Stainless Steel Fire Gas Line
+- Adjustable Gas Valve
+- Requires Gas Line Riser               =20
+                15=C2=A0LF
+                6,050.70
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Poured in Place Hearth- Formed
+&amp; Poured in Place
+- Exposed Aggregate Concrete Cap
+- 2500 Psi Concrete
+- Rebar Steel Reinforcement               =20
+                20=C2=A0LF
+                7,255.20
+
+   =20
+
+       =20
+			           =20
+                VENEER           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Limestone Rubble VeneerHand
+chiseled Stone
+CALIMINGO TO PROVIDE ALL STONE MATERIAL          =20
+   =20
+                80
+                3,840.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Limewash Rubble Veneer           =20
+  =20
+                80
+                400.00
+
+   =20
+
+       =20
+			           =20
+                FIRE FEATURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Fire Line &amp; Plumbing-
+Stainless Steel Fire Ring
+- Adjustable Gas Valve
+- Requires Gas Line Riser               =20
+                1=C2=A0EA
+                1,271.12
+
+   =20
+
+       =20
+			           =20
+                ELECTRICAL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Electronic Ignition System- Time
+Delay Relay=20
+- Hot Surface Igniter
+- Electronic Valve=20
+- Remote Switch               =20
+                1=C2=A0EA
+                1,955.56
+
+   =20
+
+       =20
+			           =20
+                TV           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Cantiliver TV Enclosure- Steel
+structure
+- Cantilever               =20
+                1=C2=A0EA
+                5,808.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0060 Calimingo - Outdoor Kitchen =20
+            =20
+                1
+                13,804.96
+
+   =20
+
+       =20
+			           =20
+                STRUCTURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                CMU &amp; Concrete Structure- CMU
+Structure=20
+- Concrete Cells=20
+- Steel Rebar Reinforcement=20
+- 2500 Psi Concrete Footings               =20
+                19=C2=A0LF
+                5,096.56
+
+   =20
+
+       =20
+			           =20
+                COUNTER TOP           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Waterfall Countertop (Per Side)-
+Countertop Extended to Floor
+- Per Side               =20
+                1=C2=A0EA
+                1,524.60
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Poured In Place Concrete
+Countertop- Formed &amp; Poured in Place
+- Exposed Aggregate Concrete Countertop
+- 2500 Psi Concrete
+- Rebar Steel Reinforcement
+Countertop: White Or Colored Concrete            =20
+ =20
+                39=C2=A0SF
+                4,582.50
+
+   =20
+
+       =20
+			           =20
+                ELECTRICAL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Product - Bubble Cover Outlet
+Junction               =20
+                2=C2=A0EA
+                700.00
+
+   =20
+
+       =20
+			           =20
+                EQUIPMENT           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Grill Installation- Installation
+of Grill (Purchased Separately)               =20
+                1=C2=A0EA
+                659.80
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Trash Compartment Installation-
+Installation of Trash Compartment  (Purchased
+Separately)               =20
+                1=C2=A0EA
+                269.50
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Drawers Installation- Installation
+of Drawers  (Purchased Separately)               =20
+                1=C2=A0EA
+                257.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Standard Door Installation-
+Installation of Access Doors  (Purchased
+Separately)               =20
+                1=C2=A0EA
+                257.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Refrigerator Installation-
+Installation of Refrigerator  (Purchased
+Separately)               =20
+                1=C2=A0EA
+                458.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0080 Calimingo - Patio Cover:
+Swing structure over pool               =20
+                1
+                17,434.00
+
+   =20
+
+       =20
+			           =20
+                STRUCTURE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Steel Posts Up To 8" x 8"- Heavy
+Gauge Steel
+- Anchored in Concrete Footing
+- 2500 Psi Concrete
+- Steel Reinforcement Per Engineering            =20
+ =20
+                20=C2=A0VF
+                1,650.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Footing - Medium               =20
+                2=C2=A0EA
+                7,700.00
+
+   =20
+
+       =20
+			           =20
+                LATERAL BEAMS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Steel Lateral Beams Up To 6" x
+12"- Heavy Gauge I Beam or Hss Beams
+- Welded to Braces and Posts
+- Installed Per Engineering               =20
+                15=C2=A0LF
+                3,564.00
+
+   =20
+
+       =20
+			           =20
+                STRUCTURE - ATTACHMENTS          =20
+
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Custom Steel Brackets and Plates-
+Custom Steel Brackets
+- Mounted to Roof Sheathing
+- Anchored to Framing Beams
+- Sealed Roof Penetrations               =20
+                1=C2=A0EA
+                650.00
+
+   =20
+
+       =20
+			           =20
+                LABOR           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Licensed Welder and Deputy
+Inspector Daily Labor               =20
+                1=C2=A0EA
+                2,750.00
+
+   =20
+
+       =20
+			           =20
+                CUSTOM           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Custom Work 3: 10' Steel 2" x 2"
+lattice               =20
+                10=C2=A0LF
+                1,120.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0080 Calimingo - Patio Cover: New
+kitchen backsplash wall with lattice top and door,
+wants to add Buffet as soon as possible          =20
+   =20
+                1
+                26,460.02
+
+   =20
+
+       =20
+			           =20
+                FREE STANDING           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Wood Framed Wall- Framed Wall out
+of Wood
+Wood Framing Height: 09'               =20
+                20=C2=A0LF
+                7,216.00
+
+   =20
+
+       =20
+			           =20
+                VENEER           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Tile Veneer- Installation Material
+and Labor
+- Hand laid application over mortar bed
+- Sealed grout
+- Includes $10/SF Material Allowance             =20
+=20
+                24=C2=A0SF
+                1,773.12
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Plaster Veneer- Scratch &amp;
+Brown
+- Smooth Finish Santa Barbara Plaster
+- Basex. System
+** IF ADDITIONAL WORK IS NEEDED ON EXISTING WALLS,
+(TO FIX CRACKS, SINKING, OR OTHER ISSUES) THIS
+WILL BE AT COST OF CLIENT               =20
+                260=C2=A0SF
+                6,292.00
+
+   =20
+
+       =20
+			           =20
+                ADDON           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Backsplash Shelving- Douglas Fir
+Boards
+- Anchored With Hidden Steel Brackets
+- Captains Varnish Sealer
+- Wood Can Be Upgraded at Additional Cost        =20
+     =20
+                10=C2=A0LF
+                2,133.00
+
+   =20
+
+       =20
+			           =20
+                ELECTRICAL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                TV Inset- 3" Deep Inset
+- Smooth Plaster Veneer
+- Electrical Conduit               =20
+                1=C2=A0EA
+                1,560.90
+
+   =20
+
+       =20
+			           =20
+                LIGHTS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                MR11 Recessed Lights- MR11 LED
+Light Fixtures Recessed Into Beams
+- 12v Bulbs
+- 14 Gauge Exterior Wire Hidden in Framing       =20
+      =20
+                2=C2=A0EA
+                850.00
+
+   =20
+
+       =20
+			           =20
+                LATTICES           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                4=E2=80=9D x 8=E2=80=9D x 20' or smaller
+Wooden Lattice / Beams               =20
+                5=C2=A0EA
+                735.00
+
+   =20
+
+       =20
+			           =20
+                LABOR           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Wooden Patio Cover Labor         =20
+    =20
+                1=C2=A0EA
+                2,200.00
+
+   =20
+
+       =20
+			           =20
+                CUSTOM           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Custom Work 1: Door installation
+TBD on client preference***               =20
+                1=C2=A0EA
+                2,500.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Custom Work 2: Brick Columns to be
+painted or wrapped discussion with PM for
+suggestions               =20
+                1=C2=A0EA
+                1,200.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0110 Calimingo - Pavers          =20
+   =20
+                1
+                31,375.40
+
+   =20
+
+       =20
+			           =20
+                FLOORING           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Porcelain Pavers Sand-Set-
+Porcelain Pavers Hand-Laid on Sand-Set Base
+- Sealer
+- Sand-set Bed
+- Allowance $6/ sf               =20
+                730=C2=A0SF
+                31,375.40
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0170 Calimingo - Landscape:
+Backyard               =20
+                1
+                5,709.98
+
+   =20
+
+       =20
+			           =20
+                LANDSCAPE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                15 Gal Labor: Homeowner to provide
+all plant materials***               =20
+                8=C2=A0EA
+                720.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                5 Gal Labor: Homeowner to provide
+all plant materials***               =20
+                7=C2=A0EA
+                154.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                1 Gal Labor: Homeowner to provide
+all plant materials***               =20
+                12=C2=A0EA
+                120.00
+
+   =20
+
+       =20
+			           =20
+                IRRIGATION OR DRAINAGE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Hidden Pot Emitters &amp; Drainage
+Irrigation Zone- Decorative Bowl or Pot
+Installation
+- Mesh Filter Over Integrated Drain Grate
+- Feed Lines for Irrigation and Electrical Conduit
+
+- Decorative Bowl Purchased at Additional Charge =20
+            =20
+                6=C2=A0EA
+                1,500.00
+
+   =20
+
+       =20
+			           =20
+                GROUND COVERS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Fiber mesh weed barrier-
+Commercial grade fiber mesh
+- Installed with cut out openings for individual
+plantings=20
+- bark or gravel overlay purchased separately    =20
+         =20
+                65=C2=A0SF
+                292.83
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Round River Rock- Minimum 2=E2=80=9D
+Layer=20
+- Smooth Pebble
+- Mexican Beach / Del Rio=20
+*** Polished Stone will incur extra costs        =20
+     =20
+                65=C2=A0SF
+                650.00
+
+   =20
+
+       =20
+			           =20
+                LIGHTS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Landscape Spot Lights- Aircraft
+Grade Aluminum Outdoor Spot Light Fixtures=20
+- MR 16 housing=20
+- 12v LED Bulbs
+- 12 Gauge Direct Burial Wire
+- 100% Silicone Junctions
+- (rule of Thumb Is 1 Per 8-10 Lineal Feet)      =20
+       =20
+                5=C2=A0EA
+                1,074.95
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Landscape Step Lights- Aircraft
+Grade Aluminum Outdoor Spot Light Fixtures=20
+- 12v LED Bulbs
+- 12 Gauge Direct Burial Wire
+- 100% Silicone Junctions=20
+- (rule of Thumb Is 1 Per 8-10 Lineal Feet)      =20
+       =20
+                5=C2=A0EA
+                1,198.20
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0190 Calimingo - DemoAll demo work
+can vary greatly once on site. Because of this,
+the price may change if additional work is needed
+such as but not limited to trenching, new plumbing
+for remodels, equipment relocations, etc...      =20
+       =20
+                1
+                14,790.00
+
+   =20
+
+       =20
+			           =20
+                DEMO           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Demo - ON SITE VISIT COMPLETED:
+Back yard=20
+
+Remove turf=20
+
+Remove Trees =20
+
+Remove boulders=20
+
+3 loads of dirt from grading =20
+
+Brick 155 sq ft=20
+
+Brick planter around 1 pilaster
+
+Wood decking  (If there is concrete underneath
+deck an addendum will be given for removal)      =20
+       =20
+                1=C2=A0EA
+                14,790.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0200 Calimingo - Gas, Plumbing and
+Electrical               =20
+                1
+                24,865.60
+
+   =20
+
+       =20
+			           =20
+                IRRIGATION OR DRAINAGE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                SDR 35 3" Runoff Drainage: TBD per
+homeowner and PM site walk after demolition and
+discussion. Tap into existing drainage- SDR 35
+Pipe &amp; Joints,
+- Includes 3" Pipe  *4" Pipe additional cost
+- Minimum 1/8=E2=80=9D Per Foot Drop,
+- 3=E2=80=9D Minimum O.d.
+- Tie into existing drainage
+***This is an estimated number and could need to
+be changed after the site visit from Project
+Manager***               =20
+                150=C2=A0LF
+                4,915.50
+
+   =20
+
+       =20
+			           =20
+                GAS           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                2=E2=80=9D Gas Line Run- Polyethylene
+Gas Line
+- Buried Minimum 18"
+- Integrated Tracer Wire
+***This is an estimated number and could need to
+be changed after the site visit from Project
+Manager***               =20
+                160=C2=A0LF
+                5,280.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                2=E2=80=9D Gas Line RISER- Polyethylene
+Gas Line
+- 1/4 Turn Ball Valve
+- Buried Minimum 18"
+- Integrated Tracer Wire               =20
+                5=C2=A0EA
+                2,612.50
+
+   =20
+
+       =20
+			           =20
+                ELECTRICAL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Electrical Conduit Underground-
+Conduit Run in 18=E2=80=9D Trench
+- Schedule 40 Pipe
+- Size up to 2"
+***This is an estimated number and could need to
+be changed after the site visit from Project
+Manager***               =20
+                225=C2=A0LF
+                4,455.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                70 Amp Underground Wire Run:
+infatec heater wiring- Run from Main Panel
+- 2=E2=80=9D Schedule 40 Pvc
+- 18=E2=80=9D Minimum Excavation
+- 70 Amp Wire               =20
+                60=C2=A0LF
+                2,157.60
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                200 Amp Panel Upgrade- Exterior
+Panel Upgrade 200 Amp- New Gfci Circuit Breakers -
+Grounding Rod Mounting- Additional Spaces for
+Future Expansion - 240 Amp Service for Future
+Electric Vehicle Charger- Repairs to Wall and
+Finish Paint               =20
+                1=C2=A0EA
+                5,445.00
+
+   =20
+
+	=09
+		=09
+	=09
+		=09
+			=09
+		=09
+=09
+
+   =20
+	=09
+       =20
+           =20
+                0401 Calimingo - Permits &amp;
+Engineering               =20
+                1
+                8,700.00
+
+   =20
+
+       =20
+			           =20
+                SITE PLAN           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Construction DocumentsMulti layer
+plan set featuring:=20
+- Scale site plans=20
+- Hatch sections for surfaces
+- Elevation and section drawings for structures
+and connectors
+- Underground, utilities
+- Drainage systems
+- Pool equipment               =20
+                1
+                4,000.00
+
+   =20
+
+       =20
+			           =20
+                ENGINEERING           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Standard Pool EngineeringStandard
+pool engineering can take between two and four
+weeks. It is the minimum
+necessary structural engineering for a standard
+pool or spa               =20
+                1
+                2,500.00
+
+   =20
+
+
+
+   =20
+	=09
+       =20
+           =20
+                Structural Engineering           =20
+  =20
+                1
+                1,200.00
+
+   =20
+
+       =20
+			           =20
+                CITY SUBMITTAL           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Building Deptartment Permit
+Submittal: Homeowner to reimburse Calimingo for
+all City fees***The permit technician fees and
+cost of the permits themselves are added to your=20
+final bill upon receipt of the permits.          =20
+   =20
+                1
+                0.00
+
+   =20
+
+       =20
+			           =20
+                JOB SITE           =20
+       =20
+       =20
+
+   =20
+	=09
+       =20
+           =20
+                Jobsite Setup- Job site Toilet
+- Call Dig Alert
+- Secure Internet Connection
+- Setup Job site Cameras
+- Order certificate of additional insured from
+general liability carrier.
+- Order GL insurance certificates for subs.      =20
+       =20
+                1
+                1,000.00
+
+   =20
+
+			=09
+				                               =20
+                   =20
+                        Subtotal
+                   =20
+                   =20
+                       =20
+                            301,166.16           =20
+          =20
+                   =20
+               =20
+                               =20
+                    Tax
+                    0.00                   =20
+               =20
+		=09
+						=09
+		=09
+										=09
+               =20
+                   =20
+                        Grand Total
+                   =20
+                    $301,166.16
+                                   =20
+
+               =20
+
+               =20
+               =20
+               =20
+
+                                           =20
+                           =20
+                                Current  Balance
+
+                           =20
+                                $301,166.16
+
+                       =20
+                                                 =20
+                    =20
+   =20
+
+=C2=A0
+
+
+
+=09
+	=09
+		=09
+		=09
+		=09
+		=09
+			Office - (714) 235-3294=C2=A0Ext.=C2=A00
+			Connect@Calimingo.com
+
+			  =20
+		=09
+	=09
+=09
+
+
+
+
+
+
+
+
+ Powered by DBX:   www.ProDBX.com
+
+--mk3-b4bf2dd53125477d93f039547a246b2e
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w=
+3.org/TR/REC-html40/loose.dtd">
+<html>
+<head><meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf=
+-8"></head>
+<body>
+<div>Hey,</div>
+
+<div>=C2=A0</div>
+
+<div>A new contract has been signed. Please see all the details about the j=
+ob Below</div>
+
+<div>=C2=A0</div>
+
+<div><strong>-- Customer Info --</strong></div>
+
+<div>
+<strong>DBX Customer ID:</strong>10453</div>
+
+<div>
+<strong>Client:</strong>Giuseppe Cesta</div>
+<strong>Email:</strong>Joe.Cesta@cbre.com
+
+<div>
+<strong>Phone:</strong>(949) 226-9088</div>
+
+<div>
+<strong>Address:</strong>315 Signal Rd</div>
+
+<div>
+<strong>City:</strong>Newport Beach</div>
+
+<div>
+<strong>State:</strong>California</div>
+
+<div>
+<strong>Zip:</strong>92663</div>
+
+<div>
+<strong>Full Address: </strong>315 Signal Rd Newport Beach,=C2=A0California=
+=C2=A092663</div>
+
+<div>=C2=A0</div>
+
+<div><strong>-- Job Info --</strong></div>
+
+<div>
+<strong>Order Id:</strong>10480</div>
+
+<div>
+<strong>Order Date:</strong>0</div>
+
+<div><strong>Order Po:</strong></div>
+
+<div>
+<strong>Order Due Date:</strong>0</div>
+
+<div><strong>Order Type:</strong></div>
+
+<div>
+<strong>Order Delivered:</strong>0</div>
+
+<div>
+<strong>Quote Expiration Date:</strong>3/5/2026</div>
+
+<div>
+<strong>Order Grand Total:</strong>301,166.16</div>
+
+<div>
+<strong>Progress Payments:</strong>
+</div>
+
+<div>
+<strong>Balance Due:</strong>301,166.16</div>
+
+<div>
+<strong>Sales Rep:</strong>Mike Self</div>
+
+<div>=C2=A0</div>
+
+<div>
+<strong>Order Items Table:</strong>
+
+        <table cellpadding=3D"4" cellspacing=3D"0" width=3D"100%" class=3D"=
+pos">
+                        <tr style=3D"background-color: #555; color: #FFF; f=
+ont-size: 11px;">
+
+                                        <td align=3D"left">Description</td>=
+                        <td align=3D"right">Qty</td>                       =
+ <td align=3D"right">Extended</td>
+
+            </tr>		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0020 Ca=
+limingo - Pools and Spas</span>: <br><em>R2</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>97,849.39</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                EXCAVATION            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Mini Cat  Excavation<br><em>- 36" Access for Mini Bobcat
+<br>- Excavation and Grading
+<br>- Haul Off-Site
+<br>** If we need to use another type of machinery to complete the excavati=
+on, we will need to adjust the cost at that time.
+<br>
+<br>Pricing subject to change based on engineering requirements</em>       =
+         </td>
+                <td align=3D"right" class=3D"num">331=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">10,923.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                PLUMBING            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Pool Shell Jet Plumbing<br><em>- 6 Jet Plumbing System
+<br>- Air Ventures,=20
+<br>- All Schedule 40 Pipe
+<br>- Dual Intake Drains
+<br>- Mechanical Auto Fill
+<br>- Skimmer, Vacuum Line
+<br>all Line Runs Up To 50=E2=80=99</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">8,470.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                3=E2=80=9D Intakes &amp; Returns Over 50 LF=E2=80=99<br><em=
+>- Intake &amp; Return Lines for Pool Equipment Further Than 50'</em>      =
+          </td>
+                <td align=3D"right" class=3D"num">30=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,166.40</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                SHELL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Rebar<br><em>- #3 Rebar Cage=20
+<br>- 12=E2=80=9D O/c in the Field=20
+<br>- Engineering per Standard Detail 100 / 101
+<br>- Subject to adjustment after Engineering / Soils Review</em>          =
+      </td>
+                <td align=3D"right" class=3D"num">78=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,156.58</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Shotcrete Per Cubic Yard<br><em>30 Yard Minimum</em>       =
+         </td>
+                <td align=3D"right" class=3D"num">30=C2=A0CY</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">18,180.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                INTERIOR FINISH            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Colorscape Pool Interior<br><em>- Colorscape Interior
+<br>- Acid Wash=20
+<br>- Pool Startup=20
+<br>- New Jets Tips, Intake Covers, and Trim</em>                </td>
+                <td align=3D"right" class=3D"num">100=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">9,215.90</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Floating Step or Stool Plaster Detail<br><em>- Wrap floatin=
+g step column with pool finish
+<br>- Finish to match pool finish specified</em>                </td>
+                <td align=3D"right" class=3D"num">6=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,600.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                BORDER            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Turndown Coping<br><em>Include Coping and waterline tile</e=
+m>                </td>
+                <td align=3D"right" class=3D"num">75</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">6,825.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                VENEER            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Tile Veneer<br><em>- Installation Material and Labor
+<br>- Hand laid application over mortar bed
+<br>- Sealed grout
+<br>- Includes $10/SF Material Allowance</em>                </td>
+                <td align=3D"right" class=3D"num">70=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,171.60</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LIGHTS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Nitchless RGB LED Pool Lights<br><em>- 4" Jandy LED Color C=
+hanging RGBW Fixture=20
+<br>- Grounded Light Nitch=20
+<br>- Wired Directly to the Main Panel
+<br>- Includes 50' Conduit Run</em>                </td>
+                <td align=3D"right" class=3D"num">3=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">6,943.11</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                EQUIPMENT            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                4 Channel Control Panel<br><em>- 4 Channel Control Panel=20
+<br>- Installation
+<br>- Integrated Circuit Breaker=E2=80=99s=20
+<br>- Ground Fault Circuit Interrupter</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">4,384.30</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Smartphone Interface<br><em>- Smart Phone Control Module=20
+<br>- Added to New Control Panel Installation
+<br>- Programming and Mounting</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,458.60</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Cartridge Filter<br><em>- Plumbed Into New Pump Station=20
+<br>- Backwash Valve Manifold</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,512.40</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Heater<br><em>- 400,000 Btu Natural Gas
+<br>- Stainless Steel Upgraded Manifold
+<br>- Built in Flow Bypass=20
+<br>- Integrated Control Panel
+<br>
+<br>***ATTENTION: If required building permits for this project are not sub=
+mitted to the appropriate jurisdiction by December 31, 2025, the project wi=
+ll be subject to compliance with California=E2=80=99s updated Title 24 Ener=
+gy Code. This may require the addition of a heat pump system, associated el=
+ectrical upgrades, and/or a meter upgrade to meet the revised state energy =
+efficiency standards. Any additional costs, design modifications, or delays=
+ resulting from compliance with the updated code will be the responsibility=
+ of the homeowner.***</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">6,355.80</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                3 HP Variable Speed ePump (VSP)<br><em>- Variable Speed Pum=
+p=20
+<br>- Integrated Control Panel
+<br>- Plumbed Into Pump Station=20
+<br>- Connected to Junction Box
+<br>- Anti Entrapment Dual Intakes
+<br>- 2"-3=E2=80=9D Intake &amp; Return Lines</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,280.20</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Salt Chlorinator System<br><em>- Up to 60,000 Gallons
+<br>- Automatic Chlorine Generator</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,206.50</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Chemical Start-Up and Pool School                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,000.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0021 Ca=
+limingo - Weeping Wall</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>25,213.73</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                STRUCTURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Attached to A New Pool or Spa<br><em>- Built Into New Pool =
+or Spa Bond Beam
+<br>- Steel Rebar Reinforcement
+<br>- Floating Soffit=20
+<br>- Concrete Construction
+<br>- Plumbed for Water Feature</em>                </td>
+                <td align=3D"right" class=3D"num">75=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,858.66</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Columns<br><em>- 16=E2=80=9D CMU Structure=20
+<br>- Concrete Cells=20
+<br>- Steel Rebar Reinforcement=20
+<br>- 2500 Psi Concrete Footings</em>                </td>
+                <td align=3D"right" class=3D"num">9=C2=A0VF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,745.08</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Horizontal Bond Beam<br><em>- Formed &amp; Poured in Place
+<br>- Steel Support Channeling
+<br>- 2500 Psi Concrete
+<br>- Rebar Steel Reinforcement</em>                </td>
+                <td align=3D"right" class=3D"num">12.5=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,626.75</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                VENEER            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Tile Backsplash Veneer<br><em>- Labor and install materials=
+ only
+<br>- Hand laid application over mortar bed
+<br>- Sealed grout</em>                </td>
+                <td align=3D"right" class=3D"num">48=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,066.24</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Limestone Rubble Veneer<br><em>Hand chiseled Stone
+<br>CALIMINGO TO PROVIDE ALL STONE MATERIAL</em>                </td>
+                <td align=3D"right" class=3D"num">80</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,840.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Limewash Rubble Veneer                </td>
+                <td align=3D"right" class=3D"num">80</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">400.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                EQUIPMENT            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                2 HP Jandy VSR<br><em>- 2 Horsepower Pump=20
+<br>- Wired to the Junction Box</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,750.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LIGHTS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                RGB LED - Under Cap Halo Lighting<br><em>- RGB LED
+<br>- Low Voltage Halo Strip Lights</em>                </td>
+                <td align=3D"right" class=3D"num">6=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">602.40</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                WATER FEATURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                1=E2=80=9D-2" Intakes &amp; Returns - Plumbing Run<br><em>-=
+ Intake &amp; Return Lines for Pool Equipment</em>                </td>
+                <td align=3D"right" class=3D"num">90=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,324.60</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0030 Ca=
+limingo - Fireplace</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>34,963.08</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                STRUCTURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Up to 5=E2=80=99 CMU &amp; Concrete Structure<br><em>- CMU =
+Structure=20
+<br>- Concrete Cells=20
+<br>- Steel Rebar Reinforcement=20
+<br>- 2500 Psi Concrete Footings</em>                </td>
+                <td align=3D"right" class=3D"num">25=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">8,382.50</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Brick Firebox &amp; Direct Vent Flue<br><em>- Fire Clay Mor=
+tar Bed
+<br>- Fire Brick Veneer (Soldier Coarse)
+<br>- Fire-resistant Grout
+<br>- Stainless Steel Fire Gas Line
+<br>- Adjustable Gas Valve
+<br>- Requires Gas Line Riser</em>                </td>
+                <td align=3D"right" class=3D"num">15=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">6,050.70</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Poured in Place Hearth<br><em>- Formed &amp; Poured in Plac=
+e
+<br>- Exposed Aggregate Concrete Cap
+<br>- 2500 Psi Concrete
+<br>- Rebar Steel Reinforcement</em>                </td>
+                <td align=3D"right" class=3D"num">20=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">7,255.20</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                VENEER            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Limestone Rubble Veneer<br><em>Hand chiseled Stone
+<br>CALIMINGO TO PROVIDE ALL STONE MATERIAL</em>                </td>
+                <td align=3D"right" class=3D"num">80</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,840.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Limewash Rubble Veneer                </td>
+                <td align=3D"right" class=3D"num">80</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">400.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                FIRE FEATURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Fire Line &amp; Plumbing<br><em>- Stainless Steel Fire Ring
+<br>- Adjustable Gas Valve
+<br>- Requires Gas Line Riser</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,271.12</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ELECTRICAL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Electronic Ignition System<br><em>- Time Delay Relay=20
+<br>- Hot Surface Igniter
+<br>- Electronic Valve=20
+<br>- Remote Switch</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,955.56</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                TV            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Cantiliver TV Enclosure<br><em>- Steel structure
+<br>- Cantilever</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,808.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0060 Ca=
+limingo - Outdoor Kitchen</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>13,804.96</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                STRUCTURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                CMU &amp; Concrete Structure<br><em>- CMU Structure=20
+<br>- Concrete Cells=20
+<br>- Steel Rebar Reinforcement=20
+<br>- 2500 Psi Concrete Footings</em>                </td>
+                <td align=3D"right" class=3D"num">19=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,096.56</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                COUNTER TOP            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Waterfall Countertop (Per Side)<br><em>- Countertop Extende=
+d to Floor
+<br>- Per Side</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,524.60</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Poured In Place Concrete Countertop<br><em>- Formed &amp; P=
+oured in Place
+<br>- Exposed Aggregate Concrete Countertop
+<br>- 2500 Psi Concrete
+<br>- Rebar Steel Reinforcement</em><div style=3D"padding-left: 30px;">
+<span class=3D"gray10">Countertop:</span> White Or Colored Concrete</div>  =
+              </td>
+                <td align=3D"right" class=3D"num">39=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">4,582.50</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ELECTRICAL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Product - Bubble Cover Outlet Junction                </td>
+                <td align=3D"right" class=3D"num">2=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">700.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                EQUIPMENT            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Grill Installation<br><em>- Installation of Grill (Purchase=
+d Separately)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">659.80</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Trash Compartment Installation<br><em>- Installation of Tra=
+sh Compartment  (Purchased Separately)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">269.50</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Drawers Installation<br><em>- Installation of Drawers  (Pur=
+chased Separately)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">257.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Standard Door Installation<br><em>- Installation of Access =
+Doors  (Purchased Separately)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">257.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Refrigerator Installation<br><em>- Installation of Refriger=
+ator  (Purchased Separately)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">458.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0080 Ca=
+limingo - Patio Cover</span>: <br><em>Swing structure over pool</em>       =
+         </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>17,434.00</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                STRUCTURE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Steel Posts Up To 8" x 8"<br><em>- Heavy Gauge Steel
+<br>- Anchored in Concrete Footing
+<br>- 2500 Psi Concrete
+<br>- Steel Reinforcement Per Engineering</em>                </td>
+                <td align=3D"right" class=3D"num">20=C2=A0VF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,650.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Footing - Medium                </td>
+                <td align=3D"right" class=3D"num">2=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">7,700.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LATERAL BEAMS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Steel Lateral Beams Up To 6" x 12"<br><em>- Heavy Gauge I B=
+eam or Hss Beams
+<br>- Welded to Braces and Posts
+<br>- Installed Per Engineering</em>                </td>
+                <td align=3D"right" class=3D"num">15=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">3,564.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                STRUCTURE - ATTACHMENTS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Custom Steel Brackets and Plates<br><em>- Custom Steel Brac=
+kets
+<br>- Mounted to Roof Sheathing
+<br>- Anchored to Framing Beams
+<br>- Sealed Roof Penetrations</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">650.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LABOR            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Licensed Welder and Deputy Inspector Daily Labor           =
+     </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,750.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                CUSTOM            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Custom Work 3: <br><em>10' Steel 2" x 2" lattice</em>      =
+          </td>
+                <td align=3D"right" class=3D"num">10=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,120.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0080 Ca=
+limingo - Patio Cover</span>: <br><em>New kitchen backsplash wall with latt=
+ice top and door, wants to add Buffet as soon as possible</em>             =
+   </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>26,460.02</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                FREE STANDING            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Wood Framed Wall<br><em>- Framed Wall out of Wood</em><div =
+style=3D"padding-left: 30px;">
+<span class=3D"gray10">Wood Framing Height:</span> 09'</div>               =
+ </td>
+                <td align=3D"right" class=3D"num">20=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">7,216.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                VENEER            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Tile Veneer<br><em>- Installation Material and Labor
+<br>- Hand laid application over mortar bed
+<br>- Sealed grout
+<br>- Includes $10/SF Material Allowance</em>                </td>
+                <td align=3D"right" class=3D"num">24=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,773.12</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Plaster Veneer<br><em>- Scratch &amp; Brown
+<br>- Smooth Finish Santa Barbara Plaster
+<br>- Basex. System
+<br>** IF ADDITIONAL WORK IS NEEDED ON EXISTING WALLS, (TO FIX CRACKS, SINK=
+ING, OR OTHER ISSUES) THIS WILL BE AT COST OF CLIENT</em>                </=
+td>
+                <td align=3D"right" class=3D"num">260=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">6,292.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ADDON            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Backsplash Shelving<br><em>- Douglas Fir Boards
+<br>- Anchored With Hidden Steel Brackets
+<br>- Captains Varnish Sealer
+<br>- Wood Can Be Upgraded at Additional Cost</em>                </td>
+                <td align=3D"right" class=3D"num">10=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,133.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ELECTRICAL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                TV Inset<br><em>- 3" Deep Inset
+<br>- Smooth Plaster Veneer
+<br>- Electrical Conduit</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,560.90</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LIGHTS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                MR11 Recessed Lights<br><em>- MR11 LED Light Fixtures Reces=
+sed Into Beams
+<br>- 12v Bulbs
+<br>- 14 Gauge Exterior Wire Hidden in Framing</em>                </td>
+                <td align=3D"right" class=3D"num">2=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">850.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LATTICES            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                4=E2=80=9D x 8=E2=80=9D x 20' or smaller Wooden Lattice / B=
+eams                </td>
+                <td align=3D"right" class=3D"num">5=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">735.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LABOR            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Wooden Patio Cover Labor                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,200.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                CUSTOM            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Custom Work 1: <br><em>Door installation TBD on client pref=
+erence***</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,500.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Custom Work 2: <br><em>Brick Columns to be painted or wrapp=
+ed discussion with PM for suggestions</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,200.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0110 Ca=
+limingo - Pavers</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>31,375.40</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                FLOORING            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Porcelain Pavers Sand-Set<br><em>- Porcelain Pavers Hand-La=
+id on Sand-Set Base
+<br>- Sealer
+<br>- Sand-set Bed
+<br>- Allowance $6/ sf</em>                </td>
+                <td align=3D"right" class=3D"num">730=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">31,375.40</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0170 Ca=
+limingo - Landscape</span>: <br><em>Backyard</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>5,709.98</strong>=
+</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LANDSCAPE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                15 Gal Labor: <br><em>Homeowner to provide all plant materi=
+als***</em>                </td>
+                <td align=3D"right" class=3D"num">8=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">720.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                5 Gal Labor: <br><em>Homeowner to provide all plant materia=
+ls***</em>                </td>
+                <td align=3D"right" class=3D"num">7=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">154.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                1 Gal Labor: <br><em>Homeowner to provide all plant materia=
+ls***</em>                </td>
+                <td align=3D"right" class=3D"num">12=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">120.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                IRRIGATION OR DRAINAGE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Hidden Pot Emitters &amp; Drainage Irrigation Zone<br><em>-=
+ Decorative Bowl or Pot Installation
+<br>- Mesh Filter Over Integrated Drain Grate
+<br>- Feed Lines for Irrigation and Electrical Conduit=20
+<br>- Decorative Bowl Purchased at Additional Charge</em>                </=
+td>
+                <td align=3D"right" class=3D"num">6=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,500.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                GROUND COVERS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Fiber mesh weed barrier<br><em>- Commercial grade fiber mes=
+h
+<br>- Installed with cut out openings for individual plantings=20
+<br>- bark or gravel overlay purchased separately</em>                </td>
+                <td align=3D"right" class=3D"num">65=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">292.83</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Round River Rock<br><em>- Minimum 2=E2=80=9D Layer=20
+<br>- Smooth Pebble
+<br>- Mexican Beach / Del Rio=20
+<br>*** Polished Stone will incur extra costs</em>                </td>
+                <td align=3D"right" class=3D"num">65=C2=A0SF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">650.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                LIGHTS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Landscape Spot Lights<br><em>- Aircraft Grade Aluminum Outd=
+oor Spot Light Fixtures=20
+<br>- MR 16 housing=20
+<br>- 12v LED Bulbs
+<br>- 12 Gauge Direct Burial Wire
+<br>- 100% Silicone Junctions
+<br>- (rule of Thumb Is 1 Per 8-10 Lineal Feet)</em>                </td>
+                <td align=3D"right" class=3D"num">5=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,074.95</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Landscape Step Lights<br><em>- Aircraft Grade Aluminum Outd=
+oor Spot Light Fixtures=20
+<br>- 12v LED Bulbs
+<br>- 12 Gauge Direct Burial Wire
+<br>- 100% Silicone Junctions=20
+<br>- (rule of Thumb Is 1 Per 8-10 Lineal Feet)</em>                </td>
+                <td align=3D"right" class=3D"num">5=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,198.20</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0190 Ca=
+limingo - Demo</span><br><em>All demo work can vary greatly once on site. B=
+ecause of this, the price may change if additional work is needed such as b=
+ut not limited to trenching, new plumbing for remodels, equipment relocatio=
+ns, etc...</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>14,790.00</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                DEMO            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Demo - ON SITE VISIT COMPLETED: <br><em>Back yard=20
+<br>
+<br>Remove turf=20
+<br>
+<br>Remove Trees =20
+<br>
+<br>Remove boulders=20
+<br>
+<br>3 loads of dirt from grading =20
+<br>
+<br>Brick 155 sq ft=20
+<br>
+<br>Brick planter around 1 pilaster
+<br>
+<br>Wood decking  (If there is concrete underneath deck an addendum will be=
+ given for removal)</em>                </td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">14,790.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0200 Ca=
+limingo - Gas, Plumbing and Electrical</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>24,865.60</strong=
+></td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                IRRIGATION OR DRAINAGE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                SDR 35 3" Runoff Drainage: <br><em>TBD per homeowner and PM=
+ site walk after demolition and discussion. Tap into existing drainage</em>=
+<br><em>- SDR 35 Pipe &amp; Joints,
+<br>- Includes 3" Pipe  *4" Pipe additional cost
+<br>- Minimum 1/8=E2=80=9D Per Foot Drop,
+<br>- 3=E2=80=9D Minimum O.d.
+<br>- Tie into existing drainage
+<br>***This is an estimated number and could need to be changed after the s=
+ite visit from Project Manager***</em>                </td>
+                <td align=3D"right" class=3D"num">150=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">4,915.50</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                GAS            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                2=E2=80=9D Gas Line Run<br><em>- Polyethylene Gas Line
+<br>- Buried Minimum 18"
+<br>- Integrated Tracer Wire
+<br>***This is an estimated number and could need to be changed after the s=
+ite visit from Project Manager***</em>                </td>
+                <td align=3D"right" class=3D"num">160=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,280.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                2=E2=80=9D Gas Line RISER<br><em>- Polyethylene Gas Line
+<br>- 1/4 Turn Ball Valve
+<br>- Buried Minimum 18"
+<br>- Integrated Tracer Wire</em>                </td>
+                <td align=3D"right" class=3D"num">5=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,612.50</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ELECTRICAL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Electrical Conduit Underground<br><em>- Conduit Run in 18=E2=
+=80=9D Trench
+<br>- Schedule 40 Pipe
+<br>- Size up to 2"
+<br>***This is an estimated number and could need to be changed after the s=
+ite visit from Project Manager***</em>                </td>
+                <td align=3D"right" class=3D"num">225=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">4,455.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                70 Amp Underground Wire Run: <br><em>infatec heater wiring<=
+/em><br><em>- Run from Main Panel
+<br>- 2=E2=80=9D Schedule 40 Pvc
+<br>- 18=E2=80=9D Minimum Excavation
+<br>- 70 Amp Wire</em>                </td>
+                <td align=3D"right" class=3D"num">60=C2=A0LF</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,157.60</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                200 Amp Panel Upgrade<br><em>- Exterior Panel Upgrade 200 A=
+mp<br>- New Gfci Circuit Breakers <br>- Grounding Rod Mounting<br>- Additio=
+nal Spaces for Future Expansion <br>- 240 Amp Service for Future Electric V=
+ehicle Charger<br>- Repairs to Wall and Finish Paint</em>                </=
+td>
+                <td align=3D"right" class=3D"num">1=C2=A0EA</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">5,445.00</td>
+
+    </tr>
+
+		<tr>
+			<td colspan=3D"3" style=3D"padding-top: 10px;"></td>
+		</tr>
+			<tr>
+				<td colspan=3D"3" style=3D"border-top: solid 1px #555; padding-top: 20p=
+x;"></td>
+			</tr>
+=09
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td>
+                <span style=3D"font-weight: bold; font-size: 14px;">0401 Ca=
+limingo - Permits &amp; Engineering</span>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num"><strong>8,700.00</strong>=
+</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                SITE PLAN            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Construction Documents<br><em>Multi layer plan set featurin=
+g:=20
+<br>- Scale site plans=20
+<br>- Hatch sections for surfaces
+<br>- Elevation and section drawings for structures and connectors
+<br>- Underground, utilities
+<br>- Drainage systems
+<br>- Pool equipment</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">4,000.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                ENGINEERING            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Standard Pool Engineering<br><em>Standard pool engineering =
+can take between two and four weeks. It is the minimum
+<br>necessary structural engineering for a standard pool or spa</em>       =
+         </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">2,500.00</td>
+
+    </tr>
+
+
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Structural Engineering                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,200.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                CITY SUBMITTAL            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Building Deptartment Permit Submittal: <br><em>Homeowner to=
+ reimburse Calimingo for all City fees***</em><br><em>The permit technician=
+ fees and cost of the permits themselves are added to your=20
+<br>final bill upon receipt of the permits.</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">0.00</td>
+
+    </tr>
+
+        <tr>
+			            <td class=3D"ssg_title" colspan=3D"3">
+                JOB SITE            </td>
+        </tr>
+       =20
+
+    <tr valign=3D"top">
+	=09
+       =20
+            <td style=3D"padding-left: 30px;">
+                Jobsite Setup<br><em>- Job site Toilet
+<br>- Call Dig Alert
+<br>- Secure Internet Connection
+<br>- Setup Job site Cameras
+<br>- Order certificate of additional insured from general liability carrie=
+r.
+<br>- Order GL insurance certificates for subs.</em>                </td>
+                <td align=3D"right" class=3D"num">1</td>
+                <td align=3D"right" class=3D"num" style=3D"padding-right: 2=
+5px;">1,000.00</td>
+
+    </tr>
+
+				<tr><td style=3D"height: 5px;"></td></tr>
+				                                <tr>
+                    <td align=3D"right" colspan=3D"2" style=3D"padding-top:=
+ 15px;">
+                        <strong>Subtotal</strong>
+                    </td>
+                    <td class=3D"num">
+                        <strong>
+                            301,166.16                        </strong>
+                    </td>
+                </tr>
+                                <tr>
+                    <td align=3D"right" colspan=3D"2">Tax</td>
+                    <td class=3D"num">0.00                    </td>
+                </tr>
+		=09
+						=09
+		=09
+										=09
+                <tr>
+                    <td align=3D"right" colspan=3D"2">
+                        <strong>Grand Total</strong>
+                    </td>
+                    <td class=3D"num"><strong>$301,166.16</strong></td>
+                                    </tr>
+
+               =20
+
+               =20
+               =20
+               =20
+
+                                            <tr>
+                            <td align=3D"right" colspan=3D"2">
+                                <strong>Current  Balance</strong>
+</td>
+                            <td class=3D"num">
+                                <strong>$301,166.16</strong>
+</td>
+                        </tr>
+                                                                        </t=
+able>
+   =20
+<br>
+=C2=A0</div>
+
+<div>
+<table style=3D"min-width: 40%;">
+	<tbody>
+		<tr>
+			<td>
+			<p style=3D"text-align: center;"><a href=3D"https://l2512a.prodbx.com/go=
+?l=3D426-432679-aHR0cHM6Ly9jYWxpbWluZ28uY29tLw%3D%3D" rel=3D"nofollow" targ=
+et=3D"_blank" data-pm-no-track=3D""><img src=3D"https://i.ibb.co/26c9nCY/ca=
+lilogonew-removebg-preview.png" alt=3D"calilogonew-removebg-preview.png" st=
+yle=3D"height: 45px; width: 150px;"></a></p>
+			</td>
+			<td>
+			<p><strong>Office</strong> - <a href=3D"tel:7142353294">(714) 235-3294</=
+a>=C2=A0Ext.=C2=A00<br>
+			<a href=3D"https://l2512a.prodbx.com/go?l=3D426-432679-bWFpbHRvOkNvbm5lY=
+3RAQ2FsaW1pbmdvLmNvbQ%3D%3D" target=3D"_blank" data-pm-no-track=3D"">Connec=
+t@Calimingo.com</a></p>
+
+			<p><a href=3D"https://l2512a.prodbx.com/go?l=3D426-432679-aHR0cHM6Ly93d3=
+cuaW5zdGFncmFtLmNvbS9jYWxpbWluZ29wb29scy8%3D" rel=3D"nofollow" target=3D"_b=
+lank" data-pm-no-track=3D""><img src=3D"https://calimingo-pools-media.s3-us=
+-west-1.amazonaws.com/Instagram+Button+30++x+34.png" alt=3D"Instagram+Butto=
+n+30++x+34.png"></a> <a href=3D"https://l2512a.prodbx.com/go?l=3D426-432679=
+-aHR0cHM6Ly93d3cuZmFjZWJvb2suY29tL2NhbGltaW5nb3Bvb2xzLw%3D%3D" rel=3D"nofol=
+low" target=3D"_blank" data-pm-no-track=3D""><img src=3D"https://calimingo-=
+pools-media.s3-us-west-1.amazonaws.com/Facebook+Button+30++x+34.png" alt=3D=
+"Facebook+Button+30++x+34.png"></a> <a href=3D"https://l2512a.prodbx.com/go=
+?l=3D426-432679-aHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ240MEo2emtyNDd=
+xVHdTLVlzU3h1Ymc%3D" rel=3D"nofollow" target=3D"_blank" data-pm-no-track=3D=
+""><img src=3D"https://calimingo-pools-media.s3-us-west-1.amazonaws.com/You=
+tube+Button+30++x+34.png" alt=3D"Youtube+Button+30++x+34.png"></a> <a href=3D=
+"https://l2512a.prodbx.com/go?l=3D426-432679-aHR0cHM6Ly93d3cueWVscC5jb20vYm=
+l6L2NhbGltaW5nby1wb29scy1uZXdwb3J0LWJlYWNo" rel=3D"nofollow" target=3D"_bla=
+nk" data-pm-no-track=3D""><img src=3D"https://calimingo-pools-media.s3-us-w=
+est-1.amazonaws.com/Yelp+Button+30+x+34.png" alt=3D"Yelp+Button+30+x+34.png=
+"></a></p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+<div class=3D"off" style=3D"display: none;"></div>
+<div></div>
+
+
+<div style=3D"clear: both; height: .5rem;"></div>
+<hr>
+<span style=3D"color: #999;"><a href=3D"https://track.pstmrk.it/3/1.dbx.bz%=
+2Fbe/jrqS/HArCAQ/AQ/fbc73506-f445-4746-982b-26943278a7c4/1/DCLuNZpL97"><img=
+ alt=3D"" border=3D"0" src=3D"https://i1.prodbx.com/slices/logo-email.php?4=
+26-432679"></a> Powered by DBX:   <a href=3D"https://track.pstmrk.it/3/1.db=
+x.bz%2Fbe/jrqS/HArCAQ/AQ/fbc73506-f445-4746-982b-26943278a7c4/1/DCLuNZpL97"=
+ style=3D"color: #999;">www.ProDBX.com</a></span>
+<img src=3D"https://ea.pstmrk.it/open?m=3Dv3_1.qCPaCeCCBCLru-4nsyl43w.4ve8M=
+Ixb_XybPqlTx0_76Q5REJdGEo2mrgcM-HUTrRozrxYKbSddiVDIy8OQXSKg4LCXE4PXvsQxkL_5=
+muNokRHlE8SaGgKOJ0yLUJ3B8aozD125iNvlHfFAU4Kp6Vly6epyJsorXAZeCtubiMcc8_ZwfjI=
+zowl284h872kI8NYXI-npTa95MMSeCNb8xDnW66PGhRHNIAMQY_jTCIzD_7MfbGIqB02VIYW97g=
+R_wlb--s6ZUCBV8izogNMePJdcp3xbS6k1061eeIRFkFH73N8KSNI5y2Taq1guPK1xC9N1YxbDL=
+z3Pqrd9WJFKmvjH0mrLMTSkJAx8zfFOF4r6ZaYZM_SSdv9_yQbU2eZpvw6v3XV9k5J0flNVT4S4=
+LQmUQ51kCiOB-iSoCz-CaeqEixsAamjb5gYp9EitL48JXd0KeKvbMBgTCOmM_-G9dE85P_0lYp9=
+DxV4aKJc2WzO9vVICFF26AsTyyRdVP7uqfplw6TzmTaNK8f1tGidTr5xS" width=3D"1" heig=
+ht=3D"1" border=3D"0" alt=3D"" /></body>
+</html>
+
+--mk3-b4bf2dd53125477d93f039547a246b2e--

@@ -106,6 +106,9 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   const [isExtractingLinks, setIsExtractingLinks] = useState(false);
   const [emlStep, setEmlStep] = useState<'upload' | 'select' | 'confirm'>('upload');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // NEW: EML table sections and toggle state
+  const [emlTableSections, setEmlTableSections] = useState<DetectedSection[]>([]);
+  const [parseOriginalContractFromTable, setParseOriginalContractFromTable] = useState(false);
 
   // Validate a single link (format, accessibility, and detect type)
   // NEW: No longer requires type parameter - type is detected from API
@@ -453,8 +456,6 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
       if (!allValid) {
         const failedLinks = results.filter(r => !r.isValid);
         setError(`${failedLinks.length} selected link(s) failed validation. Please check the errors below.`);
-      } else {
-        setEmlStep('confirm');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate links');
@@ -493,6 +494,147 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     });
   };
 
+  // Auto-validate EML file (extract links, detect sections, validate)
+  const autoValidateEMLFile = async (selectedFile: File) => {
+    setFile(selectedFile);
+    setError(null);
+    setEmlStep('upload');
+    setIsExtractingLinks(true);
+    setProcessingStage('parsing');
+    setEmlTableSections([]);
+    setExtractedLinks([]);
+    setShowExtractedLinks(false);
+
+    try {
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        try {
+          const result = e.target?.result as string;
+          const base64Data = result.split(',')[1];
+          
+          // Step 1: Extract links from EML (if any)
+          const extractResponse = await fetch('/api/extract-contract-links', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: base64Data }),
+          });
+
+          if (!extractResponse.ok) {
+            throw new Error('Failed to extract links from .eml file');
+          }
+
+          const extractData = await extractResponse.json();
+          const extractedLinksData = extractData.links || {};
+
+          // Step 2: Detect sections from EML HTML table
+          setProcessingStage('validating');
+          const detectResponse = await fetch('/api/detect-eml-sections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: base64Data }),
+          });
+
+          let emlTableSections: DetectedSection[] = [];
+          if (detectResponse.ok) {
+            const detectData = await detectResponse.json();
+            emlTableSections = detectData.sections || [];
+            setEmlTableSections(emlTableSections);
+          } else {
+            console.warn('[Auto-Validate] Failed to detect EML sections, continuing with links only');
+          }
+
+          // Step 3: Extract and validate links (if any)
+          const links: ExtractedLink[] = [];
+          
+          if (extractedLinksData.links && Array.isArray(extractedLinksData.links)) {
+            extractedLinksData.links.forEach((link: { url: string }) => {
+              links.push({
+                url: link.url,
+                selected: true,
+                addendumNumber: extractAddendumNumberFromUrl(link.url),
+              });
+            });
+          } else {
+            if (includeOriginalContract && extractedLinksData.originalContractUrl) {
+              links.push({
+                url: extractedLinksData.originalContractUrl,
+                selected: false,
+              });
+            }
+            extractedLinksData.addendumUrls?.forEach((url: string) => {
+              links.push({
+                url,
+                selected: true,
+                addendumNumber: extractAddendumNumberFromUrl(url),
+              });
+            });
+          }
+
+          // Validate all links
+          const validationPromises = links.map(link => validateLink(link.url));
+          const validationResults = await Promise.all(validationPromises);
+
+          // Update links with validation results
+          const validatedLinks = links.map((link, idx) => ({
+            ...link,
+            validation: validationResults[idx],
+            type: validationResults[idx].type || link.type,
+            number: validationResults[idx].number || link.number,
+            name: validationResults[idx].name || link.name,
+            addendumNumber: validationResults[idx].addendumNumber || link.addendumNumber,
+          }));
+
+          // Step 4: Combine sections from EML table and links, initialize selected sections
+          const initialSelected = new Set<string>();
+          
+          // Add EML table sections
+          emlTableSections.forEach(section => {
+            if (section.selected !== false) {
+              const sectionKey = `eml-table::${section.type}::${section.number || ''}`;
+              initialSelected.add(sectionKey);
+            }
+          });
+
+          // Add link sections
+          validatedLinks.forEach((link) => {
+            if (link.validation?.isValid && link.validation.sections) {
+              link.validation.sections.forEach((section) => {
+                if (section.selected !== false) {
+                  const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+                  initialSelected.add(sectionKey);
+                }
+              });
+            }
+          });
+
+          setSelectedSections(initialSelected);
+          const sortedLinks = sortLinksByAddendumNumber(validatedLinks);
+          setExtractedLinks(sortedLinks);
+          setShowExtractedLinks(true);
+          setEmlStep('select');
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to process file');
+        } finally {
+          setIsExtractingLinks(false);
+          setProcessingStage('idle');
+        }
+      };
+
+      reader.onerror = () => {
+        setError('Failed to read file');
+        setIsExtractingLinks(false);
+        setProcessingStage('idle');
+      };
+
+      reader.readAsDataURL(selectedFile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process file');
+      setIsExtractingLinks(false);
+      setProcessingStage('idle');
+    }
+  };
+
   // Handle file upload in EML mode
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -501,13 +643,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
 
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile && droppedFile.name.endsWith('.eml')) {
-      setFile(droppedFile);
-      setError(null);
-      setExtractedLinks([]);
-      setShowExtractedLinks(false);
-      setEmlStep('upload');
-      setIsValidatingLinks(false);
-      setProcessingStage('idle');
+      autoValidateEMLFile(droppedFile);
     } else {
       setError('Please upload a .eml file');
     }
@@ -516,11 +652,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.name.endsWith('.eml')) {
-      setFile(selectedFile);
-      setError(null);
-      setExtractedLinks([]);
-      setShowExtractedLinks(false);
-      setEmlStep('upload');
+      autoValidateEMLFile(selectedFile);
       setIsValidatingLinks(false);
       setProcessingStage('idle');
     } else {
@@ -591,20 +723,48 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
           return;
         }
 
-        const selectedLinks = extractedLinks.filter(link => link.selected);
+        // Collect selected sections from both EML table and links
+        const selectedSectionsArray: Array<{
+          source: 'eml-table' | 'link';
+          type: 'original' | 'optional-package' | 'addendum';
+          number?: number;
+          url?: string;
+        }> = [];
+
+        // Add selected EML table sections
+        emlTableSections.forEach(section => {
+          const sectionKey = `eml-table::${section.type}::${section.number || ''}`;
+          if (selectedSections.has(sectionKey)) {
+            selectedSectionsArray.push({
+              source: 'eml-table',
+              type: section.type,
+              number: section.number,
+            });
+          }
+        });
+
+        // Add selected link sections
+        extractedLinks.forEach(link => {
+          if (link.validation?.isValid && link.validation.sections) {
+            link.validation.sections.forEach(section => {
+              const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+              if (selectedSections.has(sectionKey)) {
+                selectedSectionsArray.push({
+                  source: 'link',
+                  url: link.url,
+                  type: section.type,
+                  number: section.number,
+                });
+              }
+            });
+          }
+        });
         
-        if (selectedLinks.length === 0) {
-          setError('Please select at least one link to process');
+        if (selectedSectionsArray.length === 0) {
+          setError('Please select at least one section to include');
           setIsProcessing(false);
           return;
         }
-
-        // NEW: Format selected links with type information
-        const formattedSelectedLinks = selectedLinks.map(link => ({
-          url: link.url,
-          type: link.type || 'original', // Default to original if type not detected
-          number: link.number, // Package number or addendum number
-        }));
 
         setProcessingStage('parsing');
 
@@ -624,12 +784,16 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
                 mode: 'eml',
                 file: base64Data,
                 filename: file.name,
-                // NEW: Pass selectedLinks array
-                selectedLinks: formattedSelectedLinks,
-                // EXISTING: Keep old format for backward compatibility (will be ignored if selectedLinks is provided)
-                originalContractUrl: selectedLinks.find(l => l.type === 'original')?.url,
-                addendumLinks: selectedLinks.filter(l => l.type === 'addendum').map(l => l.url),
-                includeOriginalContract: selectedLinks.some(l => l.type === 'original'),
+                // NEW: Pass selected sections with source tracking
+                selectedSections: selectedSectionsArray,
+                parseOriginalContractFromTable: parseOriginalContractFromTable,
+                // EXISTING: Keep old format for backward compatibility
+                selectedLinks: selectedSectionsArray.filter(s => s.source === 'link').map(s => ({
+                  url: s.url!,
+                  type: s.type,
+                  number: s.number,
+                })),
+                includeOriginalContract: selectedSectionsArray.some(s => s.type === 'original'),
                 existingContractId: contract.id,
                 deleteExtraRows: deleteExtraRows,
                 includeMainCategories: includeMainCategories,
@@ -1032,210 +1196,218 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                 )}
               </div>
 
-              {/* Extract and Validate Links Button */}
-              {file && (
-                <Button
-                  onClick={handleExtractLinks}
-                  disabled={isExtractingLinks || isValidatingLinks}
-                  variant="outline"
-                  className="w-full"
-                >
-                  {(isExtractingLinks || isValidatingLinks) ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {processingStage === 'extracting' ? 'Extracting Links...' : processingStage === 'validating' ? 'Validating Links...' : 'Processing...'}
-                    </>
-                  ) : (
-                    <>
-                      <LinkIcon className="mr-2 h-4 w-4" />
-                      Extract & Validate Links
-                    </>
-                  )}
-                </Button>
-              )}
+              {/* Extract and Validate Links Button removed - validation happens automatically on file upload */}
             </div>
           )}
 
-          {/* Step 2: Link Selection - sorted by addendum number descending */}
-          {emlStep === 'select' && showExtractedLinks && sortedExtractedLinks.length > 0 && (
+          {/* Step 2: Unified Section Selection */}
+          {emlStep === 'select' && (showExtractedLinks || emlTableSections.length > 0) && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col h-full min-h-0"
             >
               <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                <Label className="text-base font-semibold">Detected Links (Step 2)</Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setExtractedLinks(extractedLinks.map(l => ({ ...l, selected: true })));
-                    }}
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setExtractedLinks(extractedLinks.map(l => ({ ...l, selected: false })));
-                    }}
-                  >
-                    Deselect All
-                  </Button>
+                <Label className="text-base font-semibold">Validation Results - Select sections to include:</Label>
+              </div>
+
+              <div className="space-y-4 overflow-y-auto pr-2 flex-1 min-h-0 mb-3 border rounded-lg p-3">
+                {/* EML Table Sections */}
+                {emlTableSections.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      From EML File Table
+                    </div>
+                    {emlTableSections.map((section, index) => {
+                      const sectionKey = `eml-table::${section.type}::${section.number || ''}`;
+                      const isSelected = selectedSections.has(sectionKey);
+                      
+                      let displayName = 'Unknown';
+                      if (section.type === 'original') {
+                        displayName = 'Original Contract';
+                      } else if (section.type === 'optional-package') {
+                        displayName = `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`;
+                      } else if (section.type === 'addendum') {
+                        displayName = `Addendum ${section.number}`;
+                      }
+                      
+                      return (
+                        <div key={index} className="flex items-center gap-2 pl-4">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedSections);
+                              if (checked) {
+                                newSelected.add(sectionKey);
+                              } else {
+                                newSelected.delete(sectionKey);
+                              }
+                              setSelectedSections(newSelected);
+                            }}
+                          />
+                          <Label className="flex-1 cursor-pointer text-sm">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              <span className="font-medium">{displayName}</span>
+                            </div>
+                          </Label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {/* Link Sections */}
+                {sortedExtractedLinks.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      From Links
+                    </div>
+                    {sortedExtractedLinks.map((link, linkIndex) => {
+                      if (!link.validation?.isValid || !link.validation.sections) {
+                        return (
+                          <div key={linkIndex} className="border-b pb-3 last:border-b-0">
+                            <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
+                            {link.validation?.error && (
+                              <div className="text-xs text-red-600">{link.validation.error}</div>
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div key={linkIndex} className="border-b pb-3 last:border-b-0">
+                          <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
+                          <div className="space-y-2 pl-4">
+                            {link.validation.sections
+                              .filter(section => {
+                                // When toggle is enabled, hide "original" sections from links
+                                if (parseOriginalContractFromTable && section.type === 'original') {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .map((section, sectionIndex) => {
+                                const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
+                                const isSelected = selectedSections.has(sectionKey);
+                                
+                                let displayName = 'Unknown';
+                                if (section.type === 'optional-package') {
+                                  displayName = section.number 
+                                    ? `Optional Package ${section.number}${section.name ? `: ${section.name}` : ''}`
+                                    : 'Optional Package';
+                                } else if (section.type === 'addendum') {
+                                  displayName = section.number 
+                                    ? `Addendum #${section.number}`
+                                    : 'Addendum';
+                                } else {
+                                  displayName = 'Original Contract';
+                                }
+                                
+                                return (
+                                  <div key={sectionIndex} className="flex items-center gap-2">
+                                    <Checkbox
+                                      checked={isSelected}
+                                      onCheckedChange={(checked) => {
+                                        const newSelected = new Set(selectedSections);
+                                        if (checked) {
+                                          newSelected.add(sectionKey);
+                                        } else {
+                                          newSelected.delete(sectionKey);
+                                        }
+                                        setSelectedSections(newSelected);
+                                      }}
+                                    />
+                                    <Label className="flex-1 cursor-pointer text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                        <span className="font-medium">{displayName}</span>
+                                      </div>
+                                    </Label>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </motion.div>
+          )}
+
+          {/* Options and Parse Button - Always visible when ready */}
+          {uploadMode === 'eml' && emlStep === 'select' && (showExtractedLinks || emlTableSections.length > 0) && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="space-y-4 border-t pt-4 flex-shrink-0"
+            >
+              {/* Parsing Options Section */}
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-muted-foreground">Parsing Options</Label>
+                
+                {/* Parse Original Contract from Table */}
+                <div className="flex items-center space-x-2 pl-1">
+                  <Checkbox
+                    id="parse-original-from-table"
+                    checked={parseOriginalContractFromTable}
+                    onCheckedChange={(checked) => setParseOriginalContractFromTable(checked === true)}
+                  />
+                  <Label htmlFor="parse-original-from-table" className="cursor-pointer text-sm">
+                    Parse Original Contract from EML Table
+                  </Label>
+                </div>
+                
+                {/* Include Categories Options */}
+                <div className="grid grid-cols-2 gap-4 pl-1">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include-main-categories"
+                      checked={includeMainCategories}
+                      onCheckedChange={(checked) => setIncludeMainCategories(checked === true)}
+                    />
+                    <Label htmlFor="include-main-categories" className="cursor-pointer text-sm">
+                      Include Main Categories
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include-subcategories"
+                      checked={includeSubcategories}
+                      onCheckedChange={(checked) => setIncludeSubcategories(checked === true)}
+                    />
+                    <Label htmlFor="include-subcategories" className="cursor-pointer text-sm">
+                      Include Subcategories
+                    </Label>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-3 overflow-y-auto pr-2 flex-1 min-h-0 mb-3">
-                {sortedExtractedLinks.map((link, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
-                    <Checkbox
-                      checked={link.selected}
-                      onCheckedChange={(checked) => {
-                        // Fix: Only update the specific link, not all links above it
-                        setExtractedLinks(extractedLinks.map(l => 
-                          l.url === link.url ? { ...l, selected: checked === true } : l
-                        ));
-                      }}
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">
-                          {(() => {
-                            // Format display name based on detected type
-                            if (link.type === 'optional-package') {
-                              return link.number 
-                                ? `Optional Package ${link.number}${link.name ? `: ${link.name}` : ''}`
-                                : 'Optional Package';
-                            } else if (link.type === 'addendum') {
-                              return link.number 
-                                ? `Addendum #${link.number}`
-                                : link.addendumNumber 
-                                  ? `Addendum #${link.addendumNumber}`
-                                  : 'Addendum';
-                            } else {
-                              // original or undefined (default to original)
-                              return 'Original Contract';
-                            }
-                          })()}:
-                        </span>
-                        {link.validation && (
-                          <>
-                            {link.validation.isChecking ? (
-                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                            ) : link.validation.isValid ? (
-                              <CheckCircle2 className="h-3 w-3 text-green-600" />
-                            ) : (
-                              <XCircle className="h-3 w-3 text-red-600" />
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground break-all">{link.url}</div>
-                      {link.validation?.error && (
-                        <div className="text-xs text-red-600 mt-1">{link.validation.error}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-2 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEmlStep('upload');
-                    setShowExtractedLinks(false);
-                  }}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={() => {
-                    // Links are already validated, check if selected links are valid and proceed
-                    const selectedLinks = sortedExtractedLinks.filter(l => l.selected);
-                    if (selectedLinks.length === 0) {
-                      setError('Please select at least one link to process');
-                      return;
-                    }
-                    
-                    const allValid = selectedLinks.every(l => l.validation?.isValid === true);
-                    if (!allValid) {
-                      setError('Some selected links failed validation. Please fix errors or deselect them.');
-                      return;
-                    }
-                    
-                    // All selected links are valid, proceed to confirmation
-                    setEmlStep('confirm');
-                  }}
-                  disabled={sortedExtractedLinks.filter(l => l.selected).length === 0}
-                  className="flex-1"
-                >
-                  Continue
-                </Button>
-              </div>
+              {/* Parse Contract Button - Always visible when ready */}
+              <Button
+                onClick={handleParseContract}
+                disabled={isProcessing || selectedSections.size === 0}
+                className="w-full"
+                size="lg"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {getProcessingText()}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Add to Contract
+                  </>
+                )}
+              </Button>
             </motion.div>
           )}
 
-          {/* Step 3: Confirmation */}
-          {emlStep === 'confirm' && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label className="text-base font-semibold">Ready to Process</Label>
-                <p className="text-sm text-muted-foreground">
-                  {sortedExtractedLinks.filter(l => l.selected).length} link(s) selected and validated.
-                </p>
-              </div>
-
-              {/* Options */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={includeMainCategories}
-                    onCheckedChange={(checked) => setIncludeMainCategories(checked === true)}
-                  />
-                  <span className="text-sm">Include Main Categories</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={includeSubcategories}
-                    onCheckedChange={(checked) => setIncludeSubcategories(checked === true)}
-                  />
-                  <span className="text-sm">Include Subcategories</span>
-                </label>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setEmlStep('select')}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleParseContract}
-                  disabled={isProcessing}
-                  className="flex-1"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {getProcessingText()}
-                    </>
-                  ) : (
-                    'Add Addendums to Contract'
-                  )}
-                </Button>
-              </div>
-            </motion.div>
-          )}
         </TabsContent>
       </Tabs>
 

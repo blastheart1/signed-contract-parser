@@ -156,13 +156,13 @@ export async function POST(request: NextRequest) {
       } catch (detectionError) {
         // If detection fails, return existing format (graceful degradation)
         console.warn('[Validate Link] Type detection failed, using default:', detectionError);
-        return NextResponse.json({
-          valid: true,
+      return NextResponse.json({
+        valid: true,
           addendumNumber: addendumNumber,
           // Return default original contract section
           sections: [{ type: 'original', selected: true }],
           type: 'original',
-        });
+      });
       }
     } catch (error) {
       // Even if fetch fails, try to extract from URL as fallback
