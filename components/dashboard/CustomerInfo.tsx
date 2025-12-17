@@ -15,6 +15,7 @@ import EditCustomerInfo from './EditCustomerInfo';
 import DeleteCustomerButton from './DeleteCustomerButton';
 import CustomerHistory from './CustomerHistory';
 import RestoreContractDialog from './RestoreContractDialog';
+import PermanentDeleteDialog from './PermanentDeleteDialog';
 import { mmddyyyyToYyyymmdd, yyyymmddToMmddyyyy, formatDateForDisplay } from '@/lib/utils/dateFormat';
 
 interface CustomerInfoProps {
@@ -45,6 +46,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
   const [saving, setSaving] = useState(false);
   const [isEditingProjectStatus, setIsEditingProjectStatus] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false);
   
   if (!currentContract?.customer) {
     console.error('[CustomerInfo] Contract missing customer data');
@@ -628,15 +630,26 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                   )}
                 </div>
                 {isDeleted && currentContract?.customer?.dbxCustomerId && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => setRestoreDialogOpen(true)}
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Restore Contract
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setPermanentDeleteDialogOpen(true)}
+                      className="gap-2 min-w-[140px]"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Permanently Delete
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setRestoreDialogOpen(true)}
+                      className="gap-2 bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Restore Contract
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -673,12 +686,20 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           onOpenChange={setHistoryModalOpen}
         />
         {isDeleted && (
-          <RestoreContractDialog
-            open={restoreDialogOpen}
-            onOpenChange={setRestoreDialogOpen}
-            customerId={currentContract.customer.dbxCustomerId}
-            customerName={currentContract.customer.clientName}
-          />
+          <>
+            <PermanentDeleteDialog
+              open={permanentDeleteDialogOpen}
+              onOpenChange={setPermanentDeleteDialogOpen}
+              customerId={currentContract.customer.dbxCustomerId}
+              customerName={currentContract.customer.clientName}
+            />
+            <RestoreContractDialog
+              open={restoreDialogOpen}
+              onOpenChange={setRestoreDialogOpen}
+              customerId={currentContract.customer.dbxCustomerId}
+              customerName={currentContract.customer.clientName}
+            />
+          </>
         )}
       </>
     )}
