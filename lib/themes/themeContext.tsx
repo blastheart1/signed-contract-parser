@@ -37,12 +37,8 @@ export function ThemeProvider({ children, defaultThemeId: providedDefaultThemeId
     return providedDefaultThemeId || defaultThemeId;
   });
 
-  const [isDark, setIsDarkState] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return prefersDarkMode();
-    }
-    return false;
-  });
+  // Dark mode disabled - always use light mode
+  const [isDark, setIsDarkState] = useState<boolean>(false);
 
   const theme = getTheme(themeId);
 
@@ -51,28 +47,17 @@ export function ThemeProvider({ children, defaultThemeId: providedDefaultThemeId
     applyTheme(theme, isDark);
   }, [theme, isDark]);
 
-  // Listen for system dark mode changes
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      setIsDarkState(e.matches);
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  // Dark mode listener removed - dark mode is disabled
 
   const setTheme = useCallback((newThemeId: ThemeId) => {
     setThemeIdState(newThemeId);
     saveTheme(newThemeId);
   }, []);
 
+  // Dark mode toggle disabled - always keep light mode
   const setIsDark = useCallback((newIsDark: boolean) => {
-    setIsDarkState(newIsDark);
+    // Ignore dark mode changes - always stay in light mode
+    // setIsDarkState(newIsDark);
   }, []);
 
   const value: ThemeContextValue = {

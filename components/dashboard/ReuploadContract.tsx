@@ -965,43 +965,49 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
         {/* DBX Links Only Mode */}
         <TabsContent value="links" className="overflow-y-auto mt-3 max-h-[500px]">
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="links-input">DBX Links (one per line)</Label>
-              <Textarea
-                id="links-input"
-                value={linksInput}
-                onChange={(e) => setLinksInput(e.target.value)}
-                placeholder={`https://l1.prodbx.com/go/view/?35587.426.20251112100816
+            {/* URL Input Fields - Hidden after validation */}
+            {sortedValidationResults.length === 0 && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="links-input">DBX Links (one per line)</Label>
+                  <Textarea
+                    id="links-input"
+                    value={linksInput}
+                    onChange={(e) => setLinksInput(e.target.value)}
+                    placeholder={`https://l1.prodbx.com/go/view/?35587.426.20251112100816
 https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
-                style={{ height: "200px" }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Paste all links here. Original Contract is not required for re-upload.
-              </p>
-            </div>
+                    style={{ height: "150px" }}
+                    className="w-full max-w-full resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Paste all links here. Original Contract is not required for re-upload.
+                  </p>
+                </div>
 
-            <Button
-              onClick={handleValidateLinks}
-              disabled={!linksInput.trim() || isValidatingLinks}
-              variant="outline"
-              className="w-full"
-            >
-              {isValidatingLinks ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Validating Links...
-                </>
-              ) : (
-                <>
-                  <LinkIcon className="mr-2 h-4 w-4" />
-                  Validate Links
-                </>
-              )}
-            </Button>
+                <Button
+                  onClick={handleValidateLinks}
+                  disabled={!linksInput.trim() || isValidatingLinks}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {isValidatingLinks ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Validating Links...
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="mr-2 h-4 w-4" />
+                      Validate Links
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
 
             {/* Validation Results - Show all sections from each link */}
             {sortedValidationResults.length > 0 && (
-              <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[400px] overflow-y-auto">
+              <div className="space-y-2 border rounded-lg p-3 max-h-[380px] overflow-y-auto">
                 <Label className="text-sm font-medium">Validation Results - Select sections to include:</Label>
                 <div className="space-y-3">
                   {sortedValidationResults.map((result, resultIndex) => {
@@ -1010,12 +1016,12 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                       return (
                         <div key={resultIndex} className="flex items-start gap-2 text-sm border-b pb-2">
                           {result.isChecking ? (
-                            <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
+                            <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground flex-shrink-0" />
                           ) : (
-                            <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                            <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                           )}
-                          <div className="flex-1">
-                            <div className="text-xs text-muted-foreground break-all">{result.url}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere">{result.url}</div>
                             {result.error && (
                               <div className="text-xs text-red-600 mt-1">{result.error}</div>
                             )}
@@ -1027,7 +1033,7 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                     // Show all sections from this link
                     return (
                       <div key={resultIndex} className="border-b pb-3 last:border-b-0">
-                        <div className="text-xs text-muted-foreground break-all mb-2">{result.url}</div>
+                        <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere mb-2">{result.url}</div>
                         <div className="space-y-2 pl-4">
                           {result.sections.map((section, sectionIndex) => {
                             const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
@@ -1061,9 +1067,9 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                     setSelectedSections(newSelected);
                                   }}
                                 />
-                                <Label className="flex-1 cursor-pointer text-sm">
+                                <Label className="flex-1 cursor-pointer text-sm min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                                     <span className="font-medium">{displayName}</span>
                                   </div>
                                 </Label>

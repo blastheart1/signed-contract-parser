@@ -992,51 +992,58 @@ export default function DashboardFileUpload() {
         {/* DBX Links Only Mode */}
         <TabsContent value="links" className="overflow-y-auto mt-3 max-h-[400px]">
           <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="original-contract-url">Original Contract URL *</Label>
-                <Input
-                  id="original-contract-url"
-                  type="url"
-                  placeholder="https://l1.prodbx.com/go/view/?..."
-                  value={originalContractUrl}
-                  onChange={(e) => setOriginalContractUrl(e.target.value)}
-                />
-              </div>
+              {/* URL Input Fields - Hidden after validation */}
+              {linkValidationResults.length === 0 && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="original-contract-url">Original Contract URL *</Label>
+                    <Input
+                      id="original-contract-url"
+                      type="url"
+                      placeholder="https://l1.prodbx.com/go/view/?..."
+                      value={originalContractUrl}
+                      onChange={(e) => setOriginalContractUrl(e.target.value)}
+                      className="w-full max-w-full"
+                    />
+                  </div>
 
-              <div className="space-y-1.5">
-  <Label htmlFor="addendum-links">Addendum Links (optional, one per line)</Label>
-  <Textarea
-    id="addendum-links"
-    value={addendumLinksInput}
-    onChange={(e) => setAddendumLinksInput(e.target.value)}
-    placeholder={`https://l1.prodbx.com/go/view/?35587.426.20251112100816
+                  <div className="space-y-1.5">
+                    <Label htmlFor="addendum-links">Addendum Links (optional, one per line)</Label>
+                    <Textarea
+                      id="addendum-links"
+                      value={addendumLinksInput}
+                      onChange={(e) => setAddendumLinksInput(e.target.value)}
+                      placeholder={`https://l1.prodbx.com/go/view/?35587.426.20251112100816
 https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
-    style={{ height: "237px" }}
-  />
-        </div>
+                      style={{ height: "150px" }}
+                      className="w-full max-w-full resize-none"
+                    />
+                  </div>
 
-              <Button
-                onClick={handleValidateLinks}
-                disabled={!originalContractUrl.trim() || isValidatingLinks}
-                variant="outline"
-                className="w-full"
-              >
-                {isValidatingLinks ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Validating Links...
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Validate Links
-                  </>
-                )}
-              </Button>
+                  <Button
+                    onClick={handleValidateLinks}
+                    disabled={!originalContractUrl.trim() || isValidatingLinks}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {isValidatingLinks ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Validating Links...
+                      </>
+                    ) : (
+                      <>
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Validate Links
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
 
               {/* Validation Results - Show all sections from each link */}
               {linkValidationResults.length > 0 && (
-                <div className="space-y-2 border rounded-lg p-3 mt-3 max-h-[400px] overflow-y-auto">
+                <div className="space-y-2 border rounded-lg p-3 max-h-[380px] overflow-y-auto">
                   <Label className="text-sm font-medium">Validation Results - Select sections to include:</Label>
                   <div className="space-y-3">
                     {linkValidationResults.map((result, resultIndex) => {
@@ -1044,25 +1051,25 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                         // Show error or invalid link
                         return (
                           <div key={resultIndex} className="flex items-start gap-2 text-sm border-b pb-2">
-                      {result.isChecking ? (
-                        <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                      )}
-                      <div className="flex-1">
-                        <div className="text-xs text-muted-foreground break-all">{result.url}</div>
-                        {result.error && (
-                          <div className="text-xs text-red-600 mt-1">{result.error}</div>
-                        )}
-                      </div>
-                    </div>
+                            {result.isChecking ? (
+                              <Loader2 className="h-4 w-4 animate-spin mt-0.5 text-muted-foreground flex-shrink-0" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere">{result.url}</div>
+                              {result.error && (
+                                <div className="text-xs text-red-600 mt-1">{result.error}</div>
+                              )}
+                            </div>
+                          </div>
                         );
                       }
                       
                       // Show all sections from this link
                       return (
                         <div key={resultIndex} className="border-b pb-3 last:border-b-0">
-                          <div className="text-xs text-muted-foreground break-all mb-2">{result.url}</div>
+                          <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere mb-2">{result.url}</div>
                           <div className="space-y-2 pl-4">
                             {result.sections.map((section, sectionIndex) => {
                               const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
@@ -1096,9 +1103,9 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                       setSelectedSections(newSelected);
                                     }}
                                   />
-                                  <Label className="flex-1 cursor-pointer text-sm">
+                                  <Label className="flex-1 cursor-pointer text-sm min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                                       <span className="font-medium">{displayName}</span>
                                     </div>
                                   </Label>
@@ -1418,28 +1425,6 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
           <p className="text-sm text-destructive">{error}</p>
         </motion.div>
       )}
-
-      {/* Process Button - Only for DBX Links Only mode */}
-      {uploadMode === 'links' && allLinksValidatedAndValid && (
-        <Button
-          onClick={handlePrepareConfirm}
-          disabled={isProcessing}
-          className="w-full flex-shrink-0"
-          size="lg"
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {getProcessingText()}
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Parse Contract
-              </>
-            )}
-          </Button>
-        )}
 
         {/* Confirmation Dialog (DBX Links Only mode) */}
         <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
