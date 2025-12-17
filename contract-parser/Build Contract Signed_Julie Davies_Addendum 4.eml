@@ -1,0 +1,290 @@
+Delivered-To: billing@calimingo.com
+Received: by 2002:a05:6918:66a:b0:395:f449:f646 with SMTP id e42csp549757ysb;
+        Thu, 18 Sep 2025 14:34:40 -0700 (PDT)
+X-Google-Smtp-Source: AGHT+IGGy04sdvdbLHwk9euOHuc/KngaPrHsxVgpAHcJGoWK3WGW1zhy6IMXg8cEGmigOlmAYfkb
+X-Received: by 2002:a05:6a00:b45:b0:772:78e6:f61a with SMTP id d2e1a72fcca58-77e4dafab7dmr1063286b3a.13.1758231280621;
+        Thu, 18 Sep 2025 14:34:40 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1758231280; cv=none;
+        d=google.com; s=arc-20240605;
+        b=Zxj5fH0iyGPrTzzwhKirzEAVbw/4otscFtdg4t6JtdF2/Aky5OXtx6X8RXNOWuBqvZ
+         zQxcc+XVg6TvTIftEssQJ1l6I1BzZazqklUSFpy/P61pi63+NuMhHfatYnIXXokMFJHD
+         R+IDlakrBdWl/uya+PEgN8ix24JHNVVtFI6iNXyYtozR+lEZ6vJm+UoXq7yTbZ3dpwfT
+         oUlaQOdTnknBwHKZprUWChvXtpp7e/IJOWaFGtiEyCNjE7LTlLLDDau9kk/OdSeVWzSy
+         +3DhRx8hlkDaCvNVwqjCoRokGGweHMCmij6IB8rvc3XT1gOZiaXQujsbg8QWMO62q9Sy
+         XOFA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=feedback-id:content-transfer-encoding:mime-version:message-id
+         :subject:reply-to:from:to:date:dkim-signature:dkim-signature;
+        bh=vu5QFK3gWcbfB0/IuNigadTVoF73Ekf3/QakMx2DAbc=;
+        fh=1LxDB8EHz8U6dDZU635uM+KH6fCL2jEFSj+dE75F7/w=;
+        b=MIWFHd0MNO1xhBDT9LkG7jwEQWIfh70O08WLxd39DBApYx9FBY1JIG9dGBgzCwKNjt
+         afvVD3BIRg+YwDUmryf8ykFFW7GpBqfYaojjdl/9zTES4PkdSSFX7U8FKpDJiRA1bPeJ
+         joSRi9wEC+bHTlLhosHIXNxlmsKa5SpNTF6KURxbDjdTvwvrPwm2u3be5+c0WQtqZzMt
+         jI++X95CoJjtS+N0RssrJiCncWzS5Ae0aB49AVnTinb/v9Mq/aqogCeDKRhHa7jWFV0O
+         CDgRCw0FSND0jIYG+4dCz5ZTAOZDeTOXEzvjQ+zBrZVjYAUZqBOoUWinwhAh7Y90rBLp
+         zqMQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@maildbx.net header.s=4s62wrves2ynumpzwo6zsupbleqkuyiy header.b=IlAJKHfr;
+       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=JWRxaIiJ;
+       spf=pass (google.com: domain of 010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com designates 54.240.27.20 as permitted sender) smtp.mailfrom=010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=maildbx.net
+Return-Path: <010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com>
+Received: from a27-20.smtp-out.us-west-2.amazonses.com (a27-20.smtp-out.us-west-2.amazonses.com. [54.240.27.20])
+        by mx.google.com with ESMTPS id d2e1a72fcca58-77cfea4b541si2369153b3a.566.2025.09.18.14.34.40
+        for <billing@calimingo.com>
+        (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
+        Thu, 18 Sep 2025 14:34:40 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com designates 54.240.27.20 as permitted sender) client-ip=54.240.27.20;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@maildbx.net header.s=4s62wrves2ynumpzwo6zsupbleqkuyiy header.b=IlAJKHfr;
+       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=JWRxaIiJ;
+       spf=pass (google.com: domain of 010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com designates 54.240.27.20 as permitted sender) smtp.mailfrom=010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=maildbx.net
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=4s62wrves2ynumpzwo6zsupbleqkuyiy; d=maildbx.net; t=1758231280;
+	i=@tx.maildbx.net;
+	h=Date:To:From:Reply-To:Subject:Message-ID:MIME-Version:Content-Type:Content-Transfer-Encoding;
+	bh=2vusXsgX8tIa+4a/8GRCuANuEu4XMIdPTpsnMAPX2CI=;
+	b=IlAJKHfrmeRnFy8LB7lyzHa6wrZm5O6MnZkfFClmrNzh14cyWJHX2X09vLHxInin
+	doFDKU7GLD05SRSGkx2mwESmHClR/NoTRICtj7Lrjtdjy3frzOF1Zdpp1I8RfeA+brB
+	GNjS+dmNvpZyDHF9tgrm1hR4OANMj3YB6d+XxIEcB0MUlr8PdzFjI/itB6UnyP8nBa7
+	Ti17lr6/QrX+xK+5GLoq6CdjQdXFw0KDwWnIsF3Anv1a8c5e5Mui7NLu4ZkMlanDk0R
+	pYjnCgnI33F1fSLNTo4kKE/bqmW9HLOa9uvwCoZTyjaS6Z+gLfu4f8E+iFAQhwIiFjV
+	xjNLt7R1YA==
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx; d=amazonses.com; t=1758231280;
+	h=Date:To:From:Reply-To:Subject:Message-ID:MIME-Version:Content-Type:Content-Transfer-Encoding:Feedback-ID;
+	bh=2vusXsgX8tIa+4a/8GRCuANuEu4XMIdPTpsnMAPX2CI=;
+	b=JWRxaIiJ3g9XXzIWagnKJ8BAmmle3s3pTr2x2PN4+KKl6AiQZNOyNPEe7HMKPJ+j
+	bBemk4JPY4FspjjaMIDsBXNkjzhoG25flcXMzY92GvryfTbhfr9NanvfgUPDUiwrowa
+	1ZV9605BJKakbXnhB36EUBBVbnhsxAftbrkGbD38=
+Date: Thu, 18 Sep 2025 21:34:39 +0000
+To: Calimingo Billing <billing@calimingo.com>
+From: Calimingo Pools <do-not-reply@tx.maildbx.net>
+Reply-To: Calimingo Pools <clientportal@calimingo.com>
+Subject: Build Addendum to Contract Signed
+Message-ID: <010101995ec0392e-02e4c859-080b-4a15-9c32-c56bbc8a6f88-000000@us-west-2.amazonses.com>
+X-Mailer: PHPMailer 6.9.3 (https://github.com/PHPMailer/PHPMailer)
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="b1=_xVRnmg59YzObYEBQ1RbJkoeUBV25I27ZlUECZuEzsqE"
+Content-Transfer-Encoding: 8bit
+Feedback-ID: ::1.us-west-2.IILSpo39TE5ww3pufLqc2csn4sdrATTRPwCWCdL4pDE=:AmazonSES
+X-SES-Outgoing: 2025.09.18-54.240.27.20
+
+--b1=_xVRnmg59YzObYEBQ1RbJkoeUBV25I27ZlUECZuEzsqE
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+
+
+
+Hey,
+
+ 
+
+A new Addendum to a contract has been signed.
+Please see all the details about the job Below.
+
+ 
+
+-- Customer Info --
+
+
+DBX Customer ID:10423
+
+
+Client:Julie Davis
+Email:julieann.davis@cox.net
+
+
+Phone:(949) 322-0641
+
+
+Address:6 Flores
+
+
+City:Foothill Ranch
+
+
+State:California
+
+
+Zip:92610-1816
+
+
+Full Address: 6 Flores Foothill
+Ranch, California 92610-1816
+
+ 
+
+-- Job Info --
+
+
+Order Id:8822
+
+
+Order Date:3/25/2025
+
+Order Po:
+
+
+Order Due Date:0
+
+Order Type:
+
+
+Order Delivered:0
+
+
+Quote Expiration Date:0
+
+
+Order Grand Total:463,982.16
+
+
+Progress Payments:
+
+
+
+Balance Due:463,982.16
+
+
+Sales Rep:Sean Lagrave
+
+ 
+
+Original Contract: 
+
+
+https://l1.prodbx.com/go/view/?29897.426.20250325175654.
+
+ 
+
+Addendums: 
+
+
+https://l1.prodbx.com/go/view/?34628.426.20250918143435.
+https://l1.prodbx.com/go/view/?34055.426.20250903090618.
+https://l1.prodbx.com/go/view/?33715.426.20250821215201.
+https://l1.prodbx.com/go/view/?33520.426.20250813124711.
+
+
+
+ 
+
+
+
+	
+		
+			
+			
+			
+			
+			Office - (714) 235-3294 Ext. 0
+			Connect@Calimingo.com
+
+			   
+			
+		
+	
+
+
+
+
+
+
+
+
+ Powered by DBX:   www.ProDBX.com
+
+
+
+--b1=_xVRnmg59YzObYEBQ1RbJkoeUBV25I27ZlUECZuEzsqE
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>=0A<html>=0A<head><meta http-equiv=3D"Content-Type" content=
+=3D"text/html; charset=3Dutf-8"></head>=0A<body>=0A<div>Hey,</div>=0A=0A<di=
+v>=C2=A0</div>=0A=0A<div>A new Addendum to a contract has been signed. Plea=
+se see all the details about the job Below.</div>=0A=0A<div>=C2=A0</div>=0A=
+=0A<div><strong>-- Customer Info --</strong></div>=0A=0A<div>=0A<strong>DBX=
+ Customer ID:</strong>10423</div>=0A=0A<div>=0A<strong>Client:</strong>Juli=
+e Davis</div>=0A<strong>Email:</strong>julieann.davis@cox.net=0A=0A<div>=0A=
+<strong>Phone:</strong>(949) 322-0641</div>=0A=0A<div>=0A<strong>Address:</=
+strong>6 Flores</div>=0A=0A<div>=0A<strong>City:</strong>Foothill Ranch</di=
+v>=0A=0A<div>=0A<strong>State:</strong>California</div>=0A=0A<div>=0A<stron=
+g>Zip:</strong>92610-1816</div>=0A=0A<div>=0A<strong>Full Address: </strong=
+>6 Flores Foothill Ranch,=C2=A0California=C2=A092610-1816</div>=0A=0A<div>=
+=C2=A0</div>=0A=0A<div><strong>-- Job Info --</strong></div>=0A=0A<div>=0A<=
+strong>Order Id:</strong>8822</div>=0A=0A<div>=0A<strong>Order Date:</stron=
+g>3/25/2025</div>=0A=0A<div><strong>Order Po:</strong></div>=0A=0A<div>=0A<=
+strong>Order Due Date:</strong>0</div>=0A=0A<div><strong>Order Type:</stron=
+g></div>=0A=0A<div>=0A<strong>Order Delivered:</strong>0</div>=0A=0A<div>=
+=0A<strong>Quote Expiration Date:</strong>0</div>=0A=0A<div>=0A<strong>Orde=
+r Grand Total:</strong>463,982.16</div>=0A=0A<div>=0A<strong>Progress Payme=
+nts:</strong>=0A</div>=0A=0A<div>=0A<strong>Balance Due:</strong>463,982.16=
+</div>=0A=0A<div>=0A<strong>Sales Rep:</strong>Sean Lagrave</div>=0A=0A<div=
+>=C2=A0</div>=0A=0A<div><strong>Original Contract:=C2=A0</strong></div>=0A=
+=0A<div>=0A<br><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aHR0c=
+HM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzI5ODk3LjQyNi4yMDI1MDMyNTE3NTY1NC4%3D" =
+rel=3D"nofollow"></a><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459=
+-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzI5ODk3LjQyNi4yMDI1MDMyNTE3NTY1NA=
+%3D%3D">https://l1.prodbx.com/go/view/?29897.426.20250325175654</a>.</div>=
+=0A=0A<div>=C2=A0</div>=0A=0A<div><strong>Addendums:=C2=A0</strong></div>=
+=0A=0A<div>=0A<br><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aH=
+R0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM0NjI4LjQyNi4yMDI1MDkxODE0MzQzNS4%3=
+D" rel=3D"nofollow"></a><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414=
+459-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM0NjI4LjQyNi4yMDI1MDkxODE0MzQ=
+zNQ%3D%3D">https://l1.prodbx.com/go/view/?34628.426.20250918143435</a>.=0A<=
+br><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9sMS5wc=
+m9kYnguY29tL2dvL3ZpZXcvPzM0MDU1LjQyNi4yMDI1MDkwMzA5MDYxOC4%3D" rel=3D"nofol=
+low"></a><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9=
+sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzM0MDU1LjQyNi4yMDI1MDkwMzA5MDYxOA%3D%3D">http=
+s://l1.prodbx.com/go/view/?34055.426.20250903090618</a>.=0A<br><a href=3D"h=
+ttps://l2509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dv=
+L3ZpZXcvPzMzNzE1LjQyNi4yMDI1MDgyMTIxNTIwMS4%3D" rel=3D"nofollow"></a><a hre=
+f=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9sMS5wcm9kYnguY2=
+9tL2dvL3ZpZXcvPzMzNzE1LjQyNi4yMDI1MDgyMTIxNTIwMQ%3D%3D">https://l1.prodbx.c=
+om/go/view/?33715.426.20250821215201</a>.=0A<br><a href=3D"https://l2509b.p=
+rodbx.com/go?l=3D426-414459-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvPzMzNTI=
+wLjQyNi4yMDI1MDgxMzEyNDcxMS4%3D" rel=3D"nofollow"></a><a href=3D"https://l2=
+509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9sMS5wcm9kYnguY29tL2dvL3ZpZXcvP=
+zMzNTIwLjQyNi4yMDI1MDgxMzEyNDcxMQ%3D%3D">https://l1.prodbx.com/go/view/?335=
+20.426.20250813124711</a>.</div>=0A=0A<div>=0A<br>=0A=C2=A0</div>=0A=0A<div=
+>=0A<table style=3D"min-width: 40%;">=0A=09<tbody>=0A=09=09<tr>=0A=09=09=09=
+<td>=0A=09=09=09<p style=3D"text-align: center;"><a href=3D"https://l2509b.=
+prodbx.com/go?l=3D426-414459-aHR0cHM6Ly9jYWxpbWluZ28uY29tLw%3D%3D" rel=3D"n=
+ofollow"><img src=3D"https://login.prodbx.com/go/view/?271.426.202011251151=
+42.DX8uNn" alt=3D"?271.426.20201125115142.DX8uNn" style=3D"width: 200px; he=
+ight: 70px;"></a></p>=0A=09=09=09</td>=0A=09=09=09<td>=0A=09=09=09<p><stron=
+g>Office</strong> - <a href=3D"tel:7142353294">(714) 235-3294</a>=C2=A0Ext.=
+=C2=A00<br>=0A=09=09=09<a href=3D"https://l2509b.prodbx.com/go?l=3D426-4144=
+59-bWFpbHRvOkNvbm5lY3RAQ2FsaW1pbmdvLmNvbQ%3D%3D">Connect@Calimingo.com</a><=
+/p>=0A=0A=09=09=09<p><a href=3D"https://l2509b.prodbx.com/go?l=3D426-414459=
+-aHR0cHM6Ly93d3cuaW5zdGFncmFtLmNvbS9jYWxpbWluZ29wb29scy8%3D" rel=3D"nofollo=
+w"><img src=3D"https://calimingo-pools-media.s3-us-west-1.amazonaws.com/Ins=
+tagram+Button+30++x+34.png" alt=3D"Instagram+Button+30++x+34.png"></a> <a h=
+ref=3D"https://l2509b.prodbx.com/go?l=3D426-414459-aHR0cHM6Ly93d3cuZmFjZWJv=
+b2suY29tL2NhbGltaW5nb3Bvb2xzLw%3D%3D" rel=3D"nofollow"><img src=3D"https://=
+calimingo-pools-media.s3-us-west-1.amazonaws.com/Facebook+Button+30++x+34.p=
+ng" alt=3D"Facebook+Button+30++x+34.png"></a> <a href=3D"https://l2509b.pro=
+dbx.com/go?l=3D426-414459-aHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ240M=
+Eo2emtyNDdxVHdTLVlzU3h1Ymc%3D" rel=3D"nofollow"><img src=3D"https://calimin=
+go-pools-media.s3-us-west-1.amazonaws.com/Youtube+Button+30++x+34.png" alt=
+=3D"Youtube+Button+30++x+34.png"></a> <a href=3D"https://l2509b.prodbx.com/=
+go?l=3D426-414459-aHR0cHM6Ly93d3cueWVscC5jb20vYml6L2NhbGltaW5nby1wb29scy1uZ=
+Xdwb3J0LWJlYWNo" rel=3D"nofollow"><img src=3D"https://calimingo-pools-media=
+.s3-us-west-1.amazonaws.com/Yelp+Button+30+x+34.png" alt=3D"Yelp+Button+30+=
+x+34.png"></a></p>=0A=09=09=09</td>=0A=09=09</tr>=0A=09</tbody>=0A</table>=
+=0A</div>=0A<div class=3D"off" style=3D"display: none;"></div>=0A<div></div=
+>=0A=0A=0A<div style=3D"clear: both; height: .5rem;"></div>=0A<hr>=0A<span =
+style=3D"color: #999;"><a href=3D"http://1.dbx.bz/be"><img alt=3D"" border=
+=3D"0" src=3D"https://l1.prodbx.com/slices/logo-email.php?426-414459"></a> =
+Powered by DBX:   <a href=3D"http://1.dbx.bz/be" style=3D"color: #999;">www=
+.ProDBX.com</a></span>=0A</body>=0A</html>=0A
+
+--b1=_xVRnmg59YzObYEBQ1RbJkoeUBV25I27ZlUECZuEzsqE--
+

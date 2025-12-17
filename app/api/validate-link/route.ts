@@ -29,11 +29,13 @@ export async function POST(request: NextRequest) {
     try {
       const html = await fetchAddendumHTML(url.trim());
       
+      // Load HTML into cheerio once for all operations
+      const $ = load(html);
+      const pageText = $.text();
+      
       // Try to extract addendum number from page text (EXISTING CODE - unchanged)
       let addendumNumber: string | undefined = undefined;
       try {
-        const $ = load(html);
-        const pageText = $.text();
         const addendumMatch = pageText.match(/Addendum\s*#\s*:?\s*(\d+)/i);
         if (addendumMatch && addendumMatch[1]) {
           addendumNumber = addendumMatch[1].trim();
@@ -53,8 +55,6 @@ export async function POST(request: NextRequest) {
       // NEW: Detect ALL sections present in the link (original contract, optional packages, addendums)
       // Return an array of detected sections so user can select which ones to include
       try {
-        const $ = load(html);
-        const pageText = $.text();
         
         const detectedSections: Array<{
           type: 'original' | 'optional-package' | 'addendum';
@@ -63,31 +63,51 @@ export async function POST(request: NextRequest) {
           selected?: boolean; // Default selection state
         }> = [];
         
-        // Check for contract markers to determine if there's an original contract section
-        const contractMarkers = [
-          /CONTRACT\s*#/i,
-          /Project\s+Information/i,
-          /CONTRACT\s+PRICE/i,
-          /DESCRIPTION\s+QTY/i,
-        ];
-        
-        let hasOriginalContract = false;
-        for (const marker of contractMarkers) {
-          if (marker.test(pageText)) {
-            hasOriginalContract = true;
-            break;
+        // Check for addendum FIRST (addendums are separate pages, not combined with original)
+        const addendumMatch = pageText.match(/Addendum\s*#\s*:?\s*(\d+)/i);
+        let hasAddendum = false;
+        if (addendumMatch && addendumMatch[1]) {
+          const addendumNumStr = addendumMatch[1].trim();
+          const addendumNum = parseInt(addendumNumStr, 10);
+          if (!isNaN(addendumNum) && addendumNum > 0) {
+            hasAddendum = true;
+            detectedSections.push({
+              type: 'addendum',
+              number: addendumNum,
+              selected: true, // Addendums are selected by default
+            });
           }
         }
         
-        // If original contract is present, add it (selected by default)
-        if (hasOriginalContract) {
-          detectedSections.push({
-            type: 'original',
-            selected: true, // Original contract is selected by default
-          });
+        // Only check for original contract if NO addendum was found
+        // (Addendums are separate pages, they don't contain original contract)
+        if (!hasAddendum) {
+          // Check for contract markers to determine if there's an original contract section
+          const contractMarkers = [
+            /CONTRACT\s*#/i,
+            /Project\s+Information/i,
+            /CONTRACT\s+PRICE/i,
+            /DESCRIPTION\s+QTY/i,
+          ];
+          
+          let hasOriginalContract = false;
+          for (const marker of contractMarkers) {
+            if (marker.test(pageText)) {
+              hasOriginalContract = true;
+              break;
+            }
+          }
+          
+          // If original contract is present, add it (selected by default)
+          if (hasOriginalContract) {
+            detectedSections.push({
+              type: 'original',
+              selected: true, // Original contract is selected by default
+            });
+          }
         }
         
-        // Find ALL optional packages in the link
+        // Find ALL optional packages in the link (can exist in both original and addendum pages)
         const optionalPackageRegex = /-OPTIONAL\s+PACKAGE\s+(\d+)-/gi;
         let optionalPackageMatch;
         const optionalPackages: Array<{ number: number; name?: string }> = [];
@@ -118,20 +138,6 @@ export async function POST(request: NextRequest) {
             name: pkg.name,
             selected: false, // Optional packages are NOT selected by default
           });
-        }
-        
-        // Check for addendum
-        const addendumMatch = pageText.match(/Addendum\s*#\s*:?\s*(\d+)/i);
-        if (addendumMatch && addendumMatch[1]) {
-          const addendumNumStr = addendumMatch[1].trim();
-          const addendumNum = parseInt(addendumNumStr, 10);
-          if (!isNaN(addendumNum) && addendumNum > 0) {
-            detectedSections.push({
-              type: 'addendum',
-              number: addendumNum,
-              selected: true, // Addendums are selected by default (existing behavior)
-            });
-          }
         }
         
         // If no sections detected, default to original contract (backward compatibility)

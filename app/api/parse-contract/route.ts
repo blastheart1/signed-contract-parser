@@ -216,20 +216,29 @@ export async function POST(request: NextRequest) {
             // This will parse ALL items including optional packages, but optional packages will be marked
             const allItems = parseOriginalContract(originalContractHTML, contractId, originalContractUrl);
             
+            console.log(`[API] Parsed ${allItems.length} total items from original contract`);
+            const optionalItems = allItems.filter(item => item.isOptional);
+            const originalItems = allItems.filter(item => !item.isOptional);
+            console.log(`[API] Found ${originalItems.length} original contract items and ${optionalItems.length} optional package items`);
+            
             // NEW: Filter items to include only original contract items (exclude optional packages if not selected)
             // Check if optional packages from this URL are selected
             const selectedOptionalPackages = optionalPackageLinks
               .filter(pkg => pkg.url === originalContractUrl)
               .map(pkg => pkg.number);
             
+            console.log(`[API] Selected optional packages: ${selectedOptionalPackages.length > 0 ? selectedOptionalPackages.join(', ') : 'none'}`);
+            
             if (selectedOptionalPackages.length > 0) {
               // Include original contract items + selected optional package items
               items = allItems.filter(item => 
                 !item.isOptional || (item.isOptional && item.optionalPackageNumber && selectedOptionalPackages.includes(item.optionalPackageNumber))
               );
+              console.log(`[API] Filtered to ${items.length} items (original + selected optional packages)`);
             } else {
               // Only include original contract items (exclude all optional packages)
               items = allItems.filter(item => !item.isOptional);
+              console.log(`[API] Filtered to ${items.length} items (original contract only, excluding all optional packages)`);
             }
           
           // Try to extract location from contract HTML text using existing function
@@ -390,6 +399,13 @@ export async function POST(request: NextRequest) {
           items: filterItems(addendum.items, includeMainCategories, includeSubcategories),
         }));
         
+        // Sort addendums by number in ascending order
+        const sortedAddendumData = [...filteredAddendumData].sort((a, b) => {
+          const numA = parseInt(a.addendumNumber || '0', 10);
+          const numB = parseInt(b.addendumNumber || '0', 10);
+          return numA - numB; // Ascending order
+        });
+        
         // Validate order items (if orderGrandTotal is available in location)
         const orderItemsValidation = validateOrderItemsTotal(
           filteredItems, 
@@ -402,7 +418,7 @@ export async function POST(request: NextRequest) {
           data: {
             location,
             items: filteredItems,
-            addendums: filteredAddendumData,
+            addendums: sortedAddendumData,
             isLocationParsed: isLocationValid(location),
             orderItemsValidation,
           },
@@ -1009,8 +1025,15 @@ export async function POST(request: NextRequest) {
         items: filterItems(addendum.items, includeMainCategories, includeSubcategories),
       }));
       
+      // Sort addendums by number in ascending order
+      const sortedAddendumData = [...filteredAddendumData].sort((a, b) => {
+        const numA = parseInt(a.addendumNumber || '0', 10);
+        const numB = parseInt(b.addendumNumber || '0', 10);
+        return numA - numB; // Ascending order
+      });
+      
       console.log(`[API] Filtered items: ${filteredItems.length} (from ${items.length} original)`);
-      console.log(`[API] Filtered addendums: ${filteredAddendumData.length} addendums with filtered items`);
+      console.log(`[API] Filtered addendums: ${sortedAddendumData.length} addendums with filtered items`);
       
       // Validate order items total matches Order Grand Total
       const orderItemsValidation = validateOrderItemsTotal(filteredItems, location.orderGrandTotal);
@@ -1025,7 +1048,7 @@ export async function POST(request: NextRequest) {
           data: {
             location,
             items: filteredItems,
-            addendums: filteredAddendumData,
+            addendums: sortedAddendumData,
             isLocationParsed, // Include validation status
             orderItemsValidation, // Include order items validation
           },
@@ -1034,7 +1057,7 @@ export async function POST(request: NextRequest) {
       }
       
       // Generate spreadsheet with filtered data and deleteExtraRows option
-      const spreadsheetBuffer = await generateSpreadsheet(filteredItems, location, filteredAddendumData, deleteExtraRows);
+      const spreadsheetBuffer = await generateSpreadsheet(filteredItems, location, sortedAddendumData, deleteExtraRows);
       
       // Generate filename based on location data
       // Format: "{Client Initial Last Name} - #{DBX Customer ID} - {Address}.xlsx"

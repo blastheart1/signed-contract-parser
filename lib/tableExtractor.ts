@@ -538,6 +538,8 @@ export function extractOrderItems(html: string): OrderItem[] {
     // Check for subtotal/tax/grand total rows early (they may have colspan and fewer cells)
     // These rows often have "Subtotal", "Tax", "Grand Total", or "Current Balance" text
     const rowText = cleanText($row.text()).toLowerCase();
+    const firstCell = cells.first();
+    const firstCellText = cleanText(firstCell.text()).toLowerCase();
     
     // Check if this row is from progress payments table (has "Addendum" or "Phase" headers)
     const hasProgressPaymentsHeaders = rowText.includes('phase') && 
@@ -545,22 +547,38 @@ export function extractOrderItems(html: string): OrderItem[] {
     const isAddendumRow = rowText.includes('addendum #') && 
                          (rowText.includes('10/27/2023') || rowText.includes('date paid') || cells.length > 3);
     
-    if (rowText.includes('subtotal') || 
-        rowText.includes('tax') || 
-        rowText.includes('grand total') || 
-        rowText.includes('current balance') ||
-        rowText.includes('current job balance') ||
-        hasProgressPaymentsHeaders ||
-        isAddendumRow) {
-      // Skip these summary rows and stop parsing (they come after the order items)
-      shouldStopParsing = true;
+    // Make summary row detection more specific - only match actual summary rows
+    // Summary rows typically have the summary term as the main/only text in first cell
+    const isSummaryRow = 
+      // Check if first cell text is exactly or primarily a summary term
+      (firstCellText === 'subtotal' || 
+       firstCellText === 'tax' || 
+       firstCellText === 'grand total' ||
+       firstCellText === 'current balance' ||
+       firstCellText === 'current job balance' ||
+       firstCellText.trim().startsWith('subtotal') ||
+       firstCellText.trim().startsWith('tax') ||
+       firstCellText.trim().startsWith('grand total') ||
+       firstCellText.trim().startsWith('current balance') ||
+       firstCellText.trim().startsWith('current job balance')) ||
+      // Check if row text matches summary patterns exactly (not just contains)
+      (rowText.match(/^\s*subtotal\s*$/i) ||
+       rowText.match(/^\s*tax\s*$/i) ||
+       rowText.match(/^\s*grand\s+total\s*$/i) ||
+       rowText.match(/^\s*current\s+(job\s+)?balance\s*$/i)) ||
+      // Progress payments headers
+      hasProgressPaymentsHeaders ||
+      isAddendumRow;
+    
+    if (isSummaryRow) {
+      // Skip this summary row but continue parsing (don't stop entirely)
       return;
     }
     
     // Check if this is a sub-category header
     // Pattern 1: class "ssg_title" (older format)
     // Pattern 2: first cell is empty, second cell has border-top style and contains <strong> tag (newer format)
-    const firstCell = cells.first();
+    // Note: firstCell is already defined above, so we reuse it
     const secondCell = cells.eq(1);
     
     const isSubCategoryByClass = $row.hasClass('ssg_title') || 

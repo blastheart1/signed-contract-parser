@@ -109,6 +109,8 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   // NEW: EML table sections and toggle state
   const [emlTableSections, setEmlTableSections] = useState<DetectedSection[]>([]);
   const [parseOriginalContractFromTable, setParseOriginalContractFromTable] = useState(false);
+  const [hasTable, setHasTable] = useState(false);
+  const [isExistingCustomer, setIsExistingCustomer] = useState<boolean | null>(null);
 
   // Validate a single link (format, accessibility, and detect type)
   // NEW: No longer requires type parameter - type is detected from API
@@ -466,6 +468,35 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   };
 
   // Sort links by type and number in ascending order
+  // Sort sections by type and number (addendums in ascending order)
+  const sortSections = (sections: DetectedSection[]): DetectedSection[] => {
+    return [...sections].sort((a, b) => {
+      // Original contract goes first
+      if (a.type === 'original' && b.type !== 'original') return -1;
+      if (a.type !== 'original' && b.type === 'original') return 1;
+      
+      // Optional packages go after original, before addendums
+      if (a.type === 'optional-package' && b.type === 'addendum') return -1;
+      if (a.type === 'addendum' && b.type === 'optional-package') return 1;
+      
+      // For optional packages, sort by number in ascending order
+      if (a.type === 'optional-package' && b.type === 'optional-package') {
+        const numA = a.number || 0;
+        const numB = b.number || 0;
+        return numA - numB;
+      }
+      
+      // For addendums, sort by number in ascending order
+      if (a.type === 'addendum' && b.type === 'addendum') {
+        const numA = a.number || 0;
+        const numB = b.number || 0;
+        return numA - numB;
+      }
+      
+      return 0;
+    });
+  };
+
   const sortLinksByAddendumNumber = (links: ExtractedLink[]): ExtractedLink[] => {
     return [...links].sort((a, b) => {
       // Original contract links go first
@@ -504,6 +535,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     setEmlTableSections([]);
     setExtractedLinks([]);
     setShowExtractedLinks(false);
+    setIsExistingCustomer(null);
 
     try {
       const reader = new FileReader();
@@ -536,12 +568,45 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
           });
 
           let emlTableSections: DetectedSection[] = [];
+          let hasTableFlag = false;
           if (detectResponse.ok) {
             const detectData = await detectResponse.json();
             emlTableSections = detectData.sections || [];
+            hasTableFlag = detectData.hasTable || false;
             setEmlTableSections(emlTableSections);
+            setHasTable(hasTableFlag);
           } else {
             console.warn('[Auto-Validate] Failed to detect EML sections, continuing with links only');
+          }
+
+          // Step 2.5: Extract DBX Customer ID and check if customer exists
+          try {
+            const extractIdResponse = await fetch('/api/extract-dbx-customer-id', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ file: base64Data }),
+            });
+            
+            if (extractIdResponse.ok) {
+              const extractData = await extractIdResponse.json();
+              const dbxCustomerId = extractData.dbxCustomerId;
+              
+              if (dbxCustomerId) {
+                // Check if customer exists
+                const checkResponse = await fetch(`/api/customers/check-exists?dbxCustomerId=${encodeURIComponent(dbxCustomerId)}`);
+                if (checkResponse.ok) {
+                  const checkData = await checkResponse.json();
+                  setIsExistingCustomer(checkData.exists === true);
+                } else {
+                  setIsExistingCustomer(false); // Default to new customer if check fails
+                }
+              } else {
+                setIsExistingCustomer(null); // Unknown - no DBX Customer ID found
+              }
+            }
+          } catch (checkError) {
+            console.warn('[Auto-Validate] Failed to check customer existence:', checkError);
+            setIsExistingCustomer(false); // Default to new customer if check fails
           }
 
           // Step 3: Extract and validate links (if any)
@@ -1224,7 +1289,7 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       From EML File Table
                     </div>
-                    {emlTableSections.map((section, index) => {
+                    {sortSections(emlTableSections).map((section, index) => {
                       const sectionKey = `eml-table::${section.type}::${section.number || ''}`;
                       const isSelected = selectedSections.has(sectionKey);
                       
@@ -1237,11 +1302,19 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                         displayName = `Addendum ${section.number}`;
                       }
                       
+                      const isOriginalContract = section.type === 'original';
+                      const isRequired = isOriginalContract && isExistingCustomer === false;
+                      
                       return (
                         <div key={index} className="flex items-center gap-2 pl-4">
                           <Checkbox
                             checked={isSelected}
+                            disabled={isRequired}
                             onCheckedChange={(checked) => {
+                              // Prevent unchecking for new customers
+                              if (isRequired && !checked) {
+                                return; // Don't allow unchecking
+                              }
                               const newSelected = new Set(selectedSections);
                               if (checked) {
                                 newSelected.add(sectionKey);
@@ -1255,6 +1328,9 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                             <div className="flex items-center gap-2">
                               <CheckCircle2 className="h-4 w-4 text-green-600" />
                               <span className="font-medium">{displayName}</span>
+                              {isRequired && (
+                                <span className="text-xs text-muted-foreground">(Required for new customer)</span>
+                              )}
                             </div>
                           </Label>
                         </div>
@@ -1285,14 +1361,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                         <div key={linkIndex} className="border-b pb-3 last:border-b-0">
                           <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
                           <div className="space-y-2 pl-4">
-                            {link.validation.sections
+                            {sortSections(link.validation.sections
                               .filter(section => {
                                 // When toggle is enabled, hide "original" sections from links
                                 if (parseOriginalContractFromTable && section.type === 'original') {
                                   return false;
                                 }
                                 return true;
-                              })
+                              }))
                               .map((section, sectionIndex) => {
                                 const sectionKey = `${link.url}::${section.type}::${section.number || ''}`;
                                 const isSelected = selectedSections.has(sectionKey);
@@ -1310,11 +1386,19 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                   displayName = 'Original Contract';
                                 }
                                 
+                                const isOriginalContract = section.type === 'original';
+                                const isRequired = isOriginalContract && isExistingCustomer === false;
+                                
                                 return (
                                   <div key={sectionIndex} className="flex items-center gap-2">
                                     <Checkbox
                                       checked={isSelected}
+                                      disabled={isRequired}
                                       onCheckedChange={(checked) => {
+                                        // Prevent unchecking for new customers
+                                        if (isRequired && !checked) {
+                                          return; // Don't allow unchecking
+                                        }
                                         const newSelected = new Set(selectedSections);
                                         if (checked) {
                                           newSelected.add(sectionKey);
@@ -1328,6 +1412,9 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                       <div className="flex items-center gap-2">
                                         <CheckCircle2 className="h-4 w-4 text-green-600" />
                                         <span className="font-medium">{displayName}</span>
+                                        {isRequired && (
+                                          <span className="text-xs text-muted-foreground">(Required for new customer)</span>
+                                        )}
                                       </div>
                                     </Label>
                                   </div>
@@ -1356,16 +1443,18 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                 <Label className="text-sm font-semibold text-muted-foreground">Parsing Options</Label>
                 
                 {/* Parse Original Contract from Table */}
-                <div className="flex items-center space-x-2 pl-1">
-                  <Checkbox
-                    id="parse-original-from-table"
-                    checked={parseOriginalContractFromTable}
-                    onCheckedChange={(checked) => setParseOriginalContractFromTable(checked === true)}
-                  />
-                  <Label htmlFor="parse-original-from-table" className="cursor-pointer text-sm">
-                    Parse Original Contract from EML Table
-                  </Label>
-                </div>
+                {uploadMode === 'eml' && hasTable && emlTableSections.length > 0 && (
+                  <div className="flex items-center space-x-2 pl-1">
+                    <Checkbox
+                      id="parse-original-from-table"
+                      checked={parseOriginalContractFromTable}
+                      onCheckedChange={(checked) => setParseOriginalContractFromTable(checked === true)}
+                    />
+                    <Label htmlFor="parse-original-from-table" className="cursor-pointer text-sm">
+                      Parse Original Contract from EML Table
+                    </Label>
+                  </div>
+                )}
                 
                 {/* Include Categories Options */}
                 <div className="grid grid-cols-2 gap-4 pl-1">

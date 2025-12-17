@@ -30,8 +30,63 @@ export async function POST(request: NextRequest) {
     const $ = load(html);
     const pageText = $.text();
 
-    // Check if table exists (either class="pos" or any table)
-    const hasTable = $('table.pos').length > 0 || $('table').length > 0;
+    // Check if table exists and contains order items (not just any table)
+    // Order items tables have "DESCRIPTION", "QTY", "EXTENDED" headers
+    function hasOrderItemsTable(): boolean {
+      // First, check for table.pos (most reliable)
+      const posTable = $('table.pos');
+      if (posTable.length > 0) {
+        // Check if it has order items headers
+        const rows = posTable.find('tr');
+        let foundHeader = false;
+        rows.each((_index, row) => {
+          const $row = $(row);
+          const cells = $row.find('td');
+          if (cells.length >= 3) {
+            const firstCellText = cells.eq(0).text().toUpperCase().trim();
+            const secondCellText = cells.eq(1).text().toUpperCase().trim();
+            const thirdCellText = cells.eq(2).text().toUpperCase().trim();
+            
+            if ((firstCellText.includes('DESCRIPTION') || firstCellText === 'DESCRIPTION') &&
+                (secondCellText.includes('QTY') || secondCellText === 'QTY') &&
+                (thirdCellText.includes('EXTENDED') || thirdCellText === 'EXTENDED')) {
+              foundHeader = true;
+              return false; // Break
+            }
+          }
+        });
+        if (foundHeader) return true;
+      }
+      
+      // Fallback: check all tables for order items headers
+      const allTables = $('table');
+      for (let i = 0; i < allTables.length; i++) {
+        const table = $(allTables[i]);
+        const rows = table.find('tr');
+        let foundHeader = false;
+        rows.each((_index, row) => {
+          const $row = $(row);
+          const cells = $row.find('td');
+          if (cells.length >= 3) {
+            const firstCellText = cells.eq(0).text().toUpperCase().trim();
+            const secondCellText = cells.eq(1).text().toUpperCase().trim();
+            const thirdCellText = cells.eq(2).text().toUpperCase().trim();
+            
+            if ((firstCellText.includes('DESCRIPTION') || firstCellText === 'DESCRIPTION') &&
+                (secondCellText.includes('QTY') || secondCellText === 'QTY') &&
+                (thirdCellText.includes('EXTENDED') || thirdCellText === 'EXTENDED')) {
+              foundHeader = true;
+              return false; // Break
+            }
+          }
+        });
+        if (foundHeader) return true;
+      }
+      
+      return false;
+    }
+
+    const hasTable = hasOrderItemsTable();
 
     const detectedSections: Array<{
       type: 'original' | 'optional-package' | 'addendum';

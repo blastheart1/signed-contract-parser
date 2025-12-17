@@ -462,10 +462,29 @@ export function parseOriginalContract(html: string, contractId: string, url: str
         }
       }
       
-      // Also check if we've passed the optional package section (reset if we see "PACKAGE TOTAL")
+      // Reset optional package state when we see "PACKAGE TOTAL" (end of optional package section)
+      // After PACKAGE TOTAL, subsequent items should NOT be marked as optional
       if (rowText.includes('PACKAGE TOTAL')) {
-        // Keep the current package number until we see a new one or the section ends
-        // Don't reset here - let it continue marking items until we see a new package or contract section
+        if (currentOptionalPackageNumber !== undefined) {
+          console.log(`[Original Contract Parser] End of Optional Package ${currentOptionalPackageNumber} detected (PACKAGE TOTAL) - resetting optional state`);
+        }
+        currentOptionalPackageNumber = undefined; // Reset - items after this are NOT optional
+      }
+      
+      // Also reset if we encounter a new main category that's NOT part of an optional package
+      // This handles cases where optional packages are in the middle of the contract
+      // Main categories have format like "0100 Calimingo - Concrete:" and appear before optional packages
+      // If we see a main category row and we're currently in an optional package, check if it's a new contract section
+      if (currentOptionalPackageNumber !== undefined && cells.length >= 3) {
+        const firstCellText = cleanText(cells.first().text());
+        const categoryCodePattern = /^\s*\d{4}\s+Calimingo/i;
+        // If we see a main category code pattern, it might be the start of a new contract section
+        // But we need to be careful - optional packages can also have main categories
+        // So we only reset if we see "THIS AGREEMENT" or contract signature sections
+        if (rowText.includes('THIS AGREEMENT') || rowText.includes('CONTRACT #') || rowText.includes('Contractor Signature')) {
+          console.log(`[Original Contract Parser] Reset optional package state - detected contract signature/agreement section`);
+          currentOptionalPackageNumber = undefined;
+        }
       }
       
       // Skip header row (first row with "Description", "Qty", "Extended")
