@@ -34,7 +34,7 @@ const validateAddendumUrl = (url: string): boolean => {
   }
 };
 
-type ProcessingStage = 'idle' | 'uploading' | 'parsing' | 'storing' | 'validating' | 'extracting';
+type ProcessingStage = 'idle' | 'uploading' | 'parsing' | 'storing' | 'validating' | 'extracting' | 'generating-order-items' | 'generating-invoice' | 'finishing';
 
 type UploadMode = 'links' | 'eml';
 
@@ -1275,6 +1275,7 @@ export default function DashboardFileUpload() {
     newContractId: string,
     shouldCreateInvoice: boolean
   ) => {
+    try {
           const contractData = {
             id: newContractId,
             customer: {
@@ -1317,7 +1318,8 @@ export default function DashboardFileUpload() {
             console.warn('localStorage storage failed:', localStorageError);
           }
 
-    // Store via API
+    // Store via API - Generating Order items table
+    setProcessingStage('generating-order-items');
     let savedOrderId: string | null = null;
           try {
             const storeResponse = await fetch('/api/contracts', {
@@ -1337,31 +1339,33 @@ export default function DashboardFileUpload() {
         savedOrderId = storeResult.contract?.id || null;
         console.log('Contract stored in API, orderId:', savedOrderId);
         
-        // Create invoice if requested (wait a bit for order items to be saved)
+        // Create invoice if requested - await properly instead of setTimeout
         if (shouldCreateInvoice && savedOrderId) {
           console.log('[Auto-Invoice] Starting invoice creation process...', {
             shouldCreateInvoice,
             savedOrderId,
             hasItems: allItems.length > 0,
           });
+          
           // Wait a short time for order items to be fully saved, then create invoice
-          setTimeout(async () => {
-            try {
-              console.log('[Auto-Invoice] Calling createPermitsEngineeringInvoice...');
-              await createPermitsEngineeringInvoice(savedOrderId!, allItems, location.orderDate || location.contractDate);
-              toast({
-                title: 'Invoice created',
-                description: 'First invoice for Permits & Engineering items has been created successfully.',
-              });
-            } catch (error) {
-              console.error('[Auto-Invoice] Error creating invoice:', error);
-              toast({
-                title: 'Invoice creation failed',
-                description: 'Contract was saved, but invoice creation failed. You can create the invoice manually.',
-                variant: 'destructive',
-              });
-            }
-          }, 1000);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          try {
+            setProcessingStage('generating-invoice');
+            console.log('[Auto-Invoice] Calling createPermitsEngineeringInvoice...');
+            await createPermitsEngineeringInvoice(savedOrderId!, allItems, location.orderDate || location.contractDate);
+            toast({
+              title: 'Invoice created',
+              description: 'First invoice for Permits & Engineering items has been created successfully.',
+            });
+          } catch (error) {
+            console.error('[Auto-Invoice] Error creating invoice:', error);
+            toast({
+              title: 'Invoice creation failed',
+              description: 'Contract was saved, but invoice creation failed. You can create the invoice manually.',
+              variant: 'destructive',
+            });
+          }
         } else {
           console.log('[Auto-Invoice] Invoice creation skipped:', {
             shouldCreateInvoice,
@@ -1374,9 +1378,17 @@ export default function DashboardFileUpload() {
           } catch (apiError) {
             console.warn('API storage error, but localStorage storage succeeded:', apiError);
           }
-
-          // Redirect to customer view
-          router.push(`/dashboard/customers/${newContractId}`);
+    } finally {
+          // All processes complete - show finishing stage
+          setProcessingStage('finishing');
+          
+          // Wait 3 seconds for user to see "Finishing..." message, then hard refresh to customer list
+          setTimeout(() => {
+            console.log('[Redirect] Navigating to customer list view with hard refresh...');
+            // Use window.location.href for hard refresh - this will close any modals and navigate
+            window.location.href = '/dashboard/customers';
+          }, 3000);
+    }
   };
 
   // Create invoice for Permits & Engineering items
@@ -1615,7 +1627,9 @@ export default function DashboardFileUpload() {
       console.log('[Auto-Invoice] Permits & Engineering invoice created and order items updated successfully');
     } catch (error) {
       console.error('Error creating Permits & Engineering invoice:', error);
-      // Don't throw - allow contract save to succeed even if invoice creation fails
+      // Re-throw so outer handler can show toast notification
+      // Contract save already succeeded, so redirect will still happen
+      throw error;
     }
   };
 
@@ -1671,6 +1685,12 @@ export default function DashboardFileUpload() {
         return 'Validating links...';
       case 'extracting':
         return 'Extracting links...';
+      case 'generating-order-items':
+        return 'Generating Order items table...';
+      case 'generating-invoice':
+        return 'Generating Invoice...';
+      case 'finishing':
+        return 'Finishing...';
       default:
         return 'Processing...';
     }
