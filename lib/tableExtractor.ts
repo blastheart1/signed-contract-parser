@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
 import * as cheerio from 'cheerio';
+import { normalizeToMmddyyyy } from '@/lib/utils/dateFormat';
 
 export interface Location {
   orderNo: string;
@@ -190,7 +191,11 @@ export function extractLocation(text: string): Location {
   // Extract Order Date (handles both formats)
   const orderDateValue = extractField('Order\\s+Date', normalizedText);
   if (orderDateValue && orderDateValue !== '0') {
-    location.orderDate = orderDateValue;
+    // Normalize Order Date to MM/DD/YYYY format
+    const normalizedOrderDate = normalizeToMmddyyyy(orderDateValue);
+    if (normalizedOrderDate) {
+      location.orderDate = normalizedOrderDate;
+    }
   }
 
   // Extract Order PO (handles both formats)

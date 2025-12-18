@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 interface AvailableItem {
   id: string;
   productService: string;
+  mainCategory?: string | null; // Main category for visual purposes
   amount: number;
   thisBill: number;
   progressOverallPct: number;
@@ -233,6 +234,7 @@ export default function InvoiceLineItemSelector({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[50px]">Select</TableHead>
+                    <TableHead>Main Category</TableHead>
                     <TableHead>Product/Service</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead className="text-right">Invoice Amount</TableHead>
@@ -257,6 +259,9 @@ export default function InvoiceLineItemSelector({
                             checked={isSelected}
                             onCheckedChange={() => handleToggleItem(item.id)}
                           />
+                        </TableCell>
+                        <TableCell className="min-w-[150px] max-w-[200px] break-words align-top text-muted-foreground">
+                          {item.mainCategory || '—'}
                         </TableCell>
                         <TableCell className="min-w-[200px] max-w-[300px] break-words align-top">
                           {item.productService}

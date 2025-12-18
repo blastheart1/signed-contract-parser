@@ -1010,7 +1010,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
       throw new Error('Failed to parse contract data');
     }
 
-    const { items, addendums } = dataResult.data;
+    const { items, addendums, location } = dataResult.data;
     
     // Items are already merged by the API if existingContractId was provided
     // The API adds: existing items + 1 blank row + new addendum items
@@ -1018,9 +1018,16 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     const allItems: any[] = items;
 
     // Update contract via PUT
+    // If location has contractDate (derived from orderDate), update it
+    // Otherwise preserve existing contractDate
     const updatedContract = {
       ...contract,
       items: allItems,
+      order: {
+        ...contract.order,
+        // Update contractDate from location if available, otherwise preserve existing
+        contractDate: (location as any)?.contractDate ?? contract.order.contractDate,
+      },
     };
 
     try {

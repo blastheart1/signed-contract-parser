@@ -186,6 +186,7 @@ export async function GET(
           return {
             id: item.id,
             productService: item.productService,
+            mainCategory: item.mainCategory || null, // Include main category for visual purposes
             amount,
             thisBill, // Auto-populated value, user can override
             progressOverallPct,

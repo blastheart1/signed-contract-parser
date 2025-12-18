@@ -2,6 +2,7 @@ import { db, schema } from './index';
 import { eq, and } from 'drizzle-orm';
 import type { StoredContract } from '@/lib/store/contractStore';
 import type { OrderItem } from '@/lib/tableExtractor';
+import { normalizeToMmddyyyy } from '@/lib/utils/dateFormat';
 
 /**
  * Normalize stage value: null/undefined/empty → 'waiting_for_permit'
@@ -92,6 +93,12 @@ export async function saveContractToDatabase(contract: StoredContract) {
     updateSet.contractDate = orderAny.contractDate || null;
   } else if (existingOrder?.contractDate) {
     updateSet.contractDate = existingOrder.contractDate;
+  } else if (contract.order.orderDate) {
+    // If contractDate is not explicitly provided and no existing value, derive from orderDate
+    const normalizedContractDate = normalizeToMmddyyyy(contract.order.orderDate);
+    if (normalizedContractDate) {
+      updateSet.contractDate = normalizedContractDate;
+    }
   }
   if (orderAny.firstBuildInvoiceDate !== undefined) {
     updateSet.firstBuildInvoiceDate = orderAny.firstBuildInvoiceDate || null;
@@ -126,7 +133,9 @@ export async function saveContractToDatabase(contract: StoredContract) {
       balanceDue: contract.order.balanceDue.toString(),
       salesRep: contract.order.salesRep || null,
       stage: normalizeStage(orderAny.stage), // Normalize null → 'waiting_for_permit'
-      contractDate: orderAny.contractDate || null,
+      contractDate: orderAny.contractDate !== undefined 
+        ? (orderAny.contractDate || null)
+        : (contract.order.orderDate ? normalizeToMmddyyyy(contract.order.orderDate) : null),
       firstBuildInvoiceDate: orderAny.firstBuildInvoiceDate || null,
       projectStartDate: orderAny.projectStartDate || null,
       projectEndDate: orderAny.projectEndDate || null,

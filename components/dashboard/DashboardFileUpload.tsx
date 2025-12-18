@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { normalizeToMmddyyyy } from '@/lib/utils/dateFormat';
+import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,6 +67,7 @@ interface ExtractedLink {
 
 export default function DashboardFileUpload() {
   const router = useRouter();
+  const { toast } = useToast();
   const [uploadMode, setUploadMode] = useState<UploadMode>('links');
   
   // Common state
@@ -98,6 +101,10 @@ export default function DashboardFileUpload() {
   const [parseOriginalContractFromTable, setParseOriginalContractFromTable] = useState(false);
   const [hasTable, setHasTable] = useState(false);
   const [isExistingCustomer, setIsExistingCustomer] = useState<boolean | null>(null);
+  // Auto-invoice generation for Permits & Engineering
+  const [generateFirstInvoice, setGenerateFirstInvoice] = useState(false);
+  const [hasPermitsEngineering, setHasPermitsEngineering] = useState(false);
+  const [fileBase64, setFileBase64] = useState<string | null>(null);
 
   // Validate a single link (format, accessibility, and detect type)
   // NEW: No longer requires type parameter - type is detected from API
@@ -229,6 +236,48 @@ export default function DashboardFileUpload() {
       if (!allValid) {
         const failedLinks = results.filter(r => !r.isValid);
         setError(`${failedLinks.length} link(s) failed validation. Please check the errors below.`);
+      } else {
+        // Do preview parse for Permits & Engineering detection after validation
+        const selectedSectionsArray: Array<{
+          source: 'eml-table' | 'link';
+          type: 'original' | 'optional-package' | 'addendum';
+          number?: number;
+          url?: string;
+        }> = [];
+        
+        // Add link sections
+        results.forEach((result) => {
+          if (result.isValid && result.sections) {
+            result.sections.forEach((section) => {
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              if (selectedSections.has(sectionKey)) {
+                selectedSectionsArray.push({
+                  source: 'link',
+                  type: section.type,
+                  number: section.number,
+                  url: result.url,
+                });
+              }
+            });
+          }
+        });
+        
+        // Run preview parse for detection (links mode)
+        if (selectedSectionsArray.length > 0) {
+          previewParseForDetection(null, selectedSectionsArray, false)
+            .then((detected) => {
+              setHasPermitsEngineering(detected);
+              if (!detected) {
+                setGenerateFirstInvoice(false);
+              }
+            })
+            .catch((error) => {
+              console.error('[Validate Links] Error during preview parse:', error);
+            });
+        } else {
+          setHasPermitsEngineering(false);
+          setGenerateFirstInvoice(false);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate links');
@@ -423,6 +472,58 @@ export default function DashboardFileUpload() {
       if (!allValid) {
         const failedLinks = results.filter(r => !r.isValid);
         setError(`${failedLinks.length} selected link(s) failed validation. Please check the errors below.`);
+      } else {
+        // Do preview parse for Permits & Engineering detection after validation
+        const selectedSectionsArray: Array<{
+          source: 'eml-table' | 'link';
+          type: 'original' | 'optional-package' | 'addendum';
+          number?: number;
+          url?: string;
+        }> = [];
+        
+        // Add EML table sections if any
+        emlTableSections.forEach(section => {
+          if (section.selected !== false) {
+            selectedSectionsArray.push({
+              source: 'eml-table',
+              type: section.type,
+              number: section.number,
+            });
+          }
+        });
+        
+        // Add link sections
+        updatedLinks.forEach((link) => {
+          if (link.selected && link.validation?.isValid && link.validation.sections) {
+            link.validation.sections.forEach((section) => {
+              if (section.selected !== false) {
+                selectedSectionsArray.push({
+                  source: 'link',
+                  type: section.type,
+                  number: section.number,
+                  url: link.url,
+                });
+              }
+            });
+          }
+        });
+        
+        // Run preview parse for detection
+        if (selectedSectionsArray.length > 0 && fileBase64) {
+          previewParseForDetection(fileBase64, selectedSectionsArray, parseOriginalContractFromTable)
+            .then((detected) => {
+              setHasPermitsEngineering(detected);
+              if (!detected) {
+                setGenerateFirstInvoice(false);
+              }
+            })
+            .catch((error) => {
+              console.error('[Validate Links] Error during preview parse:', error);
+            });
+        } else {
+          setHasPermitsEngineering(false);
+          setGenerateFirstInvoice(false);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate links');
@@ -634,6 +735,61 @@ export default function DashboardFileUpload() {
           setExtractedLinks(sortedValidatedLinks);
           setShowExtractedLinks(true);
           setEmlStep('select');
+          
+          // Store file base64 for preview parse
+          setFileBase64(base64Data);
+          
+          // Do preview parse for Permits & Engineering detection
+          const selectedSectionsArray: Array<{
+            source: 'eml-table' | 'link';
+            type: 'original' | 'optional-package' | 'addendum';
+            number?: number;
+            url?: string;
+          }> = [];
+          
+          // Add EML table sections
+          emlTableSections.forEach(section => {
+            if (section.selected !== false) {
+              selectedSectionsArray.push({
+                source: 'eml-table',
+                type: section.type,
+                number: section.number,
+              });
+            }
+          });
+          
+          // Add link sections
+          validatedLinks.forEach((link) => {
+            if (link.validation?.isValid && link.validation.sections) {
+              link.validation.sections.forEach((section) => {
+                if (section.selected !== false) {
+                  selectedSectionsArray.push({
+                    source: 'link',
+                    type: section.type,
+                    number: section.number,
+                    url: link.url,
+                  });
+                }
+              });
+            }
+          });
+          
+          // Run preview parse for detection
+          if (selectedSectionsArray.length > 0) {
+            previewParseForDetection(base64Data, selectedSectionsArray, parseOriginalContractFromTable)
+              .then((detected) => {
+                setHasPermitsEngineering(detected);
+                if (!detected) {
+                  setGenerateFirstInvoice(false);
+                }
+              })
+              .catch((error) => {
+                console.error('[Auto-Validate] Error during preview parse:', error);
+              });
+          } else {
+            setHasPermitsEngineering(false);
+            setGenerateFirstInvoice(false);
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to process file');
         } finally {
@@ -926,67 +1082,534 @@ export default function DashboardFileUpload() {
             }
           });
 
-          const contractData = {
-            id: newContractId,
-            customer: {
-              dbxCustomerId: location.dbxCustomerId,
-              clientName: location.clientName || 'Unknown',
-              email: location.email,
-              phone: location.phone,
-              streetAddress: location.streetAddress,
-              city: location.city,
-              state: location.state,
-              zip: location.zip,
+          // Save contract (invoice creation will be handled in saveContractAndCreateInvoice if checkbox was checked)
+          await saveContractAndCreateInvoice(location, allItems, addendums, isLocationParsed, orderItemsValidation, newContractId, generateFirstInvoice);
+  };
+
+  // Preview parse for detection (doesn't save to database)
+  const previewParseForDetection = async (
+    fileBase64: string | null,
+    selectedSectionsArray: Array<{
+      source: 'eml-table' | 'link';
+      type: 'original' | 'optional-package' | 'addendum';
+      number?: number;
+      url?: string;
+    }>,
+    parseOriginalContractFromTable: boolean
+  ): Promise<boolean> => {
+    try {
+      if (uploadMode === 'eml' && fileBase64) {
+        // For EML mode, do a preview parse
+        const previewResponse = await fetch('/api/parse-contract', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            mode: 'eml',
+            file: fileBase64,
+            filename: file?.name || 'preview.eml',
+            selectedSections: selectedSectionsArray,
+            parseOriginalContractFromTable: parseOriginalContractFromTable,
+            selectedLinks: selectedSectionsArray.filter(s => s.source === 'link').map(s => ({
+              url: s.url!,
+              type: s.type,
+              number: s.number,
+            })),
+            deleteExtraRows: deleteExtraRows,
+            includeMainCategories: includeMainCategories,
+            includeSubcategories: includeSubcategories,
+            returnData: true,
+          }),
+        });
+
+        if (previewResponse.ok) {
+          const previewData = await previewResponse.json();
+          if (previewData.success && previewData.data?.items) {
+            const { items, addendums } = previewData.data;
+            // Combine items with addendums
+            const allItems: any[] = [...items];
+            if (addendums && addendums.length > 0) {
+              addendums.forEach((addendum: any) => {
+                if (addendum.items) {
+                  allItems.push(...addendum.items);
+                }
+              });
+            }
+            return detectPermitsEngineering(allItems);
+          }
+        }
+      } else if (uploadMode === 'links') {
+        // For links mode, do a preview parse
+        const formattedSelectedLinks: Array<{ url: string; type: string; number?: number }> = [];
+        
+        linkValidationResults.forEach((result) => {
+          if (result.isValid && result.sections) {
+            result.sections.forEach((section) => {
+              const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
+              if (selectedSections.has(sectionKey)) {
+                formattedSelectedLinks.push({
+                  url: result.url,
+                  type: section.type,
+                  number: section.number,
+                });
+              }
+            });
+          }
+        });
+
+        if (formattedSelectedLinks.length > 0) {
+          const previewResponse = await fetch('/api/parse-contract', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-            order: {
-              orderNo: location.orderNo,
-              orderDate: location.orderDate,
-              orderPO: location.orderPO,
-              orderDueDate: location.orderDueDate,
-              orderType: location.orderType,
-              orderDelivered: location.orderDelivered,
-              quoteExpirationDate: location.quoteExpirationDate,
-              orderGrandTotal: location.orderGrandTotal || 0,
-              progressPayments: location.progressPayments,
-              balanceDue: location.balanceDue || 0,
-              salesRep: location.salesRep,
-            },
-            items: allItems,
-            parsedAt: new Date(),
+            body: JSON.stringify({
+              mode: 'links',
+              selectedLinks: formattedSelectedLinks,
+              deleteExtraRows: deleteExtraRows,
+              includeMainCategories: includeMainCategories,
+              includeSubcategories: includeSubcategories,
+              returnData: true,
+            }),
+          });
+
+          if (previewResponse.ok) {
+            const previewData = await previewResponse.json();
+            if (previewData.success && previewData.data?.items) {
+              const { items, addendums } = previewData.data;
+              // Combine items with addendums
+              const allItems: any[] = [...items];
+              if (addendums && addendums.length > 0) {
+                addendums.forEach((addendum: any) => {
+                  if (addendum.items) {
+                    allItems.push(...addendum.items);
+                  }
+                });
+              }
+              return detectPermitsEngineering(allItems);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[Preview Parse] Error during preview parse:', error);
+    }
+    
+    return false;
+  };
+
+  // Detect Permits & Engineering items
+  const detectPermitsEngineering = (items: any[]): boolean => {
+    if (!items || items.length === 0) return false;
+    
+    for (const item of items) {
+      // Check main category items (type: 'maincategory') - category name is in productService
+      if (item.type === 'maincategory') {
+        const categoryName = item.productService || '';
+        if (categoryName) {
+          const normalizedCategory = categoryName
+            .replace(/&amp;/g, '&')
+            .replace(/&nbsp;/g, ' ')
+            .toLowerCase()
+            .trim();
+          
+          // Check for various formats
+          if (
+            normalizedCategory.includes('permits') && 
+            normalizedCategory.includes('engineering')
+          ) {
+            return true;
+          }
+          
+          // Check for specific pattern "0401 Calimingo - Permits & Engineering"
+          if (normalizedCategory.includes('0401') && 
+              normalizedCategory.includes('calimingo') &&
+              normalizedCategory.includes('permits') &&
+              normalizedCategory.includes('engineering')) {
+            return true;
+          }
+        }
+      }
+      
+      // Check regular line items (type: 'item') - category name is in mainCategory
+      if (item.type === 'item' && item.mainCategory) {
+        const mainCategory = item.mainCategory || '';
+        if (!mainCategory) continue;
+        
+        // Normalize: handle HTML entities and case-insensitive matching
+        const normalizedCategory = mainCategory
+          .replace(/&amp;/g, '&')
+          .replace(/&nbsp;/g, ' ')
+          .toLowerCase()
+          .trim();
+        
+        // Check for various formats
+        if (
+          normalizedCategory.includes('permits') && 
+          normalizedCategory.includes('engineering')
+        ) {
+          return true;
+        }
+        
+        // Check for specific pattern "0401 Calimingo - Permits & Engineering"
+        if (normalizedCategory.includes('0401') && 
+            normalizedCategory.includes('calimingo') &&
+            normalizedCategory.includes('permits') &&
+            normalizedCategory.includes('engineering')) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  };
+
+  // Save contract and optionally create invoice
+  const saveContractAndCreateInvoice = async (
+    location: any,
+    allItems: any[],
+    addendums: any[],
+    isLocationParsed: boolean,
+    orderItemsValidation: any,
+    newContractId: string,
+    shouldCreateInvoice: boolean
+  ) => {
+    const contractData = {
+      id: newContractId,
+      customer: {
+        dbxCustomerId: location.dbxCustomerId,
+        clientName: location.clientName || 'Unknown',
+        email: location.email,
+        phone: location.phone,
+        streetAddress: location.streetAddress,
+        city: location.city,
+        state: location.state,
+        zip: location.zip,
+      },
+      order: {
+        orderNo: location.orderNo,
+        orderDate: location.orderDate,
+        orderPO: location.orderPO,
+        orderDueDate: location.orderDueDate,
+        orderType: location.orderType,
+        orderDelivered: location.orderDelivered,
+        quoteExpirationDate: location.quoteExpirationDate,
+        orderGrandTotal: location.orderGrandTotal || 0,
+        progressPayments: location.progressPayments,
+        balanceDue: location.balanceDue || 0,
+        salesRep: location.salesRep,
+        // Set Contract Date (DBX) from Order Date
+        contractDate: location.orderDate ? (normalizeToMmddyyyy(location.orderDate) ?? undefined) : undefined,
+      },
+      items: allItems,
+      parsedAt: new Date(),
       isLocationParsed: isLocationParsed !== false,
       orderItemsValidation: orderItemsValidation,
-          };
+    };
 
     // Store in localStorage
-          try {
-            const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
-            LocalStorageStore.addContract(contractData);
-            console.log('Contract stored in localStorage');
-          } catch (localStorageError) {
-            console.warn('localStorage storage failed:', localStorageError);
-          }
+    try {
+      const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
+      LocalStorageStore.addContract(contractData);
+      console.log('Contract stored in localStorage');
+    } catch (localStorageError) {
+      console.warn('localStorage storage failed:', localStorageError);
+    }
 
     // Store via API
-          try {
-            const storeResponse = await fetch('/api/contracts', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(contractData),
-            });
+    let savedOrderId: string | null = null;
+    try {
+      const storeResponse = await fetch('/api/contracts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contractData),
+      });
 
-            if (storeResponse.ok) {
-              console.log('Contract stored in API');
-            } else {
-              console.warn('API storage failed, but localStorage storage succeeded');
+      if (storeResponse.ok) {
+        const storeResult = await storeResponse.json();
+        // The contract.id is the orderId (they use the same ID)
+        savedOrderId = storeResult.contract?.id || null;
+        console.log('Contract stored in API, orderId:', savedOrderId);
+        
+        // Create invoice if requested (wait a bit for order items to be saved)
+        if (shouldCreateInvoice && savedOrderId) {
+          console.log('[Auto-Invoice] Starting invoice creation process...', {
+            shouldCreateInvoice,
+            savedOrderId,
+            hasItems: allItems.length > 0,
+          });
+          // Wait a short time for order items to be fully saved, then create invoice
+          setTimeout(async () => {
+            try {
+              console.log('[Auto-Invoice] Calling createPermitsEngineeringInvoice...');
+              await createPermitsEngineeringInvoice(savedOrderId!, allItems, location.orderDate || location.contractDate);
+              toast({
+                title: 'Invoice created',
+                description: 'First invoice for Permits & Engineering items has been created successfully.',
+              });
+            } catch (error) {
+              console.error('[Auto-Invoice] Error creating invoice:', error);
+              toast({
+                title: 'Invoice creation failed',
+                description: 'Contract was saved, but invoice creation failed. You can create the invoice manually.',
+                variant: 'destructive',
+              });
             }
-          } catch (apiError) {
-            console.warn('API storage error, but localStorage storage succeeded:', apiError);
-          }
+          }, 1000);
+        } else {
+          console.log('[Auto-Invoice] Invoice creation skipped:', {
+            shouldCreateInvoice,
+            savedOrderId,
+          });
+        }
+      } else {
+        console.warn('API storage failed, but localStorage storage succeeded');
+      }
+    } catch (apiError) {
+      console.warn('API storage error, but localStorage storage succeeded:', apiError);
+    }
 
-          // Redirect to customer view
-          router.push(`/dashboard/customers/${newContractId}`);
+    // Redirect to customer view
+    router.push(`/dashboard/customers/${newContractId}`);
+  };
+
+  // Create invoice for Permits & Engineering items
+  const createPermitsEngineeringInvoice = async (orderId: string, allItems: any[], contractDate: string | undefined) => {
+    console.log('[Auto-Invoice] Function called with:', {
+      orderId,
+      totalItems: allItems.length,
+      contractDate,
+    });
+    try {
+      // Filter items for Permits & Engineering category
+      const permitsEngItems = allItems.filter(item => {
+        if (item.type !== 'item') return false; // Only process actual line items
+        const mainCategory = item.mainCategory || '';
+        if (!mainCategory) return false;
+        
+        // Normalize: handle HTML entities and case-insensitive matching
+        const normalizedCategory = mainCategory
+          .replace(/&amp;/g, '&')
+          .replace(/&nbsp;/g, ' ')
+          .toLowerCase()
+          .trim();
+        
+        // Check for various formats
+        return (
+          (normalizedCategory.includes('permits') && normalizedCategory.includes('engineering')) ||
+          (normalizedCategory.includes('0401') && normalizedCategory.includes('calimingo') && 
+           normalizedCategory.includes('permits') && normalizedCategory.includes('engineering'))
+        );
+      });
+
+      if (permitsEngItems.length === 0) {
+        console.log('No Permits & Engineering items found for invoice creation');
+        return;
+      }
+
+      // Store productService and amounts (not IDs) since PUT will recreate items with new IDs
+      const itemsToUpdateByProductService: Array<{ productService: string; amount: number }> = [];
+      let totalInvoiceAmount = 0;
+
+      for (const item of permitsEngItems) {
+        const productService = item.productService?.trim() || '';
+        if (!productService) {
+          console.warn('[Auto-Invoice] Item missing productService:', item);
+          continue;
+        }
+
+        // Use max amount (or 0 if no amount)
+        const maxAmount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0));
+        
+        // Store by productService (will match after update)
+        itemsToUpdateByProductService.push({
+          productService,
+          amount: maxAmount,
+        });
+        
+        // Only include items with amount > 0 in invoice total
+        if (maxAmount > 0) {
+          totalInvoiceAmount += maxAmount;
+        }
+      }
+
+      if (itemsToUpdateByProductService.length === 0) {
+        console.log('[Auto-Invoice] No valid Permits & Engineering items found');
+        return;
+      }
+
+      console.log(`[Auto-Invoice] Found ${itemsToUpdateByProductService.length} Permits & Engineering items to update`);
+
+      // IMPORTANT: Update order items progress percentages FIRST
+      // The invoice validation requires progressOverallPct > 0 before items can be linked
+      // Update ALL items (even those with 0 amount) to 100% progress
+      // Use PUT endpoint for bulk update (it replaces all items, so we need to preserve existing ones)
+      console.log(`[Auto-Invoice] Fetching existing order items for update...`);
+      
+      // Get all order items first
+      const allOrderItemsResponse = await fetch(`/api/orders/${orderId}/items`);
+      if (!allOrderItemsResponse.ok) {
+        const errorText = await allOrderItemsResponse.text();
+        console.error('[Auto-Invoice] Failed to fetch order items:', errorText);
+        throw new Error('Failed to fetch order items for update');
+      }
+      const allOrderItemsData = await allOrderItemsResponse.json();
+      if (!allOrderItemsData.success || !allOrderItemsData.items) {
+        console.error('[Auto-Invoice] Invalid order items response:', allOrderItemsData);
+        throw new Error('Invalid order items response');
+      }
+
+      console.log(`[Auto-Invoice] Fetched ${allOrderItemsData.items.length} existing order items`);
+
+      // Create a map of productService to update info
+      const itemsToUpdateMap = new Map<string, number>();
+      itemsToUpdateByProductService.forEach(item => {
+        itemsToUpdateMap.set(item.productService, item.amount);
+      });
+      
+      // Update only the items that need updating, preserving other items
+      // Convert to OrderItem format expected by PUT endpoint
+      const updatedItems = allOrderItemsData.items.map((orderItem: any) => {
+        const productService = orderItem.productService?.trim() || '';
+        const updateAmount = itemsToUpdateMap.get(productService);
+        
+        if (updateAmount !== undefined) {
+          // This is a Permits & Engineering item - update to 100%
+          return {
+            type: orderItem.itemType || 'item',
+            productService: orderItem.productService || '',
+            qty: orderItem.qty || '',
+            rate: orderItem.rate || '',
+            amount: orderItem.amount || 0,
+            mainCategory: orderItem.mainCategory || null,
+            subCategory: orderItem.subCategory || null,
+            progressOverallPct: '100',
+            previouslyInvoicedPct: '100',
+            previouslyInvoicedAmount: updateAmount.toString(),
+            thisBill: updateAmount.toString(),
+          };
+        }
+        // Preserve existing item
+        return {
+          type: orderItem.itemType || 'item',
+          productService: orderItem.productService || '',
+          qty: orderItem.qty || '',
+          rate: orderItem.rate || '',
+          amount: orderItem.amount || 0,
+          mainCategory: orderItem.mainCategory || null,
+          subCategory: orderItem.subCategory || null,
+          progressOverallPct: orderItem.progressOverallPct || '0',
+          previouslyInvoicedPct: orderItem.previouslyInvoicedPct || '0',
+          previouslyInvoicedAmount: orderItem.previouslyInvoicedAmount || '0',
+          thisBill: orderItem.thisBill || '0',
+        };
+      });
+
+      console.log(`[Auto-Invoice] Sending PUT request to update ${updatedItems.length} items...`);
+      const putResponse = await fetch(`/api/orders/${orderId}/items`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ items: updatedItems }),
+      });
+
+      if (!putResponse.ok) {
+        const errorData = await putResponse.json();
+        console.error('[Auto-Invoice] Failed to update order items:', errorData);
+        throw new Error(`Failed to update order items: ${errorData.error || errorData.message || 'Unknown error'}`);
+      }
+      
+      console.log(`[Auto-Invoice] Successfully updated order items`);
+
+      // Wait for database to commit the changes
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Now fetch items again to get NEW IDs (PUT recreates items with new IDs)
+      console.log(`[Auto-Invoice] Fetching updated order items to get new IDs...`);
+      const updatedOrderItemsResponse = await fetch(`/api/orders/${orderId}/items`);
+      if (!updatedOrderItemsResponse.ok) {
+        throw new Error('Failed to fetch updated order items');
+      }
+      const updatedOrderItemsData = await updatedOrderItemsResponse.json();
+      if (!updatedOrderItemsData.success || !updatedOrderItemsData.items) {
+        throw new Error('Invalid updated order items response');
+      }
+
+      // Create a map of productService to NEW order item ID
+      const productServiceToNewItemId = new Map<string, string>();
+      updatedOrderItemsData.items.forEach((orderItem: any) => {
+        if (orderItem.productService) {
+          productServiceToNewItemId.set(orderItem.productService.trim(), orderItem.id);
+        }
+      });
+
+      // Build linkedLineItems with NEW IDs and only items with amount > 0
+      const linkedLineItems: Array<{ itemId: string; amount: number }> = [];
+      for (const item of itemsToUpdateByProductService) {
+        if (item.amount > 0) {
+          const newItemId = productServiceToNewItemId.get(item.productService);
+          if (newItemId) {
+            linkedLineItems.push({
+              itemId: newItemId,
+              amount: item.amount,
+            });
+          } else {
+            console.warn(`[Auto-Invoice] Could not find new ID for: ${item.productService}`);
+          }
+        }
+      }
+
+      // Only create invoice if there are items with amount > 0
+      if (linkedLineItems.length === 0) {
+        console.log('[Auto-Invoice] No items with amount > 0 to include in invoice, but progress percentages have been updated');
+        return;
+      }
+
+      // Now create invoice (after items are updated with progress percentages)
+      // Convert contract date to ISO format for API (YYYY-MM-DD)
+      let invoiceDateISO: string | null = null;
+      if (contractDate) {
+        const normalizedDate = normalizeToMmddyyyy(contractDate);
+        if (normalizedDate) {
+          // Convert MM/DD/YYYY to YYYY-MM-DD
+          const [month, day, year] = normalizedDate.split('/');
+          invoiceDateISO = `${year}-${month}-${day}`;
+        }
+      }
+      
+      console.log(`[Auto-Invoice] Creating invoice with ${linkedLineItems.length} linked items (total: $${totalInvoiceAmount})...`);
+      const invoiceResponse = await fetch(`/api/orders/${orderId}/invoices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          invoiceNumber: null,
+          invoiceDate: invoiceDateISO,
+          invoiceAmount: totalInvoiceAmount.toString(),
+          paymentsReceived: '0',
+          exclude: false,
+          linkedLineItems: linkedLineItems,
+        }),
+      });
+
+      if (!invoiceResponse.ok) {
+        const errorData = await invoiceResponse.json();
+        console.error('[Auto-Invoice] Failed to create invoice:', errorData);
+        throw new Error(errorData.error || errorData.message || 'Failed to create invoice');
+      }
+
+      const invoiceResult = await invoiceResponse.json();
+      console.log('[Auto-Invoice] Invoice created successfully:', invoiceResult.invoice?.id);
+      console.log('[Auto-Invoice] Permits & Engineering invoice created and order items updated successfully');
+    } catch (error) {
+      console.error('Error creating Permits & Engineering invoice:', error);
+      // Don't throw - allow contract save to succeed even if invoice creation fails
+    }
   };
 
   // Prepare links for confirmation (DBX Links Only mode)
@@ -1508,6 +2131,25 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                   </Label>
                 </div>
               </div>
+              
+              {/* Generate 1st Invoice Option (only shown when Permits & Engineering detected) */}
+              {hasPermitsEngineering && (
+                <div className="flex items-center space-x-2 pl-1 pt-2 border-t">
+                  <Checkbox
+                    id="generate-first-invoice"
+                    checked={generateFirstInvoice}
+                    onCheckedChange={(checked) => setGenerateFirstInvoice(checked === true)}
+                  />
+                  <Label htmlFor="generate-first-invoice" className="cursor-pointer text-sm">
+                    Generate 1st invoice
+                  </Label>
+                </div>
+              )}
+              {hasPermitsEngineering && generateFirstInvoice && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  An invoice will be created with all Permits & Engineering line items linked, using max amounts and setting progress percentages to 100%.
+                </p>
+              )}
             </div>
 
             {/* Parse Contract Button - Always visible when ready */}
@@ -1605,6 +2247,7 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
 
     </div>
   );

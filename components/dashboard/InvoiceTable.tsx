@@ -43,6 +43,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
   const [selectedLineItemIds, setSelectedLineItemIds] = useState<string[]>([]); // Backward compatibility
   const [selectedLineItems, setSelectedLineItems] = useState<Array<{ itemId: string; amount: number }>>([]); // New format with amounts
   const [linkedItemsTotal, setLinkedItemsTotal] = useState<number>(0); // Sum of linked items' amounts
+  const [lineItemsModified, setLineItemsModified] = useState(false); // Track if user has explicitly modified line items
   const [lineItemSelectorOpen, setLineItemSelectorOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedInvoiceForDetails, setSelectedInvoiceForDetails] = useState<Invoice | null>(null);
@@ -105,12 +106,15 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     setEditingId(newInvoice.id!);
     setEditingInvoice(newInvoice);
     setSelectedLineItemIds([]);
+    setSelectedLineItems([]);
     setLinkedItemsTotal(0);
+    setLineItemsModified(false); // New invoice, no line items modified yet
   };
 
   const handleEdit = (invoice: Invoice) => {
     setEditingId(invoice.id);
     setEditingInvoice({ ...invoice });
+    setLineItemsModified(false); // Initialize to false - user hasn't modified line items yet
     // Load existing linked line items if any
     if (invoice.linkedLineItems && Array.isArray(invoice.linkedLineItems)) {
       const linkedIds = invoice.linkedLineItems.map(item => item.orderItemId);
@@ -138,6 +142,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
     setSelectedLineItemIds([]);
     setSelectedLineItems([]);
     setLinkedItemsTotal(0);
+    setLineItemsModified(false); // Reset modification flag
     // If it was a new invoice, remove it from the list
     setInvoices(invoices.filter(inv => inv.id !== editingId || !inv.id.startsWith('new-')));
   };
@@ -174,16 +179,21 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
       }
 
       // Handle linkedLineItems (new format with amounts)
-      // For PATCH: send empty array to clear, or array with items to set
-      // For POST: only include if there are items to link
+      // Only include linkedLineItems if user has explicitly modified them
+      // This preserves existing linked items when user only edits other fields (invoice number, date, etc.)
       if (isNew) {
-        // POST: only include if there are items
+        // POST: only include if there are items to link
         if (selectedLineItems.length > 0) {
           requestBody.linkedLineItems = selectedLineItems;
         }
       } else {
-        // PATCH: always include to allow clearing (empty array) or setting (array with items)
-        requestBody.linkedLineItems = selectedLineItems;
+        // PATCH: only include if user has explicitly modified line items
+        // If not modified, omit from request to preserve existing linked items
+        if (lineItemsModified) {
+          requestBody.linkedLineItems = selectedLineItems;
+        }
+        // If lineItemsModified is false, don't include linkedLineItems at all
+        // This allows the API to preserve existing values
       }
 
       const response = await fetch(url, {
@@ -220,6 +230,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
         setSelectedLineItemIds([]);
         setSelectedLineItems([]);
         setLinkedItemsTotal(0);
+        setLineItemsModified(false); // Reset modification flag after successful save
         // Show success toast
         toast({
           title: isNew ? 'Invoice created' : 'Invoice updated',
@@ -835,6 +846,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
           setSelectedLineItemIds(selectedItems.map(item => item.itemId));
           setSelectedLineItems(selectedItems);
           setLinkedItemsTotal(totalAmount);
+          setLineItemsModified(true); // User has explicitly modified line items
           // Auto-populate invoice amount with the total
           if (selectedItems.length > 0 && totalAmount > 0) {
             setEditingInvoice({ ...editingInvoice, invoiceAmount: totalAmount.toString() });

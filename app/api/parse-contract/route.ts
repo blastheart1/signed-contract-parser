@@ -7,6 +7,7 @@ import { fetchAndParseAddendums, validateAddendumUrl, AddendumData, fetchAddendu
 import { extractContractLinks } from '@/lib/contractLinkExtractor';
 import { put } from '@vercel/blob';
 import { load } from 'cheerio';
+import { normalizeToMmddyyyy } from '@/lib/utils/dateFormat';
 
 /**
  * Filter items based on category inclusion flags
@@ -413,11 +414,17 @@ export async function POST(request: NextRequest) {
           location.orderGrandTotal || 0
         );
         
+        // Add contractDate to location object if orderDate exists
+        const locationWithContractDate = {
+          ...location,
+          contractDate: location.orderDate ? normalizeToMmddyyyy(location.orderDate) : null,
+        };
+        
         // Return data (same structure as EML mode)
         return NextResponse.json({
           success: true,
           data: {
-            location,
+            location: locationWithContractDate,
             items: filteredItems,
             addendums: sortedAddendumData,
             isLocationParsed: isLocationValid(location),
@@ -1256,6 +1263,12 @@ export async function POST(request: NextRequest) {
         console.warn('[API] Order items total validation failed:', orderItemsValidation.message);
       }
 
+      // Add contractDate to location object if orderDate exists
+      const locationWithContractDate = {
+        ...location,
+        contractDate: location.orderDate ? normalizeToMmddyyyy(location.orderDate) : null,
+      };
+
       // Final safety check: Prevent overwriting existing contract with empty items during reupload
       if (existingContractId && filteredItems.length === 0 && existingItems.length > 0 && addendumData.length === 0) {
         console.warn(`[API] SAFETY CHECK: Would overwrite existing contract with empty items. Preserving existing items instead.`);
@@ -1264,7 +1277,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           data: {
-            location,
+            location: locationWithContractDate,
             items: existingFilteredItems,
             addendums: [],
             isLocationParsed,
@@ -1279,7 +1292,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           data: {
-            location,
+            location: locationWithContractDate,
             items: filteredItems,
             addendums: sortedAddendumData,
             isLocationParsed, // Include validation status

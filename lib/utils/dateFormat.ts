@@ -87,3 +87,76 @@ export function formatDateForDisplay(dateString: string | null | undefined): str
 
   return dateString.trim() || '-';
 }
+
+/**
+ * Normalize various date formats to MM/DD/YYYY format
+ * Handles formats like "3/25/2025", "03/25/2025", "0", ISO dates, etc.
+ * @param dateString - Date string in various formats or null/undefined
+ * @returns Date string in MM/DD/YYYY format with leading zeros, or null if invalid
+ */
+export function normalizeToMmddyyyy(dateString: string | null | undefined): string | null {
+  if (!dateString || typeof dateString !== 'string') {
+    return null;
+  }
+
+  const trimmed = dateString.trim();
+  
+  // Handle "0" or empty strings
+  if (trimmed === '0' || trimmed === '') {
+    return null;
+  }
+
+  // If already in MM/DD/YYYY format (with or without leading zeros), normalize it
+  const mmddyyyyPattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = trimmed.match(mmddyyyyPattern);
+  if (match) {
+    const month = match[1].padStart(2, '0');
+    const day = match[2].padStart(2, '0');
+    const year = match[3];
+    
+    // Validate the date
+    const monthNum = parseInt(month, 10);
+    const dayNum = parseInt(day, 10);
+    const yearNum = parseInt(year, 10);
+    
+    if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31 && yearNum >= 1900 && yearNum <= 2100) {
+      return `${month}/${day}/${year}`;
+    }
+  }
+
+  // Try to parse as ISO date (YYYY-MM-DD)
+  const isoPattern = /^(\d{4})-(\d{1,2})-(\d{1,2})/;
+  const isoMatch = trimmed.match(isoPattern);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, '0');
+    const day = isoMatch[3].padStart(2, '0');
+    
+    const monthNum = parseInt(month, 10);
+    const dayNum = parseInt(day, 10);
+    const yearNum = parseInt(year, 10);
+    
+    if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31 && yearNum >= 1900 && yearNum <= 2100) {
+      return `${month}/${day}/${year}`;
+    }
+  }
+
+  // Try to parse as Date object
+  try {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime())) {
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = date.getFullYear();
+      
+      // Validate reasonable year range
+      if (year >= 1900 && year <= 2100) {
+        return `${month}/${day}/${year}`;
+      }
+    }
+  } catch {
+    // Invalid date, return null
+  }
+
+  return null;
+}
