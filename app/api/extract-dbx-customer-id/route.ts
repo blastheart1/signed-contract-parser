@@ -22,14 +22,16 @@ export async function POST(request: NextRequest) {
     if (!text || text.trim().length === 0) {
       return NextResponse.json({
         dbxCustomerId: null,
+        clientName: null,
       });
     }
 
-    // Extract location (includes dbxCustomerId)
+    // Extract location (includes dbxCustomerId and clientName)
     const location = extractLocation(text);
 
     return NextResponse.json({
       dbxCustomerId: location.dbxCustomerId || null,
+      clientName: location.clientName || null,
     });
   } catch (error) {
     console.error('[Extract DBX Customer ID] Error:', error);
@@ -37,6 +39,7 @@ export async function POST(request: NextRequest) {
       {
         error: error instanceof Error ? error.message : 'Unknown error',
         dbxCustomerId: null,
+        clientName: null,
       },
       { status: 500 }
     );

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, Loader2, CheckCircle2, XCircle, Link as LinkIcon } from 'lucide-react';
+import { Upload, FileText, Loader2, CheckCircle2, XCircle, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +49,9 @@ interface DetectedSection {
   number?: number;
   name?: string;
   selected?: boolean; // Default selection state
+  hasTable?: boolean; // NEW: Whether section has a table
+  isEmpty?: boolean; // NEW: Whether table is empty
+  isDuplicate?: boolean; // NEW: Whether addendum already exists in contract
 }
 
 interface LinkValidationResult {
@@ -111,10 +114,13 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
   const [parseOriginalContractFromTable, setParseOriginalContractFromTable] = useState(false);
   const [hasTable, setHasTable] = useState(false);
   const [isExistingCustomer, setIsExistingCustomer] = useState<boolean | null>(null);
+  // NEW: Track existing addendum numbers from contract items
+  const [existingAddendumNumbers, setExistingAddendumNumbers] = useState<Set<number>>(new Set());
 
   // Validate a single link (format, accessibility, and detect type)
   // NEW: No longer requires type parameter - type is detected from API
-  const validateLink = async (url: string): Promise<LinkValidationResult> => {
+  // Also checks for duplicate addendums
+  const validateLink = async (url: string, existingAddendums?: Set<number>): Promise<LinkValidationResult> => {
     const result: LinkValidationResult = {
       url: url.trim(),
       isValid: false,
@@ -145,7 +151,16 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
         result.isValid = true;
         // NEW: Extract sections array (primary) or fall back to single type (backward compatibility)
         if (responseData.sections && Array.isArray(responseData.sections)) {
-          result.sections = responseData.sections;
+          // Check for duplicates and mark sections accordingly
+          result.sections = responseData.sections.map((section: DetectedSection) => {
+            const sectionWithDuplicate = { ...section };
+            if (section.type === 'addendum' && section.number && existingAddendums) {
+              if (existingAddendums.has(section.number)) {
+                sectionWithDuplicate.isDuplicate = true;
+              }
+            }
+            return sectionWithDuplicate;
+          });
           // Also set type/number/name from first section for backward compatibility
           if (responseData.sections.length > 0) {
             result.type = responseData.sections[0].type;
@@ -168,7 +183,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             type: responseData.type || 'original',
             number: responseData.number,
             name: responseData.name,
-            selected: responseData.type !== 'optional-package', // Optional packages not selected by default
+            selected: responseData.type === 'original', // Only original contract selected by default, addendums unchecked
           }];
         }
         // EXISTING: Extract addendum number from response if available (backward compatibility)
@@ -241,9 +256,13 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
         return;
       }
 
+      // Extract existing addendum numbers from contract
+      const existingAddendums = extractExistingAddendumNumbers();
+      setExistingAddendumNumbers(existingAddendums);
+      
       // Validate all links (sections will be detected by API)
       const validationPromises = linksToValidate.map((url) => {
-        return validateLink(url);
+        return validateLink(url, existingAddendums);
       });
       
       const results = await Promise.all(validationPromises);
@@ -328,7 +347,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             extractedLinksData.links.forEach((link: { url: string }) => {
               links.push({
                 url: link.url,
-                selected: true, // Default: checked (user can deselect)
+                selected: false, // Default: unchecked (user can select) - selection determined by validation
                 // type, number, name will be set during validation
                 addendumNumber: extractAddendumNumberFromUrl(link.url), // Initial fallback for sorting
               });
@@ -348,16 +367,20 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             extractedLinksData.addendumUrls.forEach((url: string) => {
               links.push({
                 url,
-                selected: true, // Default: checked
+                selected: false, // Default: unchecked for reupload
                 addendumNumber: extractAddendumNumberFromUrl(url), // Initial fallback
                 // type will be determined by validation
               });
             });
           }
 
+          // Extract existing addendum numbers from contract
+          const existingAddendums = extractExistingAddendumNumbers();
+          setExistingAddendumNumbers(existingAddendums);
+          
           // Step 2: Validate all links immediately (type will be detected by API)
           setProcessingStage('validating');
-          const validationPromises = links.map((link: ExtractedLink) => validateLink(link.url));
+          const validationPromises = links.map((link: ExtractedLink) => validateLink(link.url, existingAddendums));
           const validationResults = await Promise.all(validationPromises);
 
           // Update links with validation results and detected type/number
@@ -430,8 +453,12 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     setProcessingStage('validating');
 
     try {
+      // Extract existing addendum numbers from contract
+      const existingAddendums = extractExistingAddendumNumbers();
+      setExistingAddendumNumbers(existingAddendums);
+      
       // Validate each selected link (type will be detected by API)
-      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url));
+      const validationPromises = selectedLinks.map((link: ExtractedLink) => validateLink(link.url, existingAddendums));
       const results = await Promise.all(validationPromises);
 
       // Update extractedLinks with validation results and detected type/number
@@ -525,6 +552,34 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     });
   };
 
+  // Extract existing addendum numbers from contract items
+  const extractExistingAddendumNumbers = (): Set<number> => {
+    const addendumNumbers = new Set<number>();
+    if (!contract?.items) return addendumNumbers;
+    
+    contract.items.forEach((item: any) => {
+      // Check if item has addendumNumber field directly
+      if (item.addendumNumber) {
+        const num = parseInt(item.addendumNumber, 10);
+        if (!isNaN(num) && num > 0) {
+          addendumNumbers.add(num);
+        }
+      }
+      // Also check productService for "Addendum #X" pattern
+      if (item.productService && typeof item.productService === 'string') {
+        const match = item.productService.match(/Addendum\s*#\s*(\d+)/i);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > 0) {
+            addendumNumbers.add(num);
+          }
+        }
+      }
+    });
+    
+    return addendumNumbers;
+  };
+
   // Auto-validate EML file (extract links, detect sections, validate)
   const autoValidateEMLFile = async (selectedFile: File) => {
     setFile(selectedFile);
@@ -536,6 +591,10 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
     setExtractedLinks([]);
     setShowExtractedLinks(false);
     setIsExistingCustomer(null);
+    
+    // Extract existing addendum numbers from contract
+    const existingAddendums = extractExistingAddendumNumbers();
+    setExistingAddendumNumbers(existingAddendums);
 
     try {
       const reader = new FileReader();
@@ -579,7 +638,7 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             console.warn('[Auto-Validate] Failed to detect EML sections, continuing with links only');
           }
 
-          // Step 2.5: Extract DBX Customer ID and check if customer exists
+          // Step 2.5: Extract DBX Customer ID and Client Name, validate against contract
           try {
             const extractIdResponse = await fetch('/api/extract-dbx-customer-id', {
               method: 'POST',
@@ -590,23 +649,59 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             if (extractIdResponse.ok) {
               const extractData = await extractIdResponse.json();
               const dbxCustomerId = extractData.dbxCustomerId;
+              const clientName = extractData.clientName;
               
-              if (dbxCustomerId) {
-                // Check if customer exists
-                const checkResponse = await fetch(`/api/customers/check-exists?dbxCustomerId=${encodeURIComponent(dbxCustomerId)}`);
-                if (checkResponse.ok) {
-                  const checkData = await checkResponse.json();
-                  setIsExistingCustomer(checkData.exists === true);
+              // Validate customer info matches contract
+              if (dbxCustomerId || clientName) {
+                const contractDbxId = contract.customer.dbxCustomerId;
+                const contractClientName = contract.customer.clientName;
+                
+                // Check for mismatch
+                const dbxIdMismatch = dbxCustomerId && contractDbxId && dbxCustomerId !== contractDbxId;
+                const nameMismatch = clientName && contractClientName && 
+                  clientName.toLowerCase().trim() !== contractClientName.toLowerCase().trim();
+                
+                if (dbxIdMismatch || nameMismatch) {
+                  const mismatchMessages: string[] = [];
+                  if (dbxIdMismatch) {
+                    mismatchMessages.push(`DBX Customer ID: EML has "${dbxCustomerId}" but contract has "${contractDbxId}"`);
+                  }
+                  if (nameMismatch) {
+                    mismatchMessages.push(`Client Name: EML has "${clientName}" but contract has "${contractClientName}"`);
+                  }
+                  const errorMsg = `EML customer info does not match contract:\n${mismatchMessages.join('\n')}`;
+                  setError(errorMsg);
+                  setIsExtractingLinks(false);
+                  setProcessingStage('idle');
+                  return; // Stop processing
+                }
+                
+                // If customer info matches, check if customer exists
+                if (dbxCustomerId) {
+                  const checkResponse = await fetch(`/api/customers/check-exists?dbxCustomerId=${encodeURIComponent(dbxCustomerId)}`);
+                  if (checkResponse.ok) {
+                    const checkData = await checkResponse.json();
+                    setIsExistingCustomer(checkData.exists === true);
+                  } else {
+                    setIsExistingCustomer(false); // Default to new customer if check fails
+                  }
                 } else {
-                  setIsExistingCustomer(false); // Default to new customer if check fails
+                  setIsExistingCustomer(null); // Unknown - no DBX Customer ID found
                 }
               } else {
-                setIsExistingCustomer(null); // Unknown - no DBX Customer ID found
+                // No customer info found in EML - this is a problem for reupload
+                setError('Could not extract DBX Customer ID or Client Name from EML file. Please ensure the EML file contains customer information.');
+                setIsExtractingLinks(false);
+                setProcessingStage('idle');
+                return; // Stop processing
               }
             }
           } catch (checkError) {
             console.warn('[Auto-Validate] Failed to check customer existence:', checkError);
-            setIsExistingCustomer(false); // Default to new customer if check fails
+            setError('Failed to validate customer information from EML file. Please try again.');
+            setIsExtractingLinks(false);
+            setProcessingStage('idle');
+            return; // Stop processing
           }
 
           // Step 3: Extract and validate links (if any)
@@ -636,8 +731,12 @@ export default function ReuploadContract({ contract, onSuccess, onClose }: Reupl
             });
           }
 
+          // Extract existing addendum numbers from contract
+          const existingAddendums = extractExistingAddendumNumbers();
+          setExistingAddendumNumbers(existingAddendums);
+          
           // Validate all links
-          const validationPromises = links.map(link => validateLink(link.url));
+          const validationPromises = links.map(link => validateLink(link.url, existingAddendums));
           const validationResults = await Promise.all(validationPromises);
 
           // Update links with validation results
@@ -1086,7 +1185,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                             <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere">{result.url}</div>
+                            <a 
+                              href={result.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 underline break-all overflow-wrap-anywhere"
+                            >
+                              {result.url}
+                            </a>
                             {result.error && (
                               <div className="text-xs text-red-600 mt-1">{result.error}</div>
                             )}
@@ -1098,7 +1204,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                     // Show all sections from this link
                     return (
                       <div key={resultIndex} className="border-b pb-3 last:border-b-0">
-                        <div className="text-xs text-muted-foreground break-all overflow-wrap-anywhere mb-2">{result.url}</div>
+                        <a 
+                          href={result.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 underline break-all overflow-wrap-anywhere mb-2 block"
+                        >
+                          {result.url}
+                        </a>
                         <div className="space-y-2 pl-4">
                           {result.sections.map((section, sectionIndex) => {
                             const sectionKey = `${result.url}::${section.type}::${section.number || ''}`;
@@ -1134,9 +1247,23 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                 />
                                 <Label className="flex-1 cursor-pointer text-sm min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                    {(section.type === 'addendum' && ((section.isEmpty === true || section.hasTable === false) || section.isDuplicate === true)) ? (
+                                      <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                                    ) : (
+                                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                    )}
                                     <span className="font-medium">{displayName}</span>
                                   </div>
+                                  {(section.type === 'addendum' && (section.isEmpty === true || section.hasTable === false)) && (
+                                    <div className="text-xs text-yellow-600 mt-1 ml-6">
+                                      Warning: This addendum has no table or empty table
+                                    </div>
+                                  )}
+                                  {section.type === 'addendum' && section.isDuplicate === true && (
+                                    <div className="text-xs text-orange-600 mt-1 ml-6">
+                                      Warning: Addendum #{section.number} is already in this contract
+                                    </div>
+                                  )}
                                 </Label>
                               </div>
                             );
@@ -1326,12 +1453,26 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                           />
                           <Label className="flex-1 cursor-pointer text-sm">
                             <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              {(section.type === 'addendum' && ((section.isEmpty === true || section.hasTable === false) || section.isDuplicate === true)) ? (
+                                <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              )}
                               <span className="font-medium">{displayName}</span>
                               {isRequired && (
                                 <span className="text-xs text-muted-foreground">(Required for new customer)</span>
                               )}
                             </div>
+                            {(section.type === 'addendum' && (section.isEmpty === true || section.hasTable === false)) && (
+                              <div className="text-xs text-yellow-600 mt-1 ml-6">
+                                Warning: This addendum has no table or empty table
+                              </div>
+                            )}
+                            {section.type === 'addendum' && section.isDuplicate === true && (
+                              <div className="text-xs text-orange-600 mt-1 ml-6">
+                                Warning: Addendum #{section.number} is already in this contract
+                              </div>
+                            )}
                           </Label>
                         </div>
                       );
@@ -1349,7 +1490,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                       if (!link.validation?.isValid || !link.validation.sections) {
                         return (
                           <div key={linkIndex} className="border-b pb-3 last:border-b-0">
-                            <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
+                            <a 
+                              href={link.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 underline break-all mb-2 block"
+                            >
+                              {link.url}
+                            </a>
                             {link.validation?.error && (
                               <div className="text-xs text-red-600">{link.validation.error}</div>
                             )}
@@ -1359,7 +1507,14 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                       
                       return (
                         <div key={linkIndex} className="border-b pb-3 last:border-b-0">
-                          <div className="text-xs text-muted-foreground break-all mb-2">{link.url}</div>
+                          <a 
+                            href={link.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 underline break-all mb-2 block"
+                          >
+                            {link.url}
+                          </a>
                           <div className="space-y-2 pl-4">
                             {sortSections(link.validation.sections
                               .filter(section => {
@@ -1410,12 +1565,26 @@ https://l1.prodbx.com/go/view/?35279.426.20251020095021`}
                                     />
                                     <Label className="flex-1 cursor-pointer text-sm">
                                       <div className="flex items-center gap-2">
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                        {(section.type === 'addendum' && ((section.isEmpty === true || section.hasTable === false) || section.isDuplicate === true)) ? (
+                                          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                        ) : (
+                                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                        )}
                                         <span className="font-medium">{displayName}</span>
                                         {isRequired && (
                                           <span className="text-xs text-muted-foreground">(Required for new customer)</span>
                                         )}
                                       </div>
+                                      {(section.type === 'addendum' && (section.isEmpty === true || section.hasTable === false)) && (
+                                        <div className="text-xs text-yellow-600 mt-1 ml-6">
+                                          Warning: This addendum has no table or empty table
+                                        </div>
+                                      )}
+                                      {section.type === 'addendum' && section.isDuplicate === true && (
+                                        <div className="text-xs text-orange-600 mt-1 ml-6">
+                                          Warning: Addendum #{section.number} is already in this contract
+                                        </div>
+                                      )}
                                     </Label>
                                   </div>
                                 );

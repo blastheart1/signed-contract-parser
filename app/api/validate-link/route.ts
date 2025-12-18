@@ -61,7 +61,150 @@ export async function POST(request: NextRequest) {
           number?: number;
           name?: string;
           selected?: boolean; // Default selection state
+          hasTable?: boolean; // NEW: Whether section has a table
+          isEmpty?: boolean; // NEW: Whether table is empty
         }> = [];
+        
+        // Helper function to check if table exists and has items
+        // Uses similar logic to addendum parser to detect actual line items
+        const checkTableStatus = (): { hasTable: boolean; isEmpty: boolean } => {
+          const table = $('table.pos');
+          const targetTable = table.length > 0 ? table : $('table').first();
+          
+          if (targetTable.length === 0) {
+            return { hasTable: false, isEmpty: true };
+          }
+          
+          // Find all rows in the table
+          const rows = targetTable.find('tr');
+          if (rows.length === 0) {
+            return { hasTable: true, isEmpty: true };
+          }
+          
+          // First, try to extract grand total from page text (more reliable)
+          // Look for "Grand Total" followed by amount pattern
+          let grandTotal = 0;
+          let foundGrandTotal = false;
+          const pageTextLower = pageText.toLowerCase();
+          const grandTotalMatch = pageText.match(/grand\s+total[:\s]*\$?\s*([0-9,]+\.?\d*)/i);
+          if (grandTotalMatch && grandTotalMatch[1]) {
+            const totalStr = grandTotalMatch[1].replace(/[$,]/g, '').trim();
+            const parsed = parseFloat(totalStr);
+            if (!isNaN(parsed)) {
+              grandTotal = parsed;
+              foundGrandTotal = true;
+            }
+          }
+          
+          let lineItemCount = 0;
+          
+          rows.each((_index, row) => {
+            const $row = $(row);
+            const cells = $row.find('td');
+            
+            // Skip empty rows
+            if (cells.length === 0) {
+              return;
+            }
+            
+            const rowText = $row.text();
+            const rowTextLower = rowText.toLowerCase();
+            
+            // Skip header row
+            if (rowTextLower.includes('description') && rowTextLower.includes('qty') && rowTextLower.includes('extended')) {
+              return;
+            }
+            
+            if (cells.length >= 3) {
+              const firstCell = cells.eq(0);
+              const descriptionCell = firstCell;
+              const qtyCell = cells.eq(1);
+              const extendedCell = cells.eq(2);
+              
+              // Check for grand total row in table (fallback if not found in page text)
+              if (!foundGrandTotal && (rowTextLower.includes('grand total') || rowTextLower.includes('current balance'))) {
+                // Try extended cell first
+                let amountText = extendedCell.text().trim();
+                // If empty, try all cells
+                if (!amountText) {
+                  cells.each((idx, cell) => {
+                    const cellText = $(cell).text().trim();
+                    const cellMatch = cellText.replace(/[$,]/g, '').match(/-?\d+(?:\.\d+)?/);
+                    if (cellMatch && !amountText) {
+                      amountText = cellText;
+                    }
+                  });
+                }
+                const amountMatch = amountText.replace(/[$,]/g, '').match(/-?\d+(?:\.\d+)?/);
+                if (amountMatch) {
+                  grandTotal = parseFloat(amountMatch[0]) || 0;
+                  foundGrandTotal = true;
+                }
+                return;
+              }
+              
+              // Skip subtotal/tax rows
+              const descriptionLower = descriptionCell.text().toLowerCase().trim();
+              if (descriptionLower.includes('subtotal') || descriptionLower.includes('tax')) {
+                return;
+              }
+              
+              // Check if this is a subcategory (class "ssg_title")
+              const isSubCategory = $row.hasClass('ssg_title') || 
+                                   firstCell.hasClass('ssg_title') ||
+                                   firstCell.attr('class')?.includes('ssg_title') ||
+                                   $row.hasClass('subcategory') ||
+                                   firstCell.attr('class')?.includes('subcategory');
+              
+              if (isSubCategory) {
+                return; // Skip subcategories
+              }
+              
+              // Check if this is a main category (category code pattern like "0100 Calimingo")
+              const categoryText = descriptionCell.text().trim();
+              const categoryCodePattern = /^\s*\d{4}\s+Calimingo/i;
+              const hasCategoryCode = categoryCodePattern.test(categoryText);
+              
+              // Check for bold formatting (main categories are usually bold)
+              const firstCellHtml = firstCell.html() || '';
+              const isBold = firstCellHtml.includes('font-weight: bold') ||
+                            firstCellHtml.includes('font-size: 14px') ||
+                            firstCell.find('span[style*="font-weight: bold"]').length > 0 ||
+                            firstCell.find('span[style*="font-size: 14px"]').length > 0 ||
+                            firstCell.find('strong').length > 0 ||
+                            firstCell.find('b').length > 0;
+              
+              const hasQtyAndExtended = qtyCell.text().trim() && extendedCell.text().trim();
+              
+              // Skip main categories (they have category code pattern and qty/extended)
+              if ((hasCategoryCode && hasQtyAndExtended) || (isBold && hasQtyAndExtended)) {
+                return; // Skip main category rows
+              }
+              
+              // This should be a line item - check if it has meaningful data
+              const description = descriptionCell.text().trim();
+              if (description && description.length > 0) {
+                const extendedText = extendedCell.text().trim();
+                const amountMatch = extendedText.replace(/[$,]/g, '').match(/-?\d+(?:\.\d+)?/);
+                if (amountMatch) {
+                  const amount = parseFloat(amountMatch[0]) || 0;
+                  // Count as line item if it has a description and amount (even if amount is 0, it's still a line item)
+                  lineItemCount++;
+                } else if (description.length > 0) {
+                  // Has description but no amount - still count as a line item
+                  lineItemCount++;
+                }
+              }
+            }
+          });
+          
+          // Table is empty if:
+          // 1. Grand total is 0 (if grand total found and is 0, flag it - most reliable indicator), OR
+          // 2. No line items found
+          const isEmpty = (foundGrandTotal && grandTotal === 0) || lineItemCount === 0;
+          
+          return { hasTable: true, isEmpty };
+        };
         
         // Check for addendum FIRST (addendums are separate pages, not combined with original)
         const addendumMatch = pageText.match(/Addendum\s*#\s*:?\s*(\d+)/i);
@@ -71,10 +214,13 @@ export async function POST(request: NextRequest) {
           const addendumNum = parseInt(addendumNumStr, 10);
           if (!isNaN(addendumNum) && addendumNum > 0) {
             hasAddendum = true;
+            const tableStatus = checkTableStatus();
             detectedSections.push({
               type: 'addendum',
               number: addendumNum,
-              selected: true, // Addendums are selected by default
+              selected: false, // Addendums are unchecked by default for reupload
+              hasTable: tableStatus.hasTable,
+              isEmpty: tableStatus.isEmpty,
             });
           }
         }
@@ -100,9 +246,12 @@ export async function POST(request: NextRequest) {
           
           // If original contract is present, add it (selected by default)
           if (hasOriginalContract) {
+            const tableStatus = checkTableStatus();
             detectedSections.push({
               type: 'original',
               selected: true, // Original contract is selected by default
+              hasTable: tableStatus.hasTable,
+              isEmpty: tableStatus.isEmpty,
             });
           }
         }
@@ -132,11 +281,14 @@ export async function POST(request: NextRequest) {
         
         // Add each optional package (NOT selected by default)
         for (const pkg of optionalPackages) {
+          const tableStatus = checkTableStatus();
           detectedSections.push({
             type: 'optional-package',
             number: pkg.number,
             name: pkg.name,
             selected: false, // Optional packages are NOT selected by default
+            hasTable: tableStatus.hasTable,
+            isEmpty: tableStatus.isEmpty,
           });
         }
         
