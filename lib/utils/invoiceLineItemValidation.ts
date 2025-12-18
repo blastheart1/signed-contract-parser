@@ -84,11 +84,11 @@ export function validateItemForLinkingWithAmount(
     };
   }
 
-  // Rule 2: Invoice amount must be >= 0 (allow 0 amount items to be included)
-  if (invoiceAmount < 0) {
+  // Rule 2: Invoice amount must be > 0
+  if (invoiceAmount <= 0) {
     return {
       valid: false,
-      error: 'Invoice amount cannot be negative',
+      error: 'Invoice amount must be greater than 0',
     };
   }
 
@@ -162,7 +162,7 @@ export function createLinkedLineItemsFromAmounts(
   itemsWithAmounts: Array<{ itemId: string; amount: number }>
 ): LinkedLineItem[] {
   return itemsWithAmounts
-    .filter(item => item.amount >= 0) // Include items with 0 amount
+    .filter(item => item.amount > 0)
     .map(item => ({
       orderItemId: item.itemId,
       thisBillAmount: item.amount,

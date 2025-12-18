@@ -1275,63 +1275,63 @@ export default function DashboardFileUpload() {
     newContractId: string,
     shouldCreateInvoice: boolean
   ) => {
-    const contractData = {
-      id: newContractId,
-      customer: {
-        dbxCustomerId: location.dbxCustomerId,
-        clientName: location.clientName || 'Unknown',
-        email: location.email,
-        phone: location.phone,
-        streetAddress: location.streetAddress,
-        city: location.city,
-        state: location.state,
-        zip: location.zip,
-      },
-      order: {
-        orderNo: location.orderNo,
-        orderDate: location.orderDate,
-        orderPO: location.orderPO,
-        orderDueDate: location.orderDueDate,
-        orderType: location.orderType,
-        orderDelivered: location.orderDelivered,
-        quoteExpirationDate: location.quoteExpirationDate,
-        orderGrandTotal: location.orderGrandTotal || 0,
-        progressPayments: location.progressPayments,
-        balanceDue: location.balanceDue || 0,
-        salesRep: location.salesRep,
+          const contractData = {
+            id: newContractId,
+            customer: {
+              dbxCustomerId: location.dbxCustomerId,
+              clientName: location.clientName || 'Unknown',
+              email: location.email,
+              phone: location.phone,
+              streetAddress: location.streetAddress,
+              city: location.city,
+              state: location.state,
+              zip: location.zip,
+            },
+            order: {
+              orderNo: location.orderNo,
+              orderDate: location.orderDate,
+              orderPO: location.orderPO,
+              orderDueDate: location.orderDueDate,
+              orderType: location.orderType,
+              orderDelivered: location.orderDelivered,
+              quoteExpirationDate: location.quoteExpirationDate,
+              orderGrandTotal: location.orderGrandTotal || 0,
+              progressPayments: location.progressPayments,
+              balanceDue: location.balanceDue || 0,
+              salesRep: location.salesRep,
         // Set Contract Date (DBX) from Order Date
         contractDate: location.orderDate ? (normalizeToMmddyyyy(location.orderDate) ?? undefined) : undefined,
-      },
-      items: allItems,
-      parsedAt: new Date(),
+            },
+            items: allItems,
+            parsedAt: new Date(),
       isLocationParsed: isLocationParsed !== false,
       orderItemsValidation: orderItemsValidation,
-    };
+          };
 
     // Store in localStorage
-    try {
-      const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
-      LocalStorageStore.addContract(contractData);
-      console.log('Contract stored in localStorage');
-    } catch (localStorageError) {
-      console.warn('localStorage storage failed:', localStorageError);
-    }
+          try {
+            const { LocalStorageStore } = await import('@/lib/store/localStorageStore');
+            LocalStorageStore.addContract(contractData);
+            console.log('Contract stored in localStorage');
+          } catch (localStorageError) {
+            console.warn('localStorage storage failed:', localStorageError);
+          }
 
     // Store via API
     let savedOrderId: string | null = null;
-    try {
-      const storeResponse = await fetch('/api/contracts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+          try {
+            const storeResponse = await fetch('/api/contracts', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
         body: JSON.stringify({
           ...contractData,
           skipChangeHistory: shouldCreateInvoice, // Skip change history logging when auto-invoice is being created
         }),
-      });
+            });
 
-      if (storeResponse.ok) {
+            if (storeResponse.ok) {
         const storeResult = await storeResponse.json();
         // The contract.id is the orderId (they use the same ID)
         savedOrderId = storeResult.contract?.id || null;
@@ -1368,15 +1368,15 @@ export default function DashboardFileUpload() {
             savedOrderId,
           });
         }
-      } else {
-        console.warn('API storage failed, but localStorage storage succeeded');
-      }
-    } catch (apiError) {
-      console.warn('API storage error, but localStorage storage succeeded:', apiError);
-    }
+            } else {
+              console.warn('API storage failed, but localStorage storage succeeded');
+            }
+          } catch (apiError) {
+            console.warn('API storage error, but localStorage storage succeeded:', apiError);
+          }
 
-    // Redirect to customer view
-    router.push(`/dashboard/customers/${newContractId}`);
+          // Redirect to customer view
+          router.push(`/dashboard/customers/${newContractId}`);
   };
 
   // Create invoice for Permits & Engineering items
@@ -1553,23 +1553,25 @@ export default function DashboardFileUpload() {
         }
       });
 
-      // Build linkedLineItems with NEW IDs (include items with 0 amount as well)
+      // Build linkedLineItems with NEW IDs and only items with amount > 0
       const linkedLineItems: Array<{ itemId: string; amount: number }> = [];
       for (const item of itemsToUpdateByProductService) {
-        const newItemId = productServiceToNewItemId.get(item.productService);
-        if (newItemId) {
-          linkedLineItems.push({
-            itemId: newItemId,
-            amount: item.amount, // Include even if amount is 0
-          });
-        } else {
-          console.warn(`[Auto-Invoice] Could not find new ID for: ${item.productService}`);
+        if (item.amount > 0) {
+          const newItemId = productServiceToNewItemId.get(item.productService);
+          if (newItemId) {
+            linkedLineItems.push({
+              itemId: newItemId,
+              amount: item.amount,
+            });
+          } else {
+            console.warn(`[Auto-Invoice] Could not find new ID for: ${item.productService}`);
+          }
         }
       }
 
-      // Create invoice even if all items have 0 amount (user can update amounts later)
+      // Only create invoice if there are items with amount > 0
       if (linkedLineItems.length === 0) {
-        console.log('[Auto-Invoice] No items found to include in invoice, but progress percentages have been updated');
+        console.log('[Auto-Invoice] No items with amount > 0 to include in invoice, but progress percentages have been updated');
         return;
       }
 

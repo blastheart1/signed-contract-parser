@@ -194,10 +194,10 @@ export async function GET(
             existingInvoiceAmounts,
             remainingBillable,
             isFullyCompletedAndInvoiced,
-            canLink: remainingBillable >= 0, // Can link if there's remaining billable amount (including 0 amount items)
+            canLink: remainingBillable > 0, // Can link if there's remaining billable amount
           };
         })
-        .filter(item => item.canLink); // Only return items that can be linked (including 0 amount items)
+        .filter(item => item.canLink); // Only return items with remaining billable amount
 
       console.log(`[GET /api/orders/${orderId}/items] Returning ${formattedItems.length} available items`);
       return NextResponse.json({
@@ -342,18 +342,18 @@ export async function PUT(
 
       // Log row deletions (items that existed but are now gone)
       if (!skipChangeHistory) {
-        for (const existingItem of existingItems) {
-          if (!newMap.has(existingItem.rowIndex || -1)) {
-            await logOrderItemChange(
-              'row_delete',
-              'row',
-              existingItem.productService || 'Row',
-              null,
-              orderId,
-              customerId,
-              existingItem.id,
-              existingItem.rowIndex || undefined
-            );
+      for (const existingItem of existingItems) {
+        if (!newMap.has(existingItem.rowIndex || -1)) {
+          await logOrderItemChange(
+            'row_delete',
+            'row',
+            existingItem.productService || 'Row',
+            null,
+            orderId,
+            customerId,
+            existingItem.id,
+            existingItem.rowIndex || undefined
+          );
           }
         }
       }
@@ -367,16 +367,16 @@ export async function PUT(
         if (!existingItem) {
           // New row added
           if (!skipChangeHistory) {
-            await logOrderItemChange(
-              'row_add',
-              'row',
-              null,
-              newItem.productService || 'New Row',
-              orderId,
-              customerId,
-              insertedItem?.id,
-              idx
-            );
+          await logOrderItemChange(
+            'row_add',
+            'row',
+            null,
+            newItem.productService || 'New Row',
+            orderId,
+            customerId,
+            insertedItem?.id,
+            idx
+          );
           }
         } else {
           // Compare fields for edits
@@ -448,18 +448,18 @@ export async function PUT(
       
       // Log deletion of all items
       if (!skipChangeHistory) {
-        const customerId = order.customerId;
-        for (const existingItem of existingItems) {
-          await logOrderItemChange(
-            'row_delete',
-            'row',
-            existingItem.productService || 'Row',
-            null,
-            orderId,
-            customerId,
-            existingItem.id,
-            existingItem.rowIndex || undefined
-          );
+      const customerId = order.customerId;
+      for (const existingItem of existingItems) {
+        await logOrderItemChange(
+          'row_delete',
+          'row',
+          existingItem.productService || 'Row',
+          null,
+          orderId,
+          customerId,
+          existingItem.id,
+          existingItem.rowIndex || undefined
+        );
         }
       }
     }

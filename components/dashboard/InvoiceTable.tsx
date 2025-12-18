@@ -190,7 +190,7 @@ export default function InvoiceTable({ orderId, onInvoiceChange, isDeleted = fal
         // PATCH: only include if user has explicitly modified line items
         // If not modified, omit from request to preserve existing linked items
         if (lineItemsModified) {
-          requestBody.linkedLineItems = selectedLineItems;
+        requestBody.linkedLineItems = selectedLineItems;
         }
         // If lineItemsModified is false, don't include linkedLineItems at all
         // This allows the API to preserve existing values

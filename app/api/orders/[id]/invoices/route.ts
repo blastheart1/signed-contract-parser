@@ -425,14 +425,14 @@ export async function POST(
 
     // Log invoice creation
     if (!skipChangeHistory) {
-      await logInvoiceChange(
-        'row_add',
-        'invoice',
-        null,
-        `Invoice ${body.invoiceNumber || 'New'}`,
-        orderId,
-        order.customerId
-      );
+    await logInvoiceChange(
+      'row_add',
+      'invoice',
+      null,
+      `Invoice ${body.invoiceNumber || 'New'}`,
+      orderId,
+      order.customerId
+    );
     }
 
     // Trigger customer status recalculation
