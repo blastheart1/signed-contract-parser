@@ -168,16 +168,16 @@ export default function InvoiceLineItemSelector({
   };
 
   const handleSave = () => {
-    // Build selected items array with user-entered amounts
+    // Build selected items array with user-entered amounts (include items with 0 amount)
     const selectedItems: SelectedItem[] = Array.from(selectedIds)
       .map(itemId => {
         const amount = itemAmounts.get(itemId) || 0;
-        return { itemId, amount };
+        return { itemId, amount }; // Include even if amount is 0
       })
-      .filter(item => item.amount > 0); // Only include items with amount > 0
+      .filter(item => item.amount >= 0); // Include items with 0 amount
 
     if (selectedItems.length === 0) {
-      setError('Please select at least one item with an amount greater than 0');
+      setError('Please select at least one item');
       return;
     }
 

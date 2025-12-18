@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const contract: StoredContract = body;
+    const skipChangeHistory = body.skipChangeHistory === true;
     
     // Validate contract data
     if (!contract.customer || !contract.order || !contract.items) {
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Log contract addition if this is a new contract
-    if (isNewContract) {
+    if (isNewContract && !skipChangeHistory) {
       const contractDescription = `Contract for ${contract.customer.clientName || 'Unknown'} - Order #${contract.order.orderNo}`;
       await logContractAdd(contract.customer.dbxCustomerId, order.id, contractDescription);
     }

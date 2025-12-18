@@ -62,6 +62,7 @@ export async function POST(
   try {
     const orderId = params.id;
     const body = await request.json();
+    const skipChangeHistory = body.skipChangeHistory === true;
     
     console.log(`[POST /api/orders/${orderId}/invoices] Request body:`, {
       invoiceNumber: body.invoiceNumber,
@@ -423,14 +424,16 @@ export async function POST(
     const newInvoice = await db.insert(invoices).values(invoiceValues).returning();
 
     // Log invoice creation
-    await logInvoiceChange(
-      'row_add',
-      'invoice',
-      null,
-      `Invoice ${body.invoiceNumber || 'New'}`,
-      orderId,
-      order.customerId
-    );
+    if (!skipChangeHistory) {
+      await logInvoiceChange(
+        'row_add',
+        'invoice',
+        null,
+        `Invoice ${body.invoiceNumber || 'New'}`,
+        orderId,
+        order.customerId
+      );
+    }
 
     // Trigger customer status recalculation
     await recalculateCustomerStatusForOrder(orderId);

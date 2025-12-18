@@ -194,10 +194,10 @@ export async function GET(
             existingInvoiceAmounts,
             remainingBillable,
             isFullyCompletedAndInvoiced,
-            canLink: remainingBillable > 0, // Can link if there's remaining billable amount
+            canLink: remainingBillable >= 0, // Can link if there's remaining billable amount (including 0 amount items)
           };
         })
-        .filter(item => item.canLink); // Only return items with remaining billable amount
+        .filter(item => item.canLink); // Only return items that can be linked (including 0 amount items)
 
       console.log(`[GET /api/orders/${orderId}/items] Returning ${formattedItems.length} available items`);
       return NextResponse.json({
@@ -243,7 +243,8 @@ export async function PUT(
     
     const body = await request.json();
     const items: OrderItem[] = body.items || [];
-    console.log(`[PUT /api/orders/${orderId}/items] Received ${items.length} items to update`);
+    const skipChangeHistory = body.skipChangeHistory === true;
+    console.log(`[PUT /api/orders/${orderId}/items] Received ${items.length} items to update, skipChangeHistory: ${skipChangeHistory}`);
 
     // Verify order exists
     console.log(`[PUT /api/orders/${orderId}/items] Verifying order exists...`);
@@ -340,18 +341,20 @@ export async function PUT(
       const newMap = new Map(items.map((item, idx) => [idx, item]));
 
       // Log row deletions (items that existed but are now gone)
-      for (const existingItem of existingItems) {
-        if (!newMap.has(existingItem.rowIndex || -1)) {
-          await logOrderItemChange(
-            'row_delete',
-            'row',
-            existingItem.productService || 'Row',
-            null,
-            orderId,
-            customerId,
-            existingItem.id,
-            existingItem.rowIndex || undefined
-          );
+      if (!skipChangeHistory) {
+        for (const existingItem of existingItems) {
+          if (!newMap.has(existingItem.rowIndex || -1)) {
+            await logOrderItemChange(
+              'row_delete',
+              'row',
+              existingItem.productService || 'Row',
+              null,
+              orderId,
+              customerId,
+              existingItem.id,
+              existingItem.rowIndex || undefined
+            );
+          }
         }
       }
 
@@ -363,16 +366,18 @@ export async function PUT(
 
         if (!existingItem) {
           // New row added
-          await logOrderItemChange(
-            'row_add',
-            'row',
-            null,
-            newItem.productService || 'New Row',
-            orderId,
-            customerId,
-            insertedItem?.id,
-            idx
-          );
+          if (!skipChangeHistory) {
+            await logOrderItemChange(
+              'row_add',
+              'row',
+              null,
+              newItem.productService || 'New Row',
+              orderId,
+              customerId,
+              insertedItem?.id,
+              idx
+            );
+          }
         } else {
           // Compare fields for edits
           // Only log user-editable fields, skip computed fields like completedAmount
@@ -399,7 +404,7 @@ export async function PUT(
           });
 
           // If there are changes, log them as a single grouped entry
-          if (changedFields.length > 0) {
+          if (changedFields.length > 0 && !skipChangeHistory) {
             // If only one field changed, log it normally with old/new values
             if (changedFields.length === 1) {
               const field = changedFields[0];
@@ -442,18 +447,20 @@ export async function PUT(
       console.log(`[PUT /api/orders/${orderId}/items] No items to insert (empty array)`);
       
       // Log deletion of all items
-      const customerId = order.customerId;
-      for (const existingItem of existingItems) {
-        await logOrderItemChange(
-          'row_delete',
-          'row',
-          existingItem.productService || 'Row',
-          null,
-          orderId,
-          customerId,
-          existingItem.id,
-          existingItem.rowIndex || undefined
-        );
+      if (!skipChangeHistory) {
+        const customerId = order.customerId;
+        for (const existingItem of existingItems) {
+          await logOrderItemChange(
+            'row_delete',
+            'row',
+            existingItem.productService || 'Row',
+            null,
+            orderId,
+            customerId,
+            existingItem.id,
+            existingItem.rowIndex || undefined
+          );
+        }
       }
     }
 

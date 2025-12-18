@@ -1325,7 +1325,10 @@ export default function DashboardFileUpload() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(contractData),
+        body: JSON.stringify({
+          ...contractData,
+          skipChangeHistory: shouldCreateInvoice, // Skip change history logging when auto-invoice is being created
+        }),
       });
 
       if (storeResponse.ok) {
@@ -1514,7 +1517,10 @@ export default function DashboardFileUpload() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ items: updatedItems }),
+        body: JSON.stringify({ 
+          items: updatedItems,
+          skipChangeHistory: true, // Skip change history logging for automated operations
+        }),
       });
 
       if (!putResponse.ok) {
@@ -1547,25 +1553,23 @@ export default function DashboardFileUpload() {
         }
       });
 
-      // Build linkedLineItems with NEW IDs and only items with amount > 0
+      // Build linkedLineItems with NEW IDs (include items with 0 amount as well)
       const linkedLineItems: Array<{ itemId: string; amount: number }> = [];
       for (const item of itemsToUpdateByProductService) {
-        if (item.amount > 0) {
-          const newItemId = productServiceToNewItemId.get(item.productService);
-          if (newItemId) {
-            linkedLineItems.push({
-              itemId: newItemId,
-              amount: item.amount,
-            });
-          } else {
-            console.warn(`[Auto-Invoice] Could not find new ID for: ${item.productService}`);
-          }
+        const newItemId = productServiceToNewItemId.get(item.productService);
+        if (newItemId) {
+          linkedLineItems.push({
+            itemId: newItemId,
+            amount: item.amount, // Include even if amount is 0
+          });
+        } else {
+          console.warn(`[Auto-Invoice] Could not find new ID for: ${item.productService}`);
         }
       }
 
-      // Only create invoice if there are items with amount > 0
+      // Create invoice even if all items have 0 amount (user can update amounts later)
       if (linkedLineItems.length === 0) {
-        console.log('[Auto-Invoice] No items with amount > 0 to include in invoice, but progress percentages have been updated');
+        console.log('[Auto-Invoice] No items found to include in invoice, but progress percentages have been updated');
         return;
       }
 
@@ -1594,6 +1598,7 @@ export default function DashboardFileUpload() {
           paymentsReceived: '0',
           exclude: false,
           linkedLineItems: linkedLineItems,
+          skipChangeHistory: true, // Skip change history logging for automated operations
         }),
       });
 
