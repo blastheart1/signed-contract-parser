@@ -16,15 +16,17 @@ import DeleteCustomerButton from './DeleteCustomerButton';
 import CustomerHistory from './CustomerHistory';
 import RestoreContractDialog from './RestoreContractDialog';
 import PermanentDeleteDialog from './PermanentDeleteDialog';
+import InvoiceSummary from './InvoiceSummary';
 import { mmddyyyyToYyyymmdd, yyyymmddToMmddyyyy, formatDateForDisplay } from '@/lib/utils/dateFormat';
 
 interface CustomerInfoProps {
   contract: StoredContract;
   isDeleted?: boolean;
   onContractUpdate?: (updatedContract: StoredContract) => void;
+  onInvoiceChange?: number; // Trigger value that changes when invoices are updated
 }
 
-export default function CustomerInfo({ contract, isDeleted = false, onContractUpdate }: CustomerInfoProps) {
+export default function CustomerInfo({ contract, isDeleted = false, onContractUpdate, onInvoiceChange }: CustomerInfoProps) {
   console.log('[CustomerInfo] ===== Component Render =====');
   console.log('[CustomerInfo] contract:', contract ? {
     hasId: !!contract.id,
@@ -47,6 +49,15 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
   const [isEditingProjectStatus, setIsEditingProjectStatus] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false);
+  const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
+
+  // Listen to invoice changes from parent and trigger refresh
+  useEffect(() => {
+    if (onInvoiceChange !== undefined && onInvoiceChange > 0) {
+      // When invoice refresh trigger changes, refresh First Build Invoice Date
+      setInvoiceRefreshTrigger(onInvoiceChange);
+    }
+  }, [onInvoiceChange]);
   
   if (!currentContract?.customer) {
     console.error('[CustomerInfo] Contract missing customer data');
@@ -86,10 +97,10 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
     setProjectEndDate(newProjectEndDate);
   }, [contract]);
 
-  // Auto-populate First Build Invoice Date from first invoice
+  // Auto-populate and auto-refresh First Build Invoice Date from first invoice
   useEffect(() => {
-    // Only auto-populate if firstBuildInvoiceDate is empty and contract ID exists
-    if (firstBuildInvoiceDate || !currentContract?.id) {
+    // Only run if contract ID exists
+    if (!currentContract?.id) {
       return;
     }
 
@@ -125,8 +136,12 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
           
           if (mmddyyyy && isMounted) {
-            console.log('[CustomerInfo] Auto-populating firstBuildInvoiceDate:', mmddyyyy);
-            setFirstBuildInvoiceDate(mmddyyyy);
+            // Always update if empty, or update if the date has changed (auto-refresh)
+            const currentDate = firstBuildInvoiceDate || '';
+            if (!currentDate || currentDate !== mmddyyyy) {
+              console.log('[CustomerInfo] Auto-populating/refreshing firstBuildInvoiceDate:', mmddyyyy);
+              setFirstBuildInvoiceDate(mmddyyyy);
+            }
           }
         } catch (conversionError) {
           console.warn('[CustomerInfo] Failed to convert invoice date:', conversionError);
@@ -145,7 +160,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
       isMounted = false;
       abortController.abort();
     };
-  }, [currentContract?.id, firstBuildInvoiceDate]); // Only run when contract ID changes or firstBuildInvoiceDate is empty
+  }, [currentContract?.id, invoiceRefreshTrigger]); // Refresh when invoices change or contract ID changes
 
   const handleSaveProjectStatus = async () => {
     if (!currentContract?.id) {
@@ -249,8 +264,8 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           transition={{ duration: 0.3 }}
           className="h-full"
         >
-          <Card className="h-full flex flex-col">
-            <CardContent className="space-y-1 pt-6 flex-1">
+          <Card className="h-full max-h-[336px] flex flex-col">
+            <CardContent className="pt-6 flex-1 min-h-0 overflow-hidden flex flex-col">
               {needsManualUpdate && (
                 <div className="mb-4 flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                   <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
@@ -326,6 +341,27 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 )}
               </div>
               <div className="flex items-center gap-2 pt-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreInfo(!showMoreInfo)}
+                        className="p-1 hover:bg-muted rounded-md transition-colors duration-150"
+                        aria-label="More information"
+                      >
+                        {showMoreInfo ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>More information</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 {!isDeleted && (
                   <>
                     <button
@@ -387,42 +423,39 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 </dd>
               </div>
             )}
-            <div className="pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowMoreInfo(!showMoreInfo)}
-                className="w-full justify-between p-2 h-auto"
-              >
-                <span className="text-sm font-medium text-muted-foreground">More information</span>
-                {showMoreInfo ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </Button>
+            <div className="flex-1 min-h-0 overflow-hidden">
               <motion.div
                 initial={false}
                 animate={{
-                  height: showMoreInfo ? 'auto' : 0,
+                  height: showMoreInfo ? 250 : 0,
                   opacity: showMoreInfo ? 1 : 0,
                 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
                 style={{ overflow: 'hidden' }}
+                className="flex-shrink-0"
               >
                 {showMoreInfo && (
-                  <div className="mt-2 space-y-1 pt-2 border-t">
-                    <InfoRow label="Email" value={currentContract.customer.email} />
-                    <InfoRow label="Phone" value={currentContract.customer.phone} />
-                    <InfoRow label="Address" value={currentContract.customer.streetAddress} />
-                    <InfoRow label="City" value={currentContract.customer.city} />
-                    <InfoRow label="State" value={currentContract.customer.state} />
-                    <InfoRow label="Zip" value={currentContract.customer.zip} />
-                    <div className="pt-1">
-                      <div className="flex justify-between items-start py-1">
-                        <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Full Address</dt>
-                        <dd className="text-sm text-foreground font-medium text-right flex-1">{fullAddress}</dd>
+                  <div className="mt-2 pt-2 border-t h-full relative">
+                    <div className="space-y-1 pb-12 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                      <InfoRow label="Sales Rep" value={currentContract.order.salesRep} />
+                      <div className="pt-1 border-t mt-2 mb-2"></div>
+                      <InfoRow label="Email" value={currentContract.customer.email} />
+                      <InfoRow label="Phone" value={currentContract.customer.phone} />
+                      <InfoRow label="Address" value={currentContract.customer.streetAddress} />
+                      <InfoRow label="City" value={currentContract.customer.city} />
+                      <InfoRow label="State" value={currentContract.customer.state} />
+                      <InfoRow label="Zip" value={currentContract.customer.zip} />
+                      <div className="pt-1">
+                        <div className="flex justify-between items-start py-1">
+                          <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Full Address</dt>
+                          <dd className="text-sm text-foreground font-medium text-right flex-1">{fullAddress}</dd>
+                        </div>
                       </div>
+                    </div>
+                    {/* Floating scroll down indicator */}
+                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center gap-1">
+                      <span className="text-xs text-muted-foreground">Scroll down</span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground animate-bounce" />
                     </div>
                   </div>
                 )}
@@ -616,59 +649,34 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
         transition={{ duration: 0.3 }}
         className="h-full"
       >
-        <Card className="h-full flex flex-col">
-          <CardContent className="space-y-1 pt-6 flex-1">
-            <div className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold leading-none tracking-tight">Job Information</h3>
-                  {isDeleted && (
-                    <Badge variant="secondary" className="mt-1.5 gap-1 min-w-[140px] text-center">
-                      <Trash2 className="h-3 w-3" />
-                      Deleted Contract
-                    </Badge>
-                  )}
-                </div>
-                {isDeleted && currentContract?.customer?.dbxCustomerId && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setPermanentDeleteDialogOpen(true)}
-                      className="gap-2 min-w-[140px]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Permanently Delete
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => setRestoreDialogOpen(true)}
-                      className="gap-2 bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      Restore Contract
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <InfoRow label="Order Date" value={currentContract.order.orderDate} />
-            <InfoRow label="Order PO" value={currentContract.order.orderPO} />
-            <InfoRow label="Order Due Date" value={currentContract.order.orderDueDate} />
-            <InfoRow label="Order Type" value={currentContract.order.orderType} />
-            <InfoRow label="Order Delivered" value={currentContract.order.orderDelivered ? 'Yes' : 'No'} />
-            <InfoRow label="Quote Expiration Date" value={currentContract.order.quoteExpirationDate} />
-            <InfoRow label="Progress Payments" value={currentContract.order.progressPayments} />
-            <div className="flex justify-between items-center py-1">
-              <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Balance Due</dt>
-              <dd className="text-lg font-bold text-foreground text-right flex-1">
-                ${currentContract.order.balanceDue?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-              </dd>
-            </div>
-            <InfoRow label="Sales Rep" value={currentContract.order.salesRep} />
-          </CardContent>
-        </Card>
+        {isDeleted && currentContract?.customer?.dbxCustomerId && (
+          <div className="mb-4 flex items-center justify-end gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setPermanentDeleteDialogOpen(true)}
+              className="gap-2 min-w-[140px]"
+            >
+              <Trash2 className="h-4 w-4" />
+              Permanently Delete
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setRestoreDialogOpen(true)}
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Restore Contract
+            </Button>
+          </div>
+        )}
+        {currentContract?.id && (
+          <InvoiceSummary 
+            orderId={currentContract.id} 
+            customerId={currentContract.customer?.dbxCustomerId}
+          />
+        )}
       </motion.div>
     </div>
 

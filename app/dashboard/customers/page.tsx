@@ -30,6 +30,8 @@ import SortableTableHeaderArrowOnly from '@/components/dashboard/SortableTableHe
 import FilterableTableHeader from '@/components/dashboard/FilterableTableHeader';
 import { sortData, type SortState } from '@/lib/utils/tableSorting';
 import { filterData, type FilterState } from '@/lib/utils/tableFiltering';
+import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/hooks/use-toast';
 
 interface Customer {
   id: string;
@@ -57,6 +59,17 @@ export default function CustomersPage() {
   const [showTrash, setShowTrash] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(10);
+  const [updatingStatus, setUpdatingStatus] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
+
+  // Helper functions to map between database and display values
+  const getDisplayStatus = (status: string | null | undefined): boolean => {
+    return status === 'completed';
+  };
+
+  const getDatabaseStatus = (checked: boolean): 'completed' | 'pending_updates' => {
+    return checked ? 'completed' : 'pending_updates';
+  };
   
   // Sorting state
   const [sortState, setSortState] = useState<SortState<Customer>>({
@@ -200,6 +213,58 @@ export default function CustomersPage() {
     setFilters((prev) => ({ ...prev, status: values.size > 0 ? values : undefined }));
   }, []);
 
+  // Handle status update
+  const handleStatusChange = useCallback(async (customerId: string, checked: boolean) => {
+    setUpdatingStatus((prev) => new Set(prev).add(customerId));
+    const newStatus = getDatabaseStatus(checked);
+    
+    try {
+      const response = await fetch(`/api/customers/${customerId}/invoicing-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update local state
+        setCustomers((prev) =>
+          prev.map((customer) =>
+            customer.id === customerId
+              ? { ...customer, status: newStatus }
+              : customer
+          )
+        );
+        toast({
+          title: 'Status updated',
+          description: `Invoicing status updated to "${checked ? 'Okay for Invoicing' : 'Waiting for PM'}"`,
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to update status',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update invoicing status',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingStatus((prev) => {
+        const next = new Set(prev);
+        next.delete(customerId);
+        return next;
+      });
+    }
+  }, [toast]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -277,8 +342,8 @@ export default function CustomersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending_updates">Pending Updates</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="completed">Okay for Invoicing</SelectItem>
+                    <SelectItem value="pending_updates">Waiting for PM</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -331,10 +396,10 @@ export default function CustomersPage() {
                       />
                       <TableHead className="border-r border-border">Contact</TableHead>
                       <FilterableTableHeader
-                        title="Overall Status"
+                        title="Invoicing Status"
                         options={[
-                          { value: 'pending_updates', label: 'Pending Updates' },
-                          { value: 'completed', label: 'Completed' },
+                          { value: 'completed', label: 'Okay for Invoicing' },
+                          { value: 'pending_updates', label: 'Waiting for PM' },
                         ]}
                         selectedValues={filters.status ?? new Set()}
                         onFilterChange={handleStatusFilterChange}
@@ -437,11 +502,17 @@ export default function CustomersPage() {
                           <div className="text-sm text-muted-foreground">{customer.phone || '-'}</div>
                         </TableCell>
                         <TableCell className="w-36">
-                          {customer.status === 'completed' ? (
-                            <Badge variant="default" className="bg-green-600 min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Completed</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="min-w-[120px] min-h-[2.5rem] text-center flex items-center justify-center">Pending Updates</Badge>
-                          )}
+                          <div className="flex items-center justify-center">
+                            {customer.status === 'completed' ? (
+                              <Badge className="bg-green-600 hover:bg-green-700 text-white min-w-[140px] text-center flex items-center justify-center">
+                                Okay for Invoicing
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-orange-500 hover:bg-orange-600 text-white min-w-[140px] text-center flex items-center justify-center">
+                                Waiting for PM
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                             </motion.tr>
                           </TooltipTrigger>

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { eq, isNull, and, or, isNotNull, desc, inArray } from 'drizzle-orm';
 import { validateOrderItemsTotal } from '@/lib/orderItemsValidation';
-import { updateCustomerStatus } from '@/lib/services/customerStatus';
 import type { OrderItem } from '@/lib/tableExtractor';
 import type { AlertAcknowledgment } from '@/lib/db/schema';
 import { isTableNotExistError } from '@/lib/db/errorHelpers';
@@ -167,24 +166,7 @@ export async function GET(request: NextRequest) {
         const mostRecentOrder = orders.length > 0 ? orders[0] : null;
         const stage = mostRecentOrder?.stage || 'waiting_for_permit';
 
-        // If stage is 'completed' but status is not 'completed', update the status
-        if (stage === 'completed' && customer.status !== 'completed') {
-          try {
-            await updateCustomerStatus(customer.dbxCustomerId);
-            // Refresh customer to get updated status
-            const updatedCustomerRows = await db
-              .select()
-              .from(schema.customers)
-              .where(eq(schema.customers.dbxCustomerId, customer.dbxCustomerId))
-              .limit(1);
-            const updatedCustomer = updatedCustomerRows[0];
-            if (updatedCustomer) {
-              customer.status = updatedCustomer.status;
-            }
-          } catch (error) {
-            console.error(`Error updating customer ${customer.dbxCustomerId} status:`, error);
-          }
-        }
+        // Note: Invoicing status is now manually controlled and no longer auto-updates based on stage
 
         // Check for validation issues in orders
         let hasValidationIssues = false;

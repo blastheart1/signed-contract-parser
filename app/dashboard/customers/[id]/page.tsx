@@ -26,6 +26,8 @@ import InvoiceSummary from '@/components/dashboard/InvoiceSummary';
 import OrderItemsValidationAlert from '@/components/dashboard/OrderItemsValidationAlert';
 import DeleteCustomerButton from '@/components/dashboard/DeleteCustomerButton';
 import ReuploadContract from '@/components/dashboard/ReuploadContract';
+import { useSession } from '@/hooks/use-session';
+import type { UserRole } from '@/lib/auth/permissions';
 
 function CustomerDetailContent() {
   const params = useParams();
@@ -41,6 +43,10 @@ function CustomerDetailContent() {
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  
+  // Get user session for role-based permissions
+  const { user } = useSession();
+  const userRole: UserRole | null = (user?.role as UserRole) || null;
   
   // Refresh invoice summary when order items are saved
   const handleOrderItemsSave = async () => {
@@ -459,6 +465,7 @@ function CustomerDetailContent() {
                   fetchContract();
                 }, 500);
               }}
+              onInvoiceChange={invoiceRefreshTrigger}
             />
           </motion.div>
 
@@ -486,10 +493,10 @@ function CustomerDetailContent() {
               onSaveSuccess={handleOrderItemsSave}
               isDeleted={isDeleted}
               projectStartDate={(contract.order as any)?.projectStartDate}
+              userRole={userRole}
             />
           </TabsContent>
           <TabsContent value="invoices" className="mt-6 space-y-6">
-            <InvoiceSummary orderId={contract.id} refreshTrigger={invoiceRefreshTrigger} />
             <InvoiceTable 
               orderId={contract.id} 
               onInvoiceChange={() => setInvoiceRefreshTrigger(prev => prev + 1)}

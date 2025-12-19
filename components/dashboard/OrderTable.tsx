@@ -35,6 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import FilterableTableHeaderText from '@/components/dashboard/FilterableTableHeaderText';
 import type { OrderItem } from '@/lib/tableExtractor';
+import type { UserRole } from '@/lib/auth/permissions';
 
 interface OrderTableProps {
   items: OrderItem[];
@@ -42,7 +43,8 @@ interface OrderTableProps {
   orderId?: string; // Order ID for saving to database
   onSaveSuccess?: () => void; // Callback after successful save
   isDeleted?: boolean; // Whether the contract is deleted
-  projectStartDate?: string; // Project Start Date - required for edit mode
+  projectStartDate?: string; // Project Start Date - required for edit mode (except for accountant role)
+  userRole?: UserRole | null; // User role - accountant can edit without projectStartDate
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -73,6 +75,7 @@ function SortableRow({
   onEnterEditMode,
   showActionsColumn,
   canEdit = true, // Default to true for backward compatibility
+  userRole,
 }: {
   item: EditableOrderItem;
   index: number;
@@ -90,6 +93,7 @@ function SortableRow({
   onEnterEditMode?: () => void;
   showActionsColumn?: boolean;
   canEdit?: boolean;
+  userRole?: UserRole | null;
 }) {
   const {
     attributes,
@@ -514,7 +518,13 @@ function SortableRow({
             </motion.tr>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{!isEditing && !editingColumn && canEdit && isItem ? 'Click to enter edit mode' : !isEditing && !editingColumn && !canEdit && !isDeleted && isItem ? 'Update Project Start Date first' : ''}</p>
+            <p>
+              {!isEditing && !editingColumn && canEdit && isItem 
+                ? 'Click to enter edit mode' 
+                : !isEditing && !editingColumn && !canEdit && !isDeleted && isItem 
+                ? (userRole !== 'accountant' ? 'Update Project Start Date first' : '')
+                : ''}
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -535,7 +545,7 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate }: OrderTableProps) {
+export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate, userRole }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editingColumn, setEditingColumn] = useState<'progressOverall' | 'previouslyInvoiced' | null>(null);
@@ -546,10 +556,29 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Compute if edit mode is allowed (requires projectStartDate)
+  // Compute if edit mode is allowed
+  // Accountant role can edit without projectStartDate, other roles require it
   const canEdit = useMemo(() => {
-    return !isDeleted && !!projectStartDate && projectStartDate.trim() !== '';
-  }, [isDeleted, projectStartDate]);
+    if (isDeleted) return false;
+    // Accountant role can always edit
+    if (userRole === 'accountant') return true;
+    // Other roles require projectStartDate
+    return !!projectStartDate && projectStartDate.trim() !== '';
+  }, [isDeleted, projectStartDate, userRole]);
+
+  // Helper to get appropriate message for edit restrictions
+  const getEditRestrictionMessage = useMemo(() => {
+    if (isDeleted) {
+      return { title: 'Contract Deleted', description: 'Restore first before editing' };
+    }
+    if (userRole !== 'accountant' && (!projectStartDate || projectStartDate.trim() === '')) {
+      return { 
+        title: 'Project Start Date Required', 
+        description: 'Please update Project Start Date first before editing the table.' 
+      };
+    }
+    return null;
+  }, [isDeleted, userRole, projectStartDate]);
   
   // Auto-compute rate if empty/null: Rate = Amount / Quantity
   const autoComputeRate = (item: OrderItem | EditableOrderItem): EditableOrderItem => {
@@ -883,11 +912,13 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !isEditing && !editingColumn && !canEdit && !isDeleted) {
         // Show toast on mobile/desktop when edit is disabled
         e.preventDefault();
-        toast({
-          title: 'Project Start Date Required',
-          description: 'Please update Project Start Date first before editing the table.',
-          variant: 'destructive',
-        });
+        if (getEditRestrictionMessage) {
+          toast({
+            title: getEditRestrictionMessage.title,
+            description: getEditRestrictionMessage.description,
+            variant: 'destructive',
+          });
+        }
       }
       // Esc to cancel
       if (e.key === 'Escape' && (isEditing || editingColumn)) {
@@ -913,7 +944,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isEditing, saving, initialItems]);
+  }, [isEditing, saving, initialItems, editingColumn, canEdit, isDeleted, getEditRestrictionMessage, toast]);
 
   // Track item row numbers for alternating colors (excluding headers)
   const itemRowIndices = useMemo(() => {
@@ -1235,11 +1266,13 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       ) : !canEdit ? (
                         <Button 
                           onClick={() => {
-                            toast({
-                              title: 'Project Start Date Required',
-                              description: 'Please update Project Start Date first before editing the table.',
-                              variant: 'destructive',
-                            });
+                            if (getEditRestrictionMessage) {
+                              toast({
+                                title: getEditRestrictionMessage.title,
+                                description: getEditRestrictionMessage.description,
+                                variant: 'destructive',
+                              });
+                            }
                           }} 
                           variant="outline" 
                           size="sm" 
@@ -1270,7 +1303,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       {isDeleted 
                         ? 'Restore first before editing' 
                         : !canEdit 
-                        ? 'Please update Project Start Date first' 
+                        ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
                         : 'Edit order items (Ctrl+E)'}
                     </p>
                   </TooltipContent>
@@ -1426,10 +1459,10 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           onClick={() => {
                             if (canEdit && !isDeleted) {
                               setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall');
-                            } else if (!isDeleted) {
+                            } else if (!isDeleted && getEditRestrictionMessage) {
                               toast({
-                                title: 'Project Start Date Required',
-                                description: 'Please update Project Start Date first before editing the table.',
+                                title: getEditRestrictionMessage.title,
+                                description: getEditRestrictionMessage.description,
                                 variant: 'destructive',
                               });
                             }
@@ -1443,7 +1476,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           {isDeleted 
                             ? 'Restore first before editing' 
                             : !canEdit 
-                            ? 'Please update Project Start Date first' 
+                            ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
                             : 'Click to edit: Set the overall progress percentage for items'}
                         </p>
                       </TooltipContent>
@@ -1458,10 +1491,10 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           onClick={() => {
                             if (canEdit && !isDeleted) {
                               setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced');
-                            } else if (!isDeleted) {
+                            } else if (!isDeleted && getEditRestrictionMessage) {
                               toast({
-                                title: 'Project Start Date Required',
-                                description: 'Please update Project Start Date first before editing the table.',
+                                title: getEditRestrictionMessage.title,
+                                description: getEditRestrictionMessage.description,
                                 variant: 'destructive',
                               });
                             }
@@ -1475,7 +1508,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           {isDeleted 
                             ? 'Restore first before editing' 
                             : !canEdit 
-                            ? 'Please update Project Start Date first' 
+                            ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
                             : 'Click to edit: Set the previously invoiced percentage for items'}
                         </p>
                       </TooltipContent>
@@ -1513,14 +1546,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         isFirstRow={originalIndex === 0 || filteredItems.findIndex(fi => fi.id === item.id) === 0}
                         isDeleted={isDeleted}
                         canEdit={canEdit}
+                        userRole={userRole}
                         onEnterEditMode={() => {
                           if (canEdit) {
                           setIsEditing(true);
                           setEditingColumn(null);
-                          } else if (!isDeleted) {
+                          } else if (!isDeleted && getEditRestrictionMessage) {
                             toast({
-                              title: 'Project Start Date Required',
-                              description: 'Please update Project Start Date first before editing the table.',
+                              title: getEditRestrictionMessage.title,
+                              description: getEditRestrictionMessage.description,
                               variant: 'destructive',
                             });
                           }
