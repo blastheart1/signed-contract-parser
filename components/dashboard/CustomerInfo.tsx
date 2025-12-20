@@ -136,10 +136,10 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           const mmddyyyy = yyyymmddToMmddyyyy(yyyymmdd);
           
           if (mmddyyyy && isMounted) {
-            // Always update if empty, or update if the date has changed (auto-refresh)
+            // Only populate if empty
             const currentDate = firstBuildInvoiceDate || '';
-            if (!currentDate || currentDate !== mmddyyyy) {
-              console.log('[CustomerInfo] Auto-populating/refreshing firstBuildInvoiceDate:', mmddyyyy);
+            if (!currentDate) {
+              console.log('[CustomerInfo] Auto-populating firstBuildInvoiceDate:', mmddyyyy);
               setFirstBuildInvoiceDate(mmddyyyy);
             }
           }
@@ -160,7 +160,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
       isMounted = false;
       abortController.abort();
     };
-  }, [currentContract?.id, invoiceRefreshTrigger]); // Refresh when invoices change or contract ID changes
+  }, [currentContract?.id, firstBuildInvoiceDate]); // Only populate when empty
 
   const handleSaveProjectStatus = async () => {
     if (!currentContract?.id) {
@@ -264,8 +264,8 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           transition={{ duration: 0.3 }}
           className="h-full"
         >
-          <Card className="h-full max-h-[336px] flex flex-col">
-            <CardContent className="pt-6 flex-1 min-h-0 overflow-hidden flex flex-col">
+          <Card className="h-full max-h-[336px] flex flex-col overflow-hidden">
+            <CardContent className={`pt-6 flex flex-col ${isEditingProjectStatus ? 'overflow-y-auto max-h-[336px]' : 'flex-1 min-h-0 overflow-hidden'}`}>
               {needsManualUpdate && (
                 <div className="mb-4 flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                   <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
@@ -280,13 +280,13 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 {/* Stage Badge/Dropdown */}
                 {isEditingProjectStatus && !isDeleted ? (
                   <Select value={stage} onValueChange={setStage}>
-                    <SelectTrigger id="stage" className="w-[200px]">
+                    <SelectTrigger id="stage" className="w-[160px] h-auto py-0.5 px-2.5 text-xs font-semibold">
                       <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="waiting_for_permit">Waiting for Permit</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="waiting_for_permit" className="text-xs">Waiting for Permit</SelectItem>
+                      <SelectItem value="active" className="text-xs">Active</SelectItem>
+                      <SelectItem value="completed" className="text-xs">Completed</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (
@@ -423,7 +423,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                 </dd>
               </div>
             )}
-            <div className="flex-1 min-h-0 overflow-hidden">
+            <div className={`${isEditingProjectStatus ? 'flex-shrink-0' : 'flex-1 min-h-0'} overflow-hidden`}>
               <motion.div
                 initial={false}
                 animate={{
@@ -470,7 +470,7 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                   style={{ overflow: 'hidden' }}
-                  className="pt-4 border-t mt-2"
+                  className={`pt-4 border-t mt-2 ${isEditingProjectStatus ? 'flex-shrink-0' : ''}`}
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <h4 className="text-sm font-semibold">Project Status</h4>
