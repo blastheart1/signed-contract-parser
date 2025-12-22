@@ -264,13 +264,19 @@ export async function PUT(
     }
     console.log(`[PUT /api/orders/${orderId}/items] Order found: ${order.orderNo}`);
 
-    // Fetch existing order items for comparison
-    const existingItems = await db
-      .select()
-      .from(orderItems)
-      .where(eq(orderItems.orderId, orderId))
-      .orderBy(orderItems.rowIndex);
-    console.log(`[PUT /api/orders/${orderId}/items] Found ${existingItems.length} existing items`);
+      // Fetch existing order items for comparison
+      const existingItems = await db
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId))
+        .orderBy(orderItems.rowIndex);
+      console.log(`[PUT /api/orders/${orderId}/items] Found ${existingItems.length} existing items`);
+      // #region agent log
+      if (existingItems.length > 0) {
+        const sampleExisting = existingItems[0];
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:273',message:'Sample existing item values',data:{rowIndex:sampleExisting.rowIndex,amount:sampleExisting.amount,amountType:typeof sampleExisting.amount,progressOverallPct:sampleExisting.progressOverallPct,progressType:typeof sampleExisting.progressOverallPct,qty:sampleExisting.qty,rate:sampleExisting.rate},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      }
+      // #endregion
 
     // Before deleting order items, we need to clear the order_item_id references in change_history
     // to avoid foreign key constraint violations
@@ -306,7 +312,7 @@ export async function PUT(
           completedAmount = typeof item.completedAmount === 'number' ? item.completedAmount.toString() : item.completedAmount;
         }
 
-        return {
+        const normalizedItem = {
           orderId: orderId,
           rowIndex: index,
           columnALabel: item.type === 'maincategory' ? '1 - Header' : 
@@ -319,19 +325,114 @@ export async function PUT(
           amount: amount > 0 ? amount.toString() : null,
           progressOverallPct: progressOverallPct > 0 ? progressOverallPct.toString() : null,
           completedAmount,
-          previouslyInvoicedPct: item.previouslyInvoicedPct ? (typeof item.previouslyInvoicedPct === 'number' ? item.previouslyInvoicedPct.toString() : item.previouslyInvoicedPct) : null,
-          previouslyInvoicedAmount: item.previouslyInvoicedAmount ? (typeof item.previouslyInvoicedAmount === 'number' ? item.previouslyInvoicedAmount.toString() : item.previouslyInvoicedAmount) : null,
+          // Normalize these fields: preserve "0" values instead of converting to null
+          // This prevents unnecessary change tracking when "0" gets normalized to null
+          previouslyInvoicedPct: (() => {
+            const val = item.previouslyInvoicedPct;
+            if (val === null || val === undefined || val === '') return null;
+            if (val === 0 || val === '0' || val === '0.00' || val === '0.0000') return '0';
+            return typeof val === 'number' ? val.toString() : val;
+          })(),
+          previouslyInvoicedAmount: (() => {
+            const val = item.previouslyInvoicedAmount;
+            if (val === null || val === undefined || val === '') return null;
+            if (val === 0 || val === '0' || val === '0.00' || val === '0.0000') return '0';
+            return typeof val === 'number' ? val.toString() : val;
+          })(),
           newProgressPct: item.newProgressPct ? (typeof item.newProgressPct === 'number' ? item.newProgressPct.toString() : item.newProgressPct) : null,
-          thisBill: item.thisBill ? (typeof item.thisBill === 'number' ? item.thisBill.toString() : item.thisBill) : null,
+          thisBill: (() => {
+            const val = item.thisBill;
+            if (val === null || val === undefined || val === '') return null;
+            if (val === 0 || val === '0' || val === '0.00' || val === '0.0000') return '0';
+            return typeof val === 'number' ? val.toString() : val;
+          })(),
           itemType: item.type,
           mainCategory: item.mainCategory || null,
           subCategory: item.subCategory || null,
         };
+        // #region agent log
+        if (index === 0 || (item.amount === 0 || item.progressOverallPct === 0)) {
+          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:329',message:'Value normalization for item',data:{rowIndex:index,originalAmount:item.amount,normalizedAmount:normalizedItem.amount,originalProgress:item.progressOverallPct,normalizedProgress:normalizedItem.progressOverallPct,originalQty:item.qty,normalizedQty:normalizedItem.qty},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
+        return normalizedItem;
       });
 
       console.log(`[PUT /api/orders/${orderId}/items] Inserting ${orderItemsToInsert.length} order items into database...`);
       const insertedItems = await db.insert(orderItems).values(orderItemsToInsert).returning();
       console.log(`[PUT /api/orders/${orderId}/items] Successfully inserted ${orderItemsToInsert.length} order items`);
+
+      // Remap invoice linkedLineItems: old itemIds -> new itemIds using rowIndex as stable identifier
+      // Create mapping: oldItemId -> rowIndex (from existing items before deletion)
+      const oldItemIdToRowIndex = new Map(existingItems.map(item => [item.id, item.rowIndex]));
+      // Create mapping: rowIndex -> newItemId (from newly inserted items)
+      const rowIndexToNewItemId = new Map(insertedItems.map(item => [item.rowIndex, item.id]));
+      // Combine: oldItemId -> newItemId
+      const itemIdRemap = new Map<string, string>();
+      for (const [oldId, rowIndex] of oldItemIdToRowIndex) {
+        const newId = rowIndexToNewItemId.get(rowIndex);
+        if (newId) {
+          itemIdRemap.set(oldId, newId);
+        }
+      }
+
+      // Update all invoices' linkedLineItems if remapping is needed
+      if (itemIdRemap.size > 0) {
+        console.log(`[PUT /api/orders/${orderId}/items] Remapping ${itemIdRemap.size} item IDs in invoices...`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:350',message:'Starting invoice remapping',data:{remapCount:itemIdRemap.size,sampleRemaps:Array.from(itemIdRemap.entries()).slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+        // #endregion
+        const allInvoices = await db
+          .select()
+          .from(invoices)
+          .where(eq(invoices.orderId, orderId));
+        
+        let invoicesUpdated = 0;
+        for (const invoice of allInvoices) {
+          if (invoice.linkedLineItems && typeof invoice.linkedLineItems === 'object') {
+            const linkedItems = Array.isArray(invoice.linkedLineItems)
+              ? invoice.linkedLineItems
+              : [];
+            
+            let needsUpdate = false;
+            const remappedCount = { count: 0 };
+            const updatedLinkedItems = linkedItems.map((linkedItem: any) => {
+              if (linkedItem && typeof linkedItem === 'object' && 'orderItemId' in linkedItem) {
+                const oldItemId = String(linkedItem.orderItemId);
+                const newItemId = itemIdRemap.get(oldItemId);
+                if (newItemId && newItemId !== oldItemId) {
+                  needsUpdate = true;
+                  remappedCount.count++;
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:370',message:'Remapping invoice item',data:{invoiceId:invoice.id,oldItemId,newItemId,thisBillAmount:linkedItem.thisBillAmount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+                  // #endregion
+                  return {
+                    ...linkedItem,
+                    orderItemId: newItemId,
+                  };
+                }
+              }
+              return linkedItem;
+            });
+
+            if (needsUpdate) {
+              await db
+                .update(invoices)
+                .set({
+                  linkedLineItems: JSON.stringify(updatedLinkedItems),
+                  updatedAt: new Date(),
+                })
+                .where(eq(invoices.id, invoice.id));
+              invoicesUpdated++;
+              console.log(`[PUT /api/orders/${orderId}/items] Updated invoice ${invoice.id} linkedLineItems (remapped ${remappedCount.count} items)`);
+            }
+          }
+        }
+        console.log(`[PUT /api/orders/${orderId}/items] Completed invoice linkedLineItems remapping (${invoicesUpdated} invoices updated)`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:390',message:'Invoice remapping completed',data:{invoicesUpdated,totalInvoices:allInvoices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+        // #endregion
+      }
 
       // Log changes: compare existing items with new items
       const customerId = order.customerId;
@@ -344,6 +445,11 @@ export async function PUT(
       if (!skipChangeHistory) {
       for (const existingItem of existingItems) {
         if (!newMap.has(existingItem.rowIndex || -1)) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:346',message:'Attempting to log row_delete',data:{orderItemId:existingItem.id,rowIndex:existingItem.rowIndex,productService:existingItem.productService,note:'Item will be deleted before logging'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          // NOTE: This will fail with foreign key error because item is already deleted
+          // Should log BEFORE deletion or use null for orderItemId
           await logOrderItemChange(
             'row_delete',
             'row',
@@ -351,7 +457,7 @@ export async function PUT(
             null,
             orderId,
             customerId,
-            existingItem.id,
+            undefined, // Set to undefined to avoid foreign key constraint (item already deleted)
             existingItem.rowIndex || undefined
           );
           }
@@ -400,7 +506,19 @@ export async function PUT(
             if (field.name === 'rate' && (!field.old || field.old === '' || field.old === null)) {
               return false; // Don't log auto-computed rate changes
             }
-            return !valuesAreEqual(field.old, field.new);
+            const isEqual = valuesAreEqual(field.old, field.new);
+            // #region agent log
+            // Track comparisons for fields that might have 0 vs null issues
+            if ((field.name === 'previouslyInvoicedPct' || field.name === 'previouslyInvoicedAmount' || field.name === 'thisBill') && 
+                ((field.old === '0' || field.old === null || field.old === '') || 
+                 (field.new === '0' || field.new === null || field.new === ''))) {
+              fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:403',message:'Zero/null field comparison',data:{rowIndex:idx,fieldName:field.name,oldValue:field.old,oldType:typeof field.old,newValue:field.new,newType:typeof field.new,isEqual,willLog:!isEqual},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'})}).catch(()=>{});
+            }
+            if (!isEqual && (field.name === 'amount' || field.name === 'progressOverallPct' || field.name === 'qty')) {
+              fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:403',message:'Field comparison result',data:{rowIndex:idx,fieldName:field.name,oldValue:field.old,oldType:typeof field.old,newValue:field.new,newType:typeof field.new,isEqual,willLog:!isEqual},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            }
+            // #endregion
+            return !isEqual;
           });
 
           // If there are changes, log them as a single grouped entry

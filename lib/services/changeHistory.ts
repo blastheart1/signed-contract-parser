@@ -164,25 +164,45 @@ export function normalizeNumericString(value: string | null): string | null {
 
 /**
  * Compare two values, handling numeric normalization
+ * Treats "0", "0.00", "0.0000", null, and empty as equivalent for numeric fields
  */
 export function valuesAreEqual(oldValue: any, newValue: any): boolean {
   const oldStr = valueToString(oldValue);
   const newStr = valueToString(newValue);
   
+  // #region agent log
+  if ((oldValue === 0 || oldValue === '0' || oldValue === null || oldValue === '') || 
+      (newValue === 0 || newValue === '0' || newValue === null || newValue === '')) {
+    fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/services/changeHistory.ts:168',message:'valuesAreEqual comparison',data:{oldValue,oldType:typeof oldValue,oldStr,newValue,newType:typeof newValue,newStr},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  }
+  // #endregion
+  
   // If both are null/empty, they're equal
   if (!oldStr && !newStr) return true;
   
-  // If one is null and the other isn't, they're different
-  if (!oldStr || !newStr) return false;
+  // Try numeric comparison first (handles "0" vs null/empty case)
+  const oldNum = parseFloat(oldStr || '0');
+  const newNum = parseFloat(newStr || '0');
   
-  // Try numeric comparison for numeric-looking strings
-  const oldNum = parseFloat(oldStr);
-  const newNum = parseFloat(newStr);
-  
-  // If both are valid numbers, compare numerically
+  // If both can be parsed as numbers (including "0" and null/empty which parse to 0)
   if (!isNaN(oldNum) && !isNaN(newNum)) {
-    return Math.abs(oldNum - newNum) < 0.0001; // Small tolerance for floating point
+    // Treat 0, null, and empty as equivalent
+    if (oldNum === 0 && newNum === 0) {
+      // Both are effectively zero (could be "0", "0.00", null, or empty)
+      return true;
+    }
+    // For non-zero values, compare with tolerance
+    const result = Math.abs(oldNum - newNum) < 0.0001;
+    // #region agent log
+    if (!result && (oldNum === 0 || newNum === 0)) {
+      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/services/changeHistory.ts:194',message:'Numeric comparison result',data:{oldNum,newNum,diff:Math.abs(oldNum-newNum),result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    }
+    // #endregion
+    return result;
   }
+  
+  // If one is null/empty and the other isn't (and not numeric), they're different
+  if (!oldStr || !newStr) return false;
   
   // Otherwise, compare as strings
   return oldStr === newStr;
