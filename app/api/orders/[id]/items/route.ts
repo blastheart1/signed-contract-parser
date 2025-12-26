@@ -349,6 +349,14 @@ export async function PUT(
           itemType: item.type,
           mainCategory: item.mainCategory || null,
           subCategory: item.subCategory || null,
+          // Vendor Selection Fields (Additive - after all existing fields)
+          vendorName1: item.vendorName1 !== undefined && item.vendorName1 !== null && item.vendorName1 !== '' ? item.vendorName1 : null,
+          vendorPercentage: item.vendorPercentage !== undefined && item.vendorPercentage !== null && item.vendorPercentage !== '' ? (typeof item.vendorPercentage === 'number' ? item.vendorPercentage.toString() : item.vendorPercentage) : null,
+          totalWorkAssignedToVendor: item.totalWorkAssignedToVendor !== undefined && item.totalWorkAssignedToVendor !== null && item.totalWorkAssignedToVendor !== '' ? (typeof item.totalWorkAssignedToVendor === 'number' ? item.totalWorkAssignedToVendor.toString() : item.totalWorkAssignedToVendor) : null,
+          estimatedVendorCost: item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null && item.estimatedVendorCost !== '' ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost.toString() : item.estimatedVendorCost) : null,
+          totalAmountWorkCompleted: item.totalAmountWorkCompleted !== undefined && item.totalAmountWorkCompleted !== null && item.totalAmountWorkCompleted !== '' ? (typeof item.totalAmountWorkCompleted === 'number' ? item.totalAmountWorkCompleted.toString() : item.totalAmountWorkCompleted) : null,
+          vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null && item.vendorBillingToDate !== '' ? (typeof item.vendorBillingToDate === 'number' ? item.vendorBillingToDate.toString() : item.vendorBillingToDate) : null,
+          vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null && item.vendorSavingsDeficit !== '' ? (typeof item.vendorSavingsDeficit === 'number' ? item.vendorSavingsDeficit.toString() : item.vendorSavingsDeficit) : null,
         };
         // #region agent log
         if (index === 0 || (item.amount === 0 || item.progressOverallPct === 0)) {

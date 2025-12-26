@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, Clock, BarChart3, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, BarChart3, Trash2, Building2 } from 'lucide-react';
 import Sidebar, { type User } from '@/components/dashboard/Sidebar';
 
 export default function DashboardLayout({
@@ -51,6 +51,7 @@ export default function DashboardLayout({
   const navigationItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/dashboard/customers', label: 'Customers', icon: Users },
+    { href: '/dashboard/vendors', label: 'Vendors', icon: Building2 },
     { href: '/dashboard/timeline', label: 'Timeline', icon: Clock },
     { href: '/dashboard/reports', label: 'Reports and Analytics', icon: BarChart3 },
     { href: '/dashboard/trash', label: 'Trash', icon: Trash2 },

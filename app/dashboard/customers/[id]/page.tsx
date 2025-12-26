@@ -476,8 +476,9 @@ function CustomerDetailContent() {
         transition={{ duration: 0.3, delay: 0.2 }}
       >
         <Tabs defaultValue="order-items" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="order-items">Order Items</TabsTrigger>
+            <TabsTrigger value="vendor-selection">Vendor Selection</TabsTrigger>
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
           </TabsList>
           <TabsContent value="order-items" className="mt-6 space-y-4">
@@ -494,6 +495,24 @@ function CustomerDetailContent() {
               isDeleted={isDeleted}
               projectStartDate={(contract.order as any)?.projectStartDate}
               userRole={userRole}
+              visibleColumnSet="order-items"
+            />
+          </TabsContent>
+          <TabsContent value="vendor-selection" className="mt-6 space-y-4">
+            <OrderItemsValidationAlert 
+              contract={contract} 
+              currentItems={currentItems}
+              customerId={contract.customer?.dbxCustomerId}
+            />
+            <OrderTable 
+              items={contract.items} 
+              onItemsChange={setCurrentItems} 
+              orderId={contract.id}
+              onSaveSuccess={handleOrderItemsSave}
+              isDeleted={isDeleted}
+              projectStartDate={(contract.order as any)?.projectStartDate}
+              userRole={userRole}
+              visibleColumnSet="vendor-selection"
             />
           </TabsContent>
           <TabsContent value="invoices" className="mt-6 space-y-6">

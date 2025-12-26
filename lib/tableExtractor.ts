@@ -42,6 +42,14 @@ export interface OrderItem {
   // NEW: Optional package fields (backward compatible)
   isOptional?: boolean; // true if item belongs to an optional package
   optionalPackageNumber?: number; // Package number (1, 2, etc.) if optional
+  // Vendor Selection fields (columns Q-W)
+  vendorName1?: string;
+  vendorPercentage?: number | string;
+  totalWorkAssignedToVendor?: number | string;
+  estimatedVendorCost?: number | string;
+  totalAmountWorkCompleted?: number | string;
+  vendorBillingToDate?: number | string;
+  vendorSavingsDeficit?: number | string;
 }
 
 /**

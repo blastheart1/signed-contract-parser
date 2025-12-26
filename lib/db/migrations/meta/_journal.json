@@ -57,6 +57,20 @@
       "when": 1765306296970,
       "tag": "0007_milky_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1766766335171,
+      "tag": "0008_stiff_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1766773330712,
+      "tag": "0009_careful_stingray",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import FilterableTableHeaderText from '@/components/dashboard/FilterableTableHeaderText';
+import VendorNameInput from '@/components/dashboard/VendorNameInput';
 import type { OrderItem } from '@/lib/tableExtractor';
 import type { UserRole } from '@/lib/auth/permissions';
 
@@ -45,6 +46,7 @@ interface OrderTableProps {
   isDeleted?: boolean; // Whether the contract is deleted
   projectStartDate?: string; // Project Start Date - required for edit mode (except for accountant role)
   userRole?: UserRole | null; // User role - accountant can edit without projectStartDate
+  visibleColumnSet?: 'order-items' | 'vendor-selection'; // Which column set to display
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -55,6 +57,14 @@ interface EditableOrderItem extends OrderItem {
   previouslyInvoicedAmount?: number | string;
   newProgressPct?: number | string;
   thisBill?: number | string;
+  // Vendor Selection fields
+  vendorName1?: string;
+  vendorPercentage?: number | string;
+  totalWorkAssignedToVendor?: number | string;
+  estimatedVendorCost?: number | string;
+  totalAmountWorkCompleted?: number | string;
+  vendorBillingToDate?: number | string;
+  vendorSavingsDeficit?: number | string;
 }
 
 // Sortable row component
@@ -76,6 +86,8 @@ function SortableRow({
   showActionsColumn,
   canEdit = true, // Default to true for backward compatibility
   userRole,
+  visibleColumnSet = 'order-items',
+  vendors = [],
 }: {
   item: EditableOrderItem;
   index: number;
@@ -94,6 +106,8 @@ function SortableRow({
   showActionsColumn?: boolean;
   canEdit?: boolean;
   userRole?: UserRole | null;
+  visibleColumnSet?: 'order-items' | 'vendor-selection';
+  vendors?: Array<{ id: string; name: string; status: 'active' | 'inactive' }>;
 }) {
   const {
     attributes,
@@ -213,7 +227,11 @@ function SortableRow({
       {/* Insertion line above row */}
       {showInsertAbove && (
         <tr className="relative">
-          <td colSpan={isEditing ? (showActionsColumn ? 11 : 10) : 10} className="h-2 p-0 relative">
+          <td colSpan={
+            visibleColumnSet === 'vendor-selection' 
+              ? (isEditing && showActionsColumn ? 9 : 8)
+              : (isEditing && showActionsColumn ? 11 : 10)
+          } className="h-2 p-0 relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full h-0.5 bg-primary border-t-2 border-t-primary border-dashed"></div>
               <div className="absolute left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-semibold shadow-lg whitespace-nowrap">
@@ -277,201 +295,343 @@ function SortableRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="text-right w-[70px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            value={item.qty || ''}
-            onChange={(e) => onCellChange(item.id, 'qty', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[86px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.rate || ''}
-            onChange={(e) => onCellChange(item.id, 'rate', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right font-medium w-[95px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={item.amount || ''}
-            onChange={(e) => onCellChange(item.id, 'amount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={!isItem}
-            readOnly={!isItem}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[90px] min-h-[32px]">
-        {(isEditing || editingColumn === 'progressOverall') ? (
-          <div className="flex items-center justify-end gap-1 w-full">
-            <Input
-              type="number"
-              min="0"
-              max="100"
-              step="5"
-              value={item.progressOverallPct ?? ''}
-              onChange={(e) => {
-                const parsed = parseFloat(e.target.value);
-                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
-                // Clamp value between 0 and 100
-                if (value !== '' && typeof value === 'number') {
-                  value = Math.max(0, Math.min(100, value));
-                }
-                onCellChange(item.id, 'progressOverallPct', value);
-              }}
-              className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-              placeholder="0"
-              disabled={!isItem}
-              readOnly={!isItem}
-            />
-            <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
-          </div>
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[110px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={isItem ? calculatedCompletedAmount : (item.completedAmount || '')}
-            onChange={(e) => onCellChange(item.id, 'completedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={true}
-            readOnly={true}
-            title={isItem ? "Calculated: % Progress Overall × Amount" : "Not applicable for headers"}
-            style={{ paddingRight: '8px' }}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[115px] min-h-[32px]">
-        {(isEditing || editingColumn === 'previouslyInvoiced') ? (
-          <div className="flex items-center justify-end gap-1 w-full">
-            <Input
-              type="number"
-              min="0"
-              max="100"
-              step="5"
-              value={item.previouslyInvoicedPct ?? ''}
-              onChange={(e) => {
-                const parsed = parseFloat(e.target.value);
-                let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
-                // Clamp value between 0 and 100
-                if (value !== '' && typeof value === 'number') {
-                  value = Math.max(0, Math.min(100, value));
-                }
-                onCellChange(item.id, 'previouslyInvoicedPct', value);
-              }}
-              className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-              placeholder="0"
-              disabled={!isItem}
-              readOnly={!isItem}
-            />
-            <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
-          </div>
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[140px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={isItem ? calculatedPreviouslyInvoicedAmount : (item.previouslyInvoicedAmount || '')}
-            onChange={(e) => onCellChange(item.id, 'previouslyInvoicedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={true}
-            readOnly={true}
-            title={isItem ? "Calculated: Amount × % Previously Invoiced" : "Not applicable for headers"}
-            style={{ paddingRight: '8px' }}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[90px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={isItem ? calculatedNewProgressPct : (item.newProgressPct || '')}
-            onChange={(e) => onCellChange(item.id, 'newProgressPct', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={true}
-            readOnly={true}
-            title={isItem ? "Calculated: % Progress Overall - % Previously Invoiced" : "Not applicable for headers"}
-            style={{ paddingRight: '8px' }}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right w-[105px] min-h-[32px]">
-        {isEditing ? (
-          <Input
-            type="number"
-            step="0.01"
-            value={isItem ? calculatedThisBill : (item.thisBill || '')}
-            onChange={(e) => onCellChange(item.id, 'thisBill', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-            className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
-            placeholder="0.00"
-            disabled={true}
-            readOnly={true}
-            title={isItem ? "Calculated: % New Progress × Amount" : "Not applicable for headers"}
-            style={{ paddingRight: '8px' }}
-          />
-        ) : (
-          <div className="min-h-[32px] flex items-center justify-end">
-            {isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''}
-          </div>
-        )}
-      </TableCell>
+      {/* Order Items Columns (D-N) - only show when visibleColumnSet is 'order-items' */}
+      {visibleColumnSet === 'order-items' && (
+        <>
+          <TableCell className="text-right w-[70px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                value={item.qty || ''}
+                onChange={(e) => onCellChange(item.id, 'qty', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0"
+                disabled={!isItem}
+                readOnly={!isItem}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.qty ? formatNumber(item.qty) : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[86px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.rate || ''}
+                onChange={(e) => onCellChange(item.id, 'rate', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={!isItem}
+                readOnly={!isItem}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.rate ? formatNumber(item.rate) : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right font-medium w-[95px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.amount || ''}
+                onChange={(e) => onCellChange(item.id, 'amount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={!isItem}
+                readOnly={!isItem}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.amount ? `$${formatNumber(item.amount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[90px] min-h-[32px]">
+            {(isEditing || editingColumn === 'progressOverall') ? (
+              <div className="flex items-center justify-end gap-1 w-full">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={item.progressOverallPct ?? ''}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
+                    // Clamp value between 0 and 100
+                    if (value !== '' && typeof value === 'number') {
+                      value = Math.max(0, Math.min(100, value));
+                    }
+                    onCellChange(item.id, 'progressOverallPct', value);
+                  }}
+                  className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                  placeholder="0"
+                  disabled={!isItem}
+                  readOnly={!isItem}
+                />
+                <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[110px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={isItem ? calculatedCompletedAmount : (item.completedAmount || '')}
+                onChange={(e) => onCellChange(item.id, 'completedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={true}
+                readOnly={true}
+                title={isItem ? "Calculated: % Progress Overall × Amount" : "Not applicable for headers"}
+                style={{ paddingRight: '8px' }}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (calculatedCompletedAmount ? `$${formatNumber(calculatedCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[115px] min-h-[32px]">
+            {(isEditing || editingColumn === 'previouslyInvoiced') ? (
+              <div className="flex items-center justify-end gap-1 w-full">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={item.previouslyInvoicedPct ?? ''}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
+                    // Clamp value between 0 and 100
+                    if (value !== '' && typeof value === 'number') {
+                      value = Math.max(0, Math.min(100, value));
+                    }
+                    onCellChange(item.id, 'previouslyInvoicedPct', value);
+                  }}
+                  className={`h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                  placeholder="0"
+                  disabled={!isItem}
+                  readOnly={!isItem}
+                />
+                <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.previouslyInvoicedPct ? `${formatPercent(item.previouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[140px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={isItem ? calculatedPreviouslyInvoicedAmount : (item.previouslyInvoicedAmount || '')}
+                onChange={(e) => onCellChange(item.id, 'previouslyInvoicedAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={true}
+                readOnly={true}
+                title={isItem ? "Calculated: Amount × % Previously Invoiced" : "Not applicable for headers"}
+                style={{ paddingRight: '8px' }}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (calculatedPreviouslyInvoicedAmount ? `$${formatNumber(calculatedPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right w-[90px] min-h-[32px]">
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={isItem ? calculatedNewProgressPct : (item.newProgressPct || '')}
+                onChange={(e) => onCellChange(item.id, 'newProgressPct', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={true}
+                readOnly={true}
+                title={isItem ? "Calculated: % Progress Overall - % Previously Invoiced" : "Not applicable for headers"}
+                style={{ paddingRight: '8px' }}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (calculatedNewProgressPct ? `${formatPercent(calculatedNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className={cn("text-right w-[105px] min-h-[32px]", visibleColumnSet === 'order-items' && "border-r border-black")}>
+            {isEditing ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={isItem ? calculatedThisBill : (item.thisBill || '')}
+                onChange={(e) => onCellChange(item.id, 'thisBill', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className={`h-8 w-full box-border text-right bg-muted !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield ${!isItem ? 'opacity-30 cursor-not-allowed bg-muted/30' : ''}`}
+                placeholder="0.00"
+                disabled={true}
+                readOnly={true}
+                title={isItem ? "Calculated: % New Progress × Amount" : "Not applicable for headers"}
+                style={{ paddingRight: '8px' }}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (calculatedThisBill ? `$${formatNumber(calculatedThisBill)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+        </>
+      )}
+      {/* Vendor Selection Columns (Q-W) - only show when visibleColumnSet is 'vendor-selection' */}
+      {visibleColumnSet === 'vendor-selection' && (
+        <>
+          <TableCell className="text-center align-middle" style={{ width: '15%' }}>
+            {isEditing && isItem ? (
+              <div className="flex items-center justify-center">
+                {/* #region agent log */}
+                {(()=>{fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:502',message:'Rendering VendorNameInput component',data:{itemId:item.id,rowIndex:index},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'A'})}).catch(()=>{});return null;})()}
+                {/* #endregion */}
+                <VendorNameInput
+                  value={item.vendorName1 || ''}
+                  onChange={(value) => onCellChange(item.id, 'vendorName1', value)}
+                  className="h-8 w-full box-border !px-1 text-center"
+                  placeholder="Vendor name"
+                  disabled={isDeleted}
+                  vendors={vendors}
+                />
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-center">
+                {isItem ? (item.vendorName1 || <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '8%' }}>
+            {isEditing && isItem ? (
+              <div className="flex items-center justify-end gap-1 w-full">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={item.vendorPercentage ?? 100}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    const value = e.target.value === '' || isNaN(parsed) ? '' : Math.max(0, Math.min(100, parsed));
+                    onCellChange(item.id, 'vendorPercentage', value);
+                  }}
+                  className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                  placeholder="100"
+                  disabled={isDeleted}
+                />
+                <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.vendorPercentage ? `${formatPercent(item.vendorPercentage)}%` : '100%') : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.totalWorkAssignedToVendor ?? amount}
+                onChange={(e) => onCellChange(item.id, 'totalWorkAssignedToVendor', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.totalWorkAssignedToVendor ? `$${formatNumber(item.totalWorkAssignedToVendor)}` : (amount ? `$${formatNumber(amount)}` : <span className="text-muted-foreground/30">—</span>)) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '13%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.estimatedVendorCost ?? (amount * 0.5)}
+                onChange={(e) => onCellChange(item.id, 'estimatedVendorCost', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.estimatedVendorCost ? `$${formatNumber(item.estimatedVendorCost)}` : (amount ? `$${formatNumber(amount * 0.5)}` : <span className="text-muted-foreground/30">—</span>)) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.totalAmountWorkCompleted || ''}
+                onChange={(e) => onCellChange(item.id, 'totalAmountWorkCompleted', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.totalAmountWorkCompleted ? `$${formatNumber(item.totalAmountWorkCompleted)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '13%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.vendorBillingToDate || ''}
+                onChange={(e) => onCellChange(item.id, 'vendorBillingToDate', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.vendorBillingToDate ? `$${formatNumber(item.vendorBillingToDate)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className={cn("text-right min-h-[32px]", isEditing && showActionsColumn && "border-r border-black")} style={{ width: '21%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.vendorSavingsDeficit || ''}
+                onChange={(e) => onCellChange(item.id, 'vendorSavingsDeficit', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.vendorSavingsDeficit ? `$${formatNumber(item.vendorSavingsDeficit)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+        </>
+      )}
       {isEditing && showActionsColumn && (
         <TableCell className="w-[80px]">
           <div className="flex gap-1">
@@ -531,7 +691,11 @@ function SortableRow({
     {/* Insertion line below row */}
     {showInsertBelow && (
       <tr className="relative">
-        <td colSpan={isEditing ? (showActionsColumn ? 11 : 10) : 10} className="h-2 p-0 relative">
+        <td colSpan={
+          visibleColumnSet === 'vendor-selection' 
+            ? (isEditing && showActionsColumn ? 9 : 8)
+            : (isEditing && showActionsColumn ? 11 : 10)
+        } className="h-2 p-0 relative">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full h-0.5 bg-primary border-b-2 border-b-primary border-dashed"></div>
             <div className="absolute left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-semibold shadow-lg whitespace-nowrap">
@@ -545,7 +709,7 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate, userRole }: OrderTableProps) {
+export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate, userRole, visibleColumnSet = 'order-items' }: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editingColumn, setEditingColumn] = useState<'progressOverall' | 'previouslyInvoiced' | null>(null);
@@ -555,6 +719,57 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [showActionsColumn, setShowActionsColumn] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Load vendors once for all VendorNameInput components
+  const [vendors, setVendors] = useState<Array<{ id: string; name: string; status: 'active' | 'inactive' }>>([]);
+  const [vendorsLoading, setVendorsLoading] = useState(false);
+  
+  useEffect(() => {
+    // Only load vendors if we're in vendor-selection mode
+    if (visibleColumnSet !== 'vendor-selection') {
+      return;
+    }
+
+    let mounted = true;
+
+    const loadVendors = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:720',message:'OrderTable loading vendors once',data:{visibleColumnSet},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
+      // #endregion
+      try {
+        setVendorsLoading(true);
+        const response = await fetch('/api/vendors?status=active&pageSize=1000');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load vendors');
+        }
+
+        const data = await response.json();
+        
+        if (mounted && data.success) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:732',message:'OrderTable vendors loaded successfully',data:{vendorCount:data.data?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
+          // #endregion
+          setVendors(data.data || []);
+        }
+      } catch (error) {
+        console.error('[OrderTable] Error loading vendors:', error);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:738',message:'OrderTable vendor API call failed',data:{error:error instanceof Error?error.message:'Unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
+        // #endregion
+      } finally {
+        if (mounted) {
+          setVendorsLoading(false);
+        }
+      }
+    };
+
+    loadVendors();
+
+    return () => {
+      mounted = false;
+    };
+  }, [visibleColumnSet]);
 
   // Compute if edit mode is allowed
   // Accountant role can edit without projectStartDate, other roles require it
@@ -634,6 +849,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
 
   const [items, setItems] = useState<EditableOrderItem[]>(() => 
     initialItems.map((item, index) => {
+      const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
       const editableItem = {
         ...item,
         id: `item-${index}`,
@@ -641,12 +857,20 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         completedAmount: item.completedAmount || '',
         previouslyInvoicedPct: item.previouslyInvoicedPct || '',
         previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-        newProgressPct: item.newProgressPct || '',
-        thisBill: item.thisBill || '',
-      };
-      return autoComputeRate(editableItem);
-    })
-  );
+            newProgressPct: item.newProgressPct || '',
+            thisBill: item.thisBill || '',
+            // Vendor Selection - preserve actual values, only set defaults if truly undefined/null
+            vendorName1: item.vendorName1 !== undefined && item.vendorName1 !== null ? item.vendorName1 : '',
+            vendorPercentage: item.vendorPercentage !== undefined && item.vendorPercentage !== null ? item.vendorPercentage : 100,
+            totalWorkAssignedToVendor: item.totalWorkAssignedToVendor !== undefined && item.totalWorkAssignedToVendor !== null ? item.totalWorkAssignedToVendor : amount,
+            estimatedVendorCost: item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null ? item.estimatedVendorCost : (amount * 0.5),
+            totalAmountWorkCompleted: item.totalAmountWorkCompleted !== undefined && item.totalAmountWorkCompleted !== null ? item.totalAmountWorkCompleted : '',
+            vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null ? item.vendorBillingToDate : '',
+            vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null ? item.vendorSavingsDeficit : '',
+          };
+          return autoComputeRate(editableItem);
+        })
+      );
 
   // Track previous initialItems to detect changes
   const prevInitialItemsRef = useRef(initialItems);
@@ -658,6 +882,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     if (!isEditing) {
       setItems(
         initialItems.map((item, index) => {
+          const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
           const editableItem = {
             ...item,
             id: `item-${index}`,
@@ -667,6 +892,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
             newProgressPct: item.newProgressPct || '',
             thisBill: item.thisBill || '',
+            // Vendor Selection - preserve actual values, only set defaults if truly undefined/null
+            vendorName1: item.vendorName1 !== undefined && item.vendorName1 !== null ? item.vendorName1 : '',
+            vendorPercentage: item.vendorPercentage !== undefined && item.vendorPercentage !== null ? item.vendorPercentage : 100,
+            totalWorkAssignedToVendor: item.totalWorkAssignedToVendor !== undefined && item.totalWorkAssignedToVendor !== null ? item.totalWorkAssignedToVendor : amount,
+            estimatedVendorCost: item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null ? item.estimatedVendorCost : (amount * 0.5),
+            totalAmountWorkCompleted: item.totalAmountWorkCompleted !== undefined && item.totalAmountWorkCompleted !== null ? item.totalAmountWorkCompleted : '',
+            vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null ? item.vendorBillingToDate : '',
+            vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null ? item.vendorSavingsDeficit : '',
           };
           return autoComputeRate(editableItem);
         })
@@ -845,6 +1078,16 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
 
     try {
       const orderItems = items.map(convertToOrderItem);
+      // #region agent log
+      const vendorItems = orderItems.filter((item, idx) => {
+        const hasVendorData = item.vendorName1 || item.vendorPercentage !== undefined || item.totalWorkAssignedToVendor !== undefined || item.estimatedVendorCost !== undefined || item.totalAmountWorkCompleted !== undefined || item.vendorBillingToDate !== undefined || item.vendorSavingsDeficit !== undefined;
+        if (hasVendorData && idx < 3) {
+          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/dashboard/OrderTable.tsx:1020',message:'Saving vendor data',data:{itemIndex:idx,hasVendorName1:!!item.vendorName1,vendorName1:item.vendorName1,vendorPercentage:item.vendorPercentage,totalWorkAssignedToVendor:item.totalWorkAssignedToVendor,estimatedVendorCost:item.estimatedVendorCost},timestamp:Date.now(),sessionId:'debug-session',runId:'save-vendor',hypothesisId:'A'})}).catch(()=>{});
+        }
+        return hasVendorData;
+      });
+      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/dashboard/OrderTable.tsx:1020',message:'Save request summary',data:{totalItems:orderItems.length,itemsWithVendorData:vendorItems.length,firstItemVendorName1:orderItems[0]?.vendorName1,firstItemVendorPercentage:orderItems[0]?.vendorPercentage},timestamp:Date.now(),sessionId:'debug-session',runId:'save-vendor',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       
       const response = await fetch(`/api/orders/${orderId}/items`, {
         method: 'PUT',
@@ -927,6 +1170,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         setEditingColumn(null);
         setSaveError(null);
         setItems(initialItems.map((item, index) => {
+          const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
           const editableItem = {
             ...item,
             id: `item-${index}`,
@@ -936,6 +1180,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
             newProgressPct: item.newProgressPct || '',
             thisBill: item.thisBill || '',
+            // Vendor Selection - preserve actual values, only set defaults if truly undefined/null
+            vendorName1: item.vendorName1 !== undefined && item.vendorName1 !== null ? item.vendorName1 : '',
+            vendorPercentage: item.vendorPercentage !== undefined && item.vendorPercentage !== null ? item.vendorPercentage : 100,
+            totalWorkAssignedToVendor: item.totalWorkAssignedToVendor !== undefined && item.totalWorkAssignedToVendor !== null ? item.totalWorkAssignedToVendor : amount,
+            estimatedVendorCost: item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null ? item.estimatedVendorCost : (amount * 0.5),
+            totalAmountWorkCompleted: item.totalAmountWorkCompleted !== undefined && item.totalAmountWorkCompleted !== null ? item.totalAmountWorkCompleted : '',
+            vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null ? item.vendorBillingToDate : '',
+            vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null ? item.vendorSavingsDeficit : '',
           };
           return autoComputeRate(editableItem);
         }));
@@ -1184,6 +1436,80 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
     return value.toFixed(2);
   };
 
+  // Vendor Selection Totals
+  const totalVendorPercentage = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    const itemItems = filteredItems.filter(item => item.type === 'item');
+    let total = 0;
+    let count = 0;
+    itemItems.forEach(item => {
+      const pct = typeof item.vendorPercentage === 'number' ? item.vendorPercentage : (typeof item.vendorPercentage === 'string' ? parseFloat(String(item.vendorPercentage)) || 0 : 100);
+      total += pct;
+      count++;
+    });
+    return count > 0 ? total / count : 0;
+  }, [filteredItems, visibleColumnSet]);
+
+  const totalWorkAssignedToVendor = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const val = item.totalWorkAssignedToVendor !== undefined 
+          ? (typeof item.totalWorkAssignedToVendor === 'number' ? item.totalWorkAssignedToVendor : parseFloat(String(item.totalWorkAssignedToVendor)) || 0)
+          : (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0);
+        return sum + val;
+      }, 0);
+  }, [filteredItems, visibleColumnSet]);
+
+  const totalEstimatedVendorCost = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const val = item.estimatedVendorCost !== undefined
+          ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+          : ((typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0) * 0.5);
+        return sum + val;
+      }, 0);
+  }, [filteredItems, visibleColumnSet]);
+
+  const totalAmountWorkCompleted = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const val = item.totalAmountWorkCompleted 
+          ? (typeof item.totalAmountWorkCompleted === 'number' ? item.totalAmountWorkCompleted : parseFloat(String(item.totalAmountWorkCompleted)) || 0)
+          : 0;
+        return sum + val;
+      }, 0);
+  }, [filteredItems, visibleColumnSet]);
+
+  const totalVendorBillingToDate = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const val = item.vendorBillingToDate
+          ? (typeof item.vendorBillingToDate === 'number' ? item.vendorBillingToDate : parseFloat(String(item.vendorBillingToDate)) || 0)
+          : 0;
+        return sum + val;
+      }, 0);
+  }, [filteredItems, visibleColumnSet]);
+
+  const totalVendorSavingsDeficit = useMemo(() => {
+    if (visibleColumnSet !== 'vendor-selection') return 0;
+    return filteredItems
+      .filter(item => item.type === 'item')
+      .reduce((sum, item) => {
+        const val = item.vendorSavingsDeficit
+          ? (typeof item.vendorSavingsDeficit === 'number' ? item.vendorSavingsDeficit : parseFloat(String(item.vendorSavingsDeficit)) || 0)
+          : 0;
+        return sum + val;
+      }, 0);
+  }, [filteredItems, visibleColumnSet]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1429,7 +1755,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             <p className="text-sm text-destructive">{saveError}</p>
           </div>
         )}
-        <div className="rounded-md border overflow-x-hidden max-h-[600px] overflow-y-auto relative [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded [&:hover::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/50" style={{ scrollbarWidth: 'thin', scrollbarGutter: 'auto' }}>
+        <div className="rounded-md border max-h-[600px] overflow-y-auto relative [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded [&:hover::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/50" style={{ scrollbarWidth: 'thin', scrollbarGutter: 'auto' }}>
           <DndContext
             sensors={isDeleted ? [] : sensors}
             collisionDetection={closestCenter}
@@ -1437,7 +1763,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             onDragOver={isDeleted ? undefined : handleDragOver}
             onDragEnd={isDeleted ? undefined : handleDragEnd}
           >
-            <table className="w-full caption-bottom text-sm table-fixed border-separate border-spacing-0">
+            <table className={cn("w-full caption-bottom text-sm border-separate border-spacing-0", visibleColumnSet === 'vendor-selection' ? 'table-fixed' : 'table-fixed')} style={{ width: '100%', tableLayout: 'fixed' }}>
               <TableHeader>
                 <TableRow>
                   <FilterableTableHeaderText
@@ -1448,75 +1774,90 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     className="sticky top-0 z-10 bg-background w-[300px] h-8 pl-2"
                     showSeparator={true}
                   />
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[65px] whitespace-nowrap h-8">QTY</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[75px] whitespace-nowrap h-8">RATE</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[95px] whitespace-nowrap h-8">AMOUNT</TableHead>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <TableHead 
-                          className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[80px] h-8"
-                          onClick={() => {
-                            if (canEdit && !isDeleted) {
-                              setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall');
-                            } else if (!isDeleted && getEditRestrictionMessage) {
-                              toast({
-                                title: getEditRestrictionMessage.title,
-                                description: getEditRestrictionMessage.description,
-                                variant: 'destructive',
-                              });
-                            }
-                          }}
-                        >
-                          <span>% Progress<br />Overall</span>
-                        </TableHead>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          {isDeleted 
-                            ? 'Restore first before editing' 
-                            : !canEdit 
-                            ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
-                            : 'Click to edit: Set the overall progress percentage for items'}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[110px] whitespace-nowrap h-8">$ Completed</TableHead>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <TableHead 
-                          className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[100px] h-8"
-                          onClick={() => {
-                            if (canEdit && !isDeleted) {
-                              setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced');
-                            } else if (!isDeleted && getEditRestrictionMessage) {
-                              toast({
-                                title: getEditRestrictionMessage.title,
-                                description: getEditRestrictionMessage.description,
-                                variant: 'destructive',
-                              });
-                            }
-                          }}
-                        >
-                          <span>% PREVIOUSLY<br />INVOICED</span>
-                        </TableHead>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          {isDeleted 
-                            ? 'Restore first before editing' 
-                            : !canEdit 
-                            ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
-                            : 'Click to edit: Set the previously invoiced percentage for items'}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[120px] h-8">$ PREVIOUSLY<br />INVOICED</TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[90px] h-8">% NEW<br />PROGRESS</TableHead>
-                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
+                  {visibleColumnSet === 'order-items' && (
+                    <>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[65px] whitespace-nowrap h-8">QTY</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[75px] whitespace-nowrap h-8">RATE</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[95px] whitespace-nowrap h-8">AMOUNT</TableHead>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <TableHead 
+                              className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[80px] h-8"
+                              onClick={() => {
+                                if (canEdit && !isDeleted) {
+                                  setEditingColumn(editingColumn === 'progressOverall' ? null : 'progressOverall');
+                                } else if (!isDeleted && getEditRestrictionMessage) {
+                                  toast({
+                                    title: getEditRestrictionMessage.title,
+                                    description: getEditRestrictionMessage.description,
+                                    variant: 'destructive',
+                                  });
+                                }
+                              }}
+                            >
+                              <span>% Progress<br />Overall</span>
+                            </TableHead>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {isDeleted 
+                                ? 'Restore first before editing' 
+                                : !canEdit 
+                                ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
+                                : 'Click to edit: Set the overall progress percentage for items'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[110px] whitespace-nowrap h-8">$ Completed</TableHead>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <TableHead 
+                              className="sticky top-0 z-10 bg-muted dark:bg-muted text-right font-bold text-primary dark:text-primary/90 hover:shadow-lg hover:shadow-primary/50 dark:hover:shadow-primary/40 transition-all duration-200 cursor-pointer border-r border-black w-[100px] h-8"
+                              onClick={() => {
+                                if (canEdit && !isDeleted) {
+                                  setEditingColumn(editingColumn === 'previouslyInvoiced' ? null : 'previouslyInvoiced');
+                                } else if (!isDeleted && getEditRestrictionMessage) {
+                                  toast({
+                                    title: getEditRestrictionMessage.title,
+                                    description: getEditRestrictionMessage.description,
+                                    variant: 'destructive',
+                                  });
+                                }
+                              }}
+                            >
+                              <span>% PREVIOUSLY<br />INVOICED</span>
+                            </TableHead>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {isDeleted 
+                                ? 'Restore first before editing' 
+                                : !canEdit 
+                                ? (userRole !== 'accountant' ? 'Please update Project Start Date first' : '')
+                                : 'Click to edit: Set the previously invoiced percentage for items'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[120px] h-8">$ PREVIOUSLY<br />INVOICED</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black w-[90px] h-8">% NEW<br />PROGRESS</TableHead>
+                      <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
+                    </>
+                  )}
+                  {visibleColumnSet === 'vendor-selection' && (
+                    <>
+                      <TableHead className="sticky top-0 z-10 bg-background border-r border-black h-8 text-center align-middle" style={{ width: '15%' }}>VENDOR NAME 1</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '8%' }}>%</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>Total of all work<br />assigned to vendor</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '13%' }}>Estimated<br />vendor cost</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>TOTAL Amount of work<br />Completed to date</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '13%' }}>Vendor billing<br />to date</TableHead>
+                      <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "h-8")} style={{ width: '21%' }}>Vendor Savings<br />(Deficit)</TableHead>
+                    </>
+                  )}
                   {isEditing && showActionsColumn && <TableHead className="w-[80px] h-8">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -1547,6 +1888,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         isDeleted={isDeleted}
                         canEdit={canEdit}
                         userRole={userRole}
+                        vendors={vendors}
                         onEnterEditMode={() => {
                           if (canEdit) {
                           setIsEditing(true);
@@ -1560,37 +1902,65 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           }
                         }}
                         showActionsColumn={showActionsColumn}
+                        visibleColumnSet={visibleColumnSet}
                       />
                     );
                   })}
                   {/* Total row */}
                   <TableRow className="bg-muted/50 dark:bg-muted/30 border-t-2 border-primary/20">
-                    <TableCell className="font-bold text-right ">
+                    <TableCell className="font-bold text-right">
                       Total:
                     </TableCell>
-                    <TableCell className="text-right"></TableCell>
-                    <TableCell className="text-right border-r border-black"></TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      {!isNaN(totalProgressOverallPct) && totalProgressOverallPct !== 0 ? `${formatTotalPercent(totalProgressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      {!isNaN(totalCompletedAmount) && totalCompletedAmount !== 0 ? `$${formatTotalNumber(totalCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      {!isNaN(totalPreviouslyInvoicedPct) && totalPreviouslyInvoicedPct !== 0 ? `${formatTotalPercent(totalPreviouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      {!isNaN(totalPreviouslyInvoicedAmount) && totalPreviouslyInvoicedAmount !== 0 ? `$${formatTotalNumber(totalPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
-                    <TableCell className="text-right font-bold border-r border-black">
-                      {!isNaN(totalNewProgressPct) && totalNewProgressPct !== 0 ? `${formatTotalPercent(totalNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
-                    <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
-                      {!isNaN(totalThisBill) && totalThisBill !== 0 ? `$${formatTotalNumber(totalThisBill)}` : <span className="text-muted-foreground/30">—</span>}
-                    </TableCell>
+                    {visibleColumnSet === 'order-items' && (
+                      <>
+                        <TableCell className="text-right"></TableCell>
+                        <TableCell className="text-right border-r border-black"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalProgressOverallPct) && totalProgressOverallPct !== 0 ? `${formatTotalPercent(totalProgressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalCompletedAmount) && totalCompletedAmount !== 0 ? `$${formatTotalNumber(totalCompletedAmount)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalPreviouslyInvoicedPct) && totalPreviouslyInvoicedPct !== 0 ? `${formatTotalPercent(totalPreviouslyInvoicedPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalPreviouslyInvoicedAmount) && totalPreviouslyInvoicedAmount !== 0 ? `$${formatTotalNumber(totalPreviouslyInvoicedAmount)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalNewProgressPct) && totalNewProgressPct !== 0 ? `${formatTotalPercent(totalNewProgressPct)}%` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
+                          {!isNaN(totalThisBill) && totalThisBill !== 0 ? `$${formatTotalNumber(totalThisBill)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                      </>
+                    )}
+                    {visibleColumnSet === 'vendor-selection' && (
+                      <>
+                        <TableCell className="text-center"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalVendorPercentage) && totalVendorPercentage !== 0 ? `${formatTotalPercent(totalVendorPercentage)}%` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalWorkAssignedToVendor) && totalWorkAssignedToVendor !== 0 ? `$${formatTotalNumber(totalWorkAssignedToVendor)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalEstimatedVendorCost) && totalEstimatedVendorCost !== 0 ? `$${formatTotalNumber(totalEstimatedVendorCost)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalAmountWorkCompleted) && totalAmountWorkCompleted !== 0 ? `$${formatTotalNumber(totalAmountWorkCompleted)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalVendorBillingToDate) && totalVendorBillingToDate !== 0 ? `$${formatTotalNumber(totalVendorBillingToDate)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
+                          {!isNaN(totalVendorSavingsDeficit) && totalVendorSavingsDeficit !== 0 ? `$${formatTotalNumber(totalVendorSavingsDeficit)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                      </>
+                    )}
                     {isEditing && showActionsColumn && <TableCell></TableCell>}
                   </TableRow>
                 </SortableContext>

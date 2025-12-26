@@ -184,9 +184,17 @@ export async function saveContractToDatabase(contract: StoredContract) {
       previouslyInvoicedAmount: item.previouslyInvoicedAmount ? (typeof item.previouslyInvoicedAmount === 'number' ? item.previouslyInvoicedAmount.toString() : item.previouslyInvoicedAmount) : null,
       newProgressPct: item.newProgressPct ? (typeof item.newProgressPct === 'number' ? item.newProgressPct.toString() : item.newProgressPct) : null,
       thisBill: item.thisBill ? (typeof item.thisBill === 'number' ? item.thisBill.toString() : item.thisBill) : null,
-      itemType: item.type,
-      mainCategory: item.mainCategory || null,
-      subCategory: item.subCategory || null,
+        itemType: item.type,
+        mainCategory: item.mainCategory || null,
+        subCategory: item.subCategory || null,
+        // Vendor Selection Fields
+        vendorName1: item.vendorName1 || null,
+        vendorPercentage: item.vendorPercentage ? (typeof item.vendorPercentage === 'number' ? item.vendorPercentage.toString() : item.vendorPercentage) : null,
+        totalWorkAssignedToVendor: item.totalWorkAssignedToVendor ? (typeof item.totalWorkAssignedToVendor === 'number' ? item.totalWorkAssignedToVendor.toString() : item.totalWorkAssignedToVendor) : null,
+        estimatedVendorCost: item.estimatedVendorCost ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost.toString() : item.estimatedVendorCost) : null,
+        totalAmountWorkCompleted: item.totalAmountWorkCompleted ? (typeof item.totalAmountWorkCompleted === 'number' ? item.totalAmountWorkCompleted.toString() : item.totalAmountWorkCompleted) : null,
+        vendorBillingToDate: item.vendorBillingToDate ? (typeof item.vendorBillingToDate === 'number' ? item.vendorBillingToDate.toString() : item.vendorBillingToDate) : null,
+        vendorSavingsDeficit: item.vendorSavingsDeficit ? (typeof item.vendorSavingsDeficit === 'number' ? item.vendorSavingsDeficit.toString() : item.vendorSavingsDeficit) : null,
       };
     });
 
@@ -223,6 +231,14 @@ export function convertDatabaseToStoredContract(
         newProgressPct: item.newProgressPct ? parseFloat(item.newProgressPct) : undefined,
         thisBill: item.thisBill ? parseFloat(item.thisBill) : undefined,
         columnBLabel: item.columnBLabel || 'Initial', // Preserve column B label
+        // Vendor Selection Fields
+        vendorName1: item.vendorName1 || undefined,
+        vendorPercentage: item.vendorPercentage ? parseFloat(item.vendorPercentage) : undefined,
+        totalWorkAssignedToVendor: item.totalWorkAssignedToVendor ? parseFloat(item.totalWorkAssignedToVendor) : undefined,
+        estimatedVendorCost: item.estimatedVendorCost ? parseFloat(item.estimatedVendorCost) : undefined,
+        totalAmountWorkCompleted: item.totalAmountWorkCompleted ? parseFloat(item.totalAmountWorkCompleted) : undefined,
+        vendorBillingToDate: item.vendorBillingToDate ? parseFloat(item.vendorBillingToDate) : undefined,
+        vendorSavingsDeficit: item.vendorSavingsDeficit ? parseFloat(item.vendorSavingsDeficit) : undefined,
       };
       
       // Preserve addendum header marker

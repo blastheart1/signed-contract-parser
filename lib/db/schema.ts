@@ -7,6 +7,7 @@ export const orderStatusEnum = pgEnum('order_status', ['pending_updates', 'compl
 export const itemTypeEnum = pgEnum('item_type', ['maincategory', 'subcategory', 'item']);
 export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit', 'contract_add', 'stage_update', 'customer_delete', 'customer_restore']);
 export const customerStatusEnum = pgEnum('customer_status', ['pending_updates', 'completed']);
+export const vendorStatusEnum = pgEnum('vendor_status', ['active', 'inactive']);
 
 // Users Table
 export const users = pgTable('users', {
@@ -94,6 +95,14 @@ export const orderItems = pgTable('order_items', {
   itemType: itemTypeEnum('item_type').notNull(),
   mainCategory: varchar('main_category', { length: 255 }),
   subCategory: varchar('sub_category', { length: 255 }),
+  // Vendor Selection fields (columns Q-W)
+  vendorName1: varchar('vendor_name_1', { length: 255 }),
+  vendorPercentage: decimal('vendor_percentage', { precision: 10, scale: 4 }),
+  totalWorkAssignedToVendor: decimal('total_work_assigned_to_vendor', { precision: 15, scale: 2 }),
+  estimatedVendorCost: decimal('estimated_vendor_cost', { precision: 15, scale: 2 }),
+  totalAmountWorkCompleted: decimal('total_amount_work_completed', { precision: 15, scale: 2 }),
+  vendorBillingToDate: decimal('vendor_billing_to_date', { precision: 15, scale: 2 }),
+  vendorSavingsDeficit: decimal('vendor_savings_deficit', { precision: 15, scale: 2 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
@@ -162,6 +171,31 @@ export const alertAcknowledgments = pgTable('alert_acknowledgments', {
   customerIdIdx: index('alert_acknowledgments_customer_id_idx').on(table.customerId),
 }));
 
+// Vendors Table
+export const vendors = pgTable('vendors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  email: varchar('email', { length: 255 }),
+  phone: varchar('phone', { length: 50 }),
+  contactPerson: varchar('contact_person', { length: 255 }),
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  state: varchar('state', { length: 50 }),
+  zip: varchar('zip', { length: 20 }),
+  category: varchar('category', { length: 100 }), // e.g., "Plumbing", "Electrical", "Concrete"
+  status: vendorStatusEnum('status').default('active'),
+  notes: text('notes'),
+  specialties: text('specialties').array(), // Array of specialties
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at'), // Soft delete: when vendor was deleted (null = not deleted)
+}, (table) => ({
+  nameIdx: index('vendors_name_idx').on(table.name),
+  statusIdx: index('vendors_status_idx').on(table.status),
+  categoryIdx: index('vendors_category_idx').on(table.category),
+  deletedAtIdx: index('vendors_deleted_at_idx').on(table.deletedAt),
+}));
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -179,4 +213,6 @@ export type AdminPreference = typeof adminPreferences.$inferSelect;
 export type NewAdminPreference = typeof adminPreferences.$inferInsert;
 export type AlertAcknowledgment = typeof alertAcknowledgments.$inferSelect;
 export type NewAlertAcknowledgment = typeof alertAcknowledgments.$inferInsert;
+export type Vendor = typeof vendors.$inferSelect;
+export type NewVendor = typeof vendors.$inferInsert;
 
