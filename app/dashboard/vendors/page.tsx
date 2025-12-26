@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { Search, Plus, RefreshCw, Trash2, Building2, Download, Upload } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -492,14 +493,20 @@ export default function VendorsPage() {
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.3, delay: index * 0.05 }}
-                        onClick={() => {
-                          if (!showTrash) {
-                            handleViewVendor(vendor);
-                          }
-                        }}
-                        className={`border-b transition-colors duration-150 hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm ${!showTrash ? 'cursor-pointer' : ''}`}
+                        className={`border-b transition-colors duration-150 ${!showTrash ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm' : ''}`}
                       >
-                        <TableCell className="font-medium">{vendor.name}</TableCell>
+                        <TableCell className="font-medium">
+                          {!showTrash ? (
+                            <Link
+                              href={`/dashboard/vendors/${vendor.id}`}
+                              className="hover:underline"
+                            >
+                              {vendor.name}
+                            </Link>
+                          ) : (
+                            vendor.name
+                          )}
+                        </TableCell>
                         <TableCell>
                           {vendor.category ? (
                             <Badge variant="outline">{vendor.category}</Badge>

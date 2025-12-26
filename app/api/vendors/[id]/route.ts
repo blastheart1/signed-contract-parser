@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { eq, isNotNull, sql, and, isNull } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
@@ -22,9 +22,96 @@ export async function GET(
       );
     }
 
+    // Calculate performance metrics from order_items
+    const metricsData = await db
+      .select({
+        totalWorkAssigned: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.totalWorkAssignedToVendor} AS NUMERIC)), 0)`,
+        totalEstimatedCost: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.estimatedVendorCost} AS NUMERIC)), 0)`,
+        totalActualCost: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.vendorBillingToDate} AS NUMERIC)), 0)`,
+        totalProfitability: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.vendorSavingsDeficit} AS NUMERIC)), 0)`,
+        itemCount: sql<number>`COUNT(*)`,
+        projectCount: sql<number>`COUNT(DISTINCT ${schema.orderItems.orderId})`,
+      })
+      .from(schema.orderItems)
+      .innerJoin(schema.orders, eq(schema.orderItems.orderId, schema.orders.id))
+      .innerJoin(schema.customers, eq(schema.orders.customerId, schema.customers.dbxCustomerId))
+      .where(
+        and(
+          eq(schema.orderItems.vendorName1, vendor.name),
+          isNotNull(schema.orderItems.vendorName1),
+          isNull(schema.customers.deletedAt)
+        )
+      );
+
+    const metrics = metricsData[0] || {
+      totalWorkAssigned: 0,
+      totalEstimatedCost: 0,
+      totalActualCost: 0,
+      totalProfitability: 0,
+      itemCount: 0,
+      projectCount: 0,
+    };
+
+    const totalWorkAssigned = Number(metrics.totalWorkAssigned) || 0;
+    const totalEstimatedCost = Number(metrics.totalEstimatedCost) || 0;
+    const totalActualCost = Number(metrics.totalActualCost) || 0;
+    const totalProfitability = Number(metrics.totalProfitability) || 0;
+    const itemCount = Number(metrics.itemCount) || 0;
+    const projectCount = Number(metrics.projectCount) || 0;
+
+    // Calculate cost variance
+    const costVariance = totalEstimatedCost - totalActualCost;
+    const costVariancePercentage = totalEstimatedCost > 0 
+      ? (costVariance / totalEstimatedCost) * 100 
+      : 0;
+
+    // Calculate profit margin
+    const profitMargin = totalWorkAssigned > 0 
+      ? (totalProfitability / totalWorkAssigned) * 100 
+      : 0;
+
+    // Calculate cost accuracy score (0-100, based on variance percentage)
+    // Perfect accuracy (0% variance) = 100, ±5% = 95, ±10% = 90, ±15% = 85, etc.
+    const costAccuracyScore = Math.max(0, Math.min(100, 100 - Math.abs(costVariancePercentage) * 2));
+
+    // Calculate profitability score (0-100, based on profit margin)
+    // 15%+ margin = 100, 10% = 67, 5% = 33, 0% = 0, negative = 0
+    const profitabilityScore = Math.max(0, Math.min(100, (profitMargin / 15) * 100));
+
+    // Overall performance score (weighted: 40% cost accuracy, 40% profitability, 20% reliability)
+    // Reliability score is placeholder (defaults to 80 for now)
+    const reliabilityScore = 80; // Placeholder until we have completion rate data
+    const overallPerformanceScore = (costAccuracyScore * 0.4) + (profitabilityScore * 0.4) + (reliabilityScore * 0.2);
+
+    // Determine risk level
+    let riskLevel: 'low' | 'medium' | 'high' = 'low';
+    if (totalProfitability < 0 || Math.abs(costVariancePercentage) > 15 || profitMargin < 0) {
+      riskLevel = 'high';
+    } else if (Math.abs(costVariancePercentage) > 10 || profitMargin < 5) {
+      riskLevel = 'medium';
+    }
+
     return NextResponse.json({
       success: true,
-      data: vendor,
+      data: {
+        ...vendor,
+        performanceMetrics: {
+          totalWorkAssigned,
+          totalEstimatedCost,
+          totalActualCost,
+          totalProfitability,
+          costVariance,
+          costVariancePercentage: Math.round(costVariancePercentage * 100) / 100,
+          profitMargin: Math.round(profitMargin * 100) / 100,
+          itemCount,
+          projectCount,
+          costAccuracyScore: Math.round(costAccuracyScore * 100) / 100,
+          profitabilityScore: Math.round(profitabilityScore * 100) / 100,
+          reliabilityScore,
+          overallPerformanceScore: Math.round(overallPerformanceScore * 100) / 100,
+          riskLevel,
+        },
+      },
     });
   } catch (error) {
     console.error('[Vendors API] Error fetching vendor:', error);
