@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SortableTableHeaderArrowOnly from '@/components/dashboard/SortableTableHeaderArrowOnly';
+import FilterableTableHeader from '@/components/dashboard/FilterableTableHeader';
+import { sortData, type SortState } from '@/lib/utils/tableSorting';
 
 interface AnalyticsData {
   overall: {
@@ -77,6 +81,44 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'category' | 'vendor'>(initialView);
+  
+  // Sorting state for category view
+  const [categorySortState, setCategorySortState] = useState<SortState<AnalyticsData['byCategory'][0]>>({
+    column: null,
+    direction: null,
+  });
+  
+  // Sorting state for vendor view
+  const [vendorSortState, setVendorSortState] = useState<SortState<AnalyticsData['byVendor'][0]>>({
+    column: null,
+    direction: null,
+  });
+  
+  // Filtering state for category
+  const [categoryFilter, setCategoryFilter] = useState<Set<string | null>>(new Set());
+  
+  // Vendor name to ID mapping for clickable vendor names
+  const [vendorNameToIdMap, setVendorNameToIdMap] = useState<Map<string, string>>(new Map());
+
+  // Fetch vendors to create name-to-ID mapping
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const res = await fetch('/api/vendors?pageSize=1000&includeDeleted=false');
+        const data = await res.json();
+        if (data.success) {
+          const map = new Map<string, string>();
+          data.data.forEach((v: { id: string; name: string }) => {
+            map.set(v.name, v.id);
+          });
+          setVendorNameToIdMap(map);
+        }
+      } catch (err) {
+        console.error('Failed to fetch vendors for mapping:', err);
+      }
+    };
+    fetchVendors();
+  }, []);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -112,6 +154,78 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
 
     fetchAnalytics();
   }, [vendorId, view]);
+
+  // Get unique categories for filter - must be before early returns
+  const uniqueCategories = useMemo(() => {
+    if (!data) return [];
+    const cats = new Set<string>();
+    data.byCategory.forEach(cat => {
+      if (cat.category) {
+        cats.add(cat.category);
+      }
+    });
+    return Array.from(cats).sort().map(cat => ({ value: cat, label: cat }));
+  }, [data]);
+
+  // Sort and filter category data - must be before early returns
+  const processedCategoryData = useMemo(() => {
+    if (!data || !data.byCategory) return [];
+    
+    let filtered = data.byCategory;
+    
+    // Apply category filter
+    if (categoryFilter.size > 0) {
+      filtered = filtered.filter(cat => categoryFilter.has(cat.category));
+    }
+    
+    // Apply sorting
+    return sortData(filtered, categorySortState, (item, column) => {
+      switch (column) {
+        case 'category':
+          return item.category;
+        case 'totalWorkAssigned':
+          return item.totalWorkAssigned;
+        case 'totalEstimatedCost':
+          return item.totalEstimatedCost;
+        case 'totalActualCost':
+          return item.totalActualCost;
+        case 'totalProfitability':
+          return item.totalProfitability;
+        case 'averageProfitMargin':
+          return item.averageProfitMargin;
+        case 'averageCostVariancePercentage':
+          return item.averageCostVariancePercentage;
+        default:
+          return item[column];
+      }
+    });
+  }, [data, categorySortState, categoryFilter]);
+
+  // Sort vendor data - must be before early returns
+  const processedVendorData = useMemo(() => {
+    if (!data || !data.byVendor) return [];
+    
+    return sortData(data.byVendor, vendorSortState, (item, column) => {
+      switch (column) {
+        case 'vendorName':
+          return item.vendorName;
+        case 'totalWorkAssigned':
+          return item.totalWorkAssigned;
+        case 'totalEstimatedCost':
+          return item.totalEstimatedCost;
+        case 'totalActualCost':
+          return item.totalActualCost;
+        case 'totalProfitability':
+          return item.totalProfitability;
+        case 'profitMargin':
+          return item.profitMargin;
+        case 'costVariancePercentage':
+          return item.costVariancePercentage;
+        default:
+          return item[column];
+      }
+    });
+  }, [data, vendorSortState]);
 
   if (loading) {
     return (
@@ -178,9 +292,9 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
   };
 
   const getVarianceStatusBadge = (status: 'acceptable' | 'monitor' | 'action_required') => {
-    if (status === 'acceptable') return <Badge variant="default" className="bg-green-600">Acceptable</Badge>;
-    if (status === 'monitor') return <Badge variant="secondary" className="bg-yellow-600">Monitor</Badge>;
-    return <Badge variant="destructive">Action Required</Badge>;
+    if (status === 'acceptable') return <Badge variant="default" className="bg-green-600 w-[120px] flex items-center justify-center">Acceptable</Badge>;
+    if (status === 'monitor') return <Badge variant="secondary" className="bg-yellow-600 w-[120px] flex items-center justify-center">Monitor</Badge>;
+    return <Badge variant="destructive" className="w-[120px] flex items-center justify-center">Action Required</Badge>;
   };
 
   return (
@@ -235,7 +349,13 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
           </div>
           <div className="p-4 border rounded-lg">
             <div className="text-xs text-muted-foreground mb-1">Cost Variance</div>
-            <div className={`text-2xl font-bold ${getVarianceStatusColor(data.overall.averageCostVariancePercentage > 10 ? 'action_required' : data.overall.averageCostVariancePercentage > 5 ? 'monitor' : 'acceptable')}`}>
+            <div className={`text-2xl font-bold ${getVarianceStatusColor(
+              data.overall.averageCostVariancePercentage < -10 
+                ? 'action_required' 
+                : data.overall.averageCostVariancePercentage < -5 || data.overall.averageCostVariancePercentage > 20
+                ? 'monitor' 
+                : 'acceptable'
+            )}`}>
               {formatPercent(data.overall.averageCostVariancePercentage)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
@@ -245,28 +365,80 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
         </div>
 
         {/* Category View */}
-        {view === 'category' && data.byCategory.length > 0 && (
+        {view === 'category' && processedCategoryData.length > 0 && (
           <div>
             <h4 className="text-sm font-semibold mb-3">Profitability by Category</h4>
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Work Assigned</TableHead>
-                    <TableHead className="text-right">Estimated Cost</TableHead>
-                    <TableHead className="text-right">Actual Cost</TableHead>
-                    <TableHead className="text-right">Profitability</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    <TableHead className="text-right">Cost Variance</TableHead>
-                    <TableHead className="text-right">Vendors</TableHead>
+                    <FilterableTableHeader
+                      title="Category"
+                      options={uniqueCategories}
+                      selectedValues={categoryFilter}
+                      onFilterChange={setCategoryFilter}
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalWorkAssigned"
+                      title="Work Assigned"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalEstimatedCost"
+                      title="Estimated Cost"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalActualCost"
+                      title="Actual Cost"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalProfitability"
+                      title="Profitability"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="averageProfitMargin"
+                      title="Margin"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="averageCostVariancePercentage"
+                      title="Cost Variance"
+                      currentSort={categorySortState}
+                      onSortChange={(col, dir) => setCategorySortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <TableHead className="text-right border-l-2 border-border">Vendors</TableHead>
                     <TableHead className="text-right">Projects</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.byCategory.map((category) => (
-                    <TableRow key={category.category}>
-                      <TableCell className="font-medium">{category.category}</TableCell>
+                  {processedCategoryData.map((category) => (
+                    <TableRow key={category.category} className="hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150">
+                      <TableCell className="font-medium">
+                        {category.category ? (
+                          <Link 
+                            href={`/dashboard/categories/${encodeURIComponent(category.category)}`}
+                            className="hover:underline cursor-pointer"
+                          >
+                            {category.category}
+                          </Link>
+                        ) : (
+                          category.category
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">{formatCurrency(category.totalWorkAssigned)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(category.totalEstimatedCost)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(category.totalActualCost)}</TableCell>
@@ -295,7 +467,7 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
         )}
 
         {/* Vendor View */}
-        {view === 'vendor' && data.byVendor && data.byVendor.length > 0 && (
+        {view === 'vendor' && processedVendorData.length > 0 && (
           <div>
             <h4 className="text-sm font-semibold mb-3">Profitability by Vendor</h4>
             <div className="rounded-md border overflow-x-auto">
@@ -303,20 +475,66 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
                 <TableHeader>
                   <TableRow>
                     <TableHead>Vendor</TableHead>
-                    <TableHead className="text-right">Work Assigned</TableHead>
-                    <TableHead className="text-right">Estimated Cost</TableHead>
-                    <TableHead className="text-right">Actual Cost</TableHead>
-                    <TableHead className="text-right">Profitability</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    <TableHead className="text-right">Cost Variance</TableHead>
-                    <TableHead className="text-right">Categories</TableHead>
+                    <SortableTableHeaderArrowOnly
+                      column="totalWorkAssigned"
+                      title="Work Assigned"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right border-l-2 border-border"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalEstimatedCost"
+                      title="Estimated Cost"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalActualCost"
+                      title="Actual Cost"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="totalProfitability"
+                      title="Profitability"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="profitMargin"
+                      title="Margin"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <SortableTableHeaderArrowOnly
+                      column="costVariancePercentage"
+                      title="Cost Variance"
+                      currentSort={vendorSortState}
+                      onSortChange={(col, dir) => setVendorSortState({ column: col, direction: dir })}
+                      className="text-right"
+                    />
+                    <TableHead className="text-right border-l-2 border-border">Categories</TableHead>
                     <TableHead className="text-right">Projects</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.byVendor.map((vendor) => (
-                    <TableRow key={vendor.vendorName}>
-                      <TableCell className="font-medium">{vendor.vendorName}</TableCell>
+                  {processedVendorData.map((vendor) => {
+                    const vendorId = vendorNameToIdMap.get(vendor.vendorName);
+                    return (
+                    <TableRow key={vendor.vendorName} className="hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150">
+                      <TableCell className="font-medium">
+                        {vendorId ? (
+                          <Link href={`/dashboard/vendors/${vendorId}`} className="hover:underline cursor-pointer">
+                            {vendor.vendorName}
+                          </Link>
+                        ) : (
+                          <span>{vendor.vendorName}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">{formatCurrency(vendor.totalWorkAssigned)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(vendor.totalEstimatedCost)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(vendor.totalActualCost)}</TableCell>
@@ -337,16 +555,19 @@ export default function VendorAnalyticsCard({ vendorId, view: initialView = 'cat
                       <TableCell className="text-right">{vendor.categoryCount}</TableCell>
                       <TableCell className="text-right">{vendor.projectCount}</TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           </div>
         )}
 
-        {((view === 'category' && data.byCategory.length === 0) || (view === 'vendor' && (!data.byVendor || data.byVendor.length === 0))) && (
+        {((view === 'category' && processedCategoryData.length === 0) || (view === 'vendor' && processedVendorData.length === 0)) && (
           <div className="text-center py-8 text-muted-foreground">
-            No vendor data available. Assign vendors to order items to see analytics.
+            {categoryFilter.size > 0 || (view === 'category' && data?.byCategory.length === 0) || (view === 'vendor' && (!data?.byVendor || data.byVendor.length === 0))
+              ? 'No vendor data available. Assign vendors to order items to see analytics.'
+              : 'No data matches the current filters.'}
           </div>
         )}
       </CardContent>

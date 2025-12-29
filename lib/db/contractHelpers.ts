@@ -184,9 +184,9 @@ export async function saveContractToDatabase(contract: StoredContract) {
       previouslyInvoicedAmount: item.previouslyInvoicedAmount ? (typeof item.previouslyInvoicedAmount === 'number' ? item.previouslyInvoicedAmount.toString() : item.previouslyInvoicedAmount) : null,
       newProgressPct: item.newProgressPct ? (typeof item.newProgressPct === 'number' ? item.newProgressPct.toString() : item.newProgressPct) : null,
       thisBill: item.thisBill ? (typeof item.thisBill === 'number' ? item.thisBill.toString() : item.thisBill) : null,
-        itemType: item.type,
-        mainCategory: item.mainCategory || null,
-        subCategory: item.subCategory || null,
+      itemType: item.type,
+      mainCategory: item.mainCategory || null,
+      subCategory: item.subCategory || null,
         // Vendor Selection Fields
         vendorName1: item.vendorName1 || null,
         vendorPercentage: item.vendorPercentage ? (typeof item.vendorPercentage === 'number' ? item.vendorPercentage.toString() : item.vendorPercentage) : null,

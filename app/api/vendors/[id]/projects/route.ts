@@ -65,7 +65,10 @@ export async function GET(
       const totalWorkAssigned = Number(project.totalWorkAssigned) || 0;
       const totalEstimatedCost = Number(project.totalEstimatedCost) || 0;
       const totalActualCost = Number(project.totalActualCost) || 0;
-      const totalProfitability = Number(project.totalProfitability) || 0;
+
+      // Calculate profitability: totalWorkAssigned - totalActualCost
+      // Use computed value instead of stored vendorSavingsDeficit which may be 0 or not populated
+      const totalProfitability = totalWorkAssigned - totalActualCost;
 
       // Calculate profit margin
       const profitMargin = totalWorkAssigned > 0 

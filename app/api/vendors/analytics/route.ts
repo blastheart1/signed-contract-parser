@@ -81,13 +81,22 @@ export async function GET(request: NextRequest) {
         ? (costVariance / totalEstimatedCost) * 100 
         : 0;
 
-      // Variance status: Green: -5% to +5%, Yellow: ±5% to ±10%, Red: >±10%
-      const absVariance = Math.abs(costVariancePercentage);
+      // Variance status based on industry standard:
+      // Negative variance (over budget) = BAD (red)
+      // Positive variance (under budget) = GOOD (green), but very large positive may need monitoring
       let varianceStatus: 'acceptable' | 'monitor' | 'action_required' = 'acceptable';
-      if (absVariance > 10) {
+      if (costVariancePercentage < -10) {
+        // Over budget by more than 10% = Action Required (BAD)
         varianceStatus = 'action_required';
-      } else if (absVariance > 5) {
+      } else if (costVariancePercentage < -5) {
+        // Over budget by 5-10% = Monitor (CONCERNING)
         varianceStatus = 'monitor';
+      } else if (costVariancePercentage > 20) {
+        // Under budget by more than 20% = Monitor (estimation accuracy concern, but not bad)
+        varianceStatus = 'monitor';
+      } else {
+        // Between -5% and +20% = Acceptable (GOOD)
+        varianceStatus = 'acceptable';
       }
 
       return {
@@ -142,12 +151,16 @@ export async function GET(request: NextRequest) {
       const avgCostVariancePercentage = cat.totalEstimatedCost > 0
         ? (cat.totalCostVariance / cat.totalEstimatedCost) * 100
         : 0;
-      const absVariance = Math.abs(avgCostVariancePercentage);
+      // Variance status based on industry standard (same logic as above)
       let varianceStatus: 'acceptable' | 'monitor' | 'action_required' = 'acceptable';
-      if (absVariance > 10) {
+      if (avgCostVariancePercentage < -10) {
         varianceStatus = 'action_required';
-      } else if (absVariance > 5) {
+      } else if (avgCostVariancePercentage < -5) {
         varianceStatus = 'monitor';
+      } else if (avgCostVariancePercentage > 20) {
+        varianceStatus = 'monitor';
+      } else {
+        varianceStatus = 'acceptable';
       }
       return {
         ...cat,
@@ -193,13 +206,18 @@ export async function GET(request: NextRequest) {
       const costVariancePercentage = vendor.totalEstimatedCost > 0
         ? (vendor.totalCostVariance / vendor.totalEstimatedCost) * 100
         : 0;
-      const absVariance = Math.abs(costVariancePercentage);
+      // Variance status based on industry standard (same logic as above)
       let varianceStatus: 'acceptable' | 'monitor' | 'action_required' = 'acceptable';
-      if (absVariance > 10) {
+      if (costVariancePercentage < -10) {
         varianceStatus = 'action_required';
-      } else if (absVariance > 5) {
+      } else if (costVariancePercentage < -5) {
         varianceStatus = 'monitor';
+      } else if (costVariancePercentage > 20) {
+        varianceStatus = 'monitor';
+      } else {
+        varianceStatus = 'acceptable';
       }
+
       return {
         ...vendor,
         categoryCount: vendor.categoryCount.size,

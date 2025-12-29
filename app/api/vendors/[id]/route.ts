@@ -55,9 +55,12 @@ export async function GET(
     const totalWorkAssigned = Number(metrics.totalWorkAssigned) || 0;
     const totalEstimatedCost = Number(metrics.totalEstimatedCost) || 0;
     const totalActualCost = Number(metrics.totalActualCost) || 0;
-    const totalProfitability = Number(metrics.totalProfitability) || 0;
     const itemCount = Number(metrics.itemCount) || 0;
     const projectCount = Number(metrics.projectCount) || 0;
+
+    // Calculate profitability: totalWorkAssigned - totalActualCost
+    // Use computed value instead of stored vendorSavingsDeficit which may be 0 or not populated
+    const totalProfitability = totalWorkAssigned - totalActualCost;
 
     // Calculate cost variance
     const costVariance = totalEstimatedCost - totalActualCost;
@@ -84,10 +87,13 @@ export async function GET(
     const overallPerformanceScore = (costAccuracyScore * 0.4) + (profitabilityScore * 0.4) + (reliabilityScore * 0.2);
 
     // Determine risk level
+    // Note: For cost variance, negative (over budget) is bad, positive (under budget) is good
     let riskLevel: 'low' | 'medium' | 'high' = 'low';
-    if (totalProfitability < 0 || Math.abs(costVariancePercentage) > 15 || profitMargin < 0) {
+    if (totalProfitability < 0 || costVariancePercentage < -15 || profitMargin < 0) {
+      // High risk: negative profitability, over budget by >15%, or negative profit margin
       riskLevel = 'high';
-    } else if (Math.abs(costVariancePercentage) > 10 || profitMargin < 5) {
+    } else if (costVariancePercentage < -10 || profitMargin < 5) {
+      // Medium risk: over budget by 10-15% or low profit margin
       riskLevel = 'medium';
     }
 

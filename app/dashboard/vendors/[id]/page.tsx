@@ -11,7 +11,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import VendorInfo from '@/components/dashboard/VendorInfo';
 import VendorAnalyticsCard from '@/components/dashboard/VendorAnalyticsCard';
-import VendorPerformanceCard from '@/components/dashboard/VendorPerformanceCard';
+import VendorTrendAnalysis from '@/components/dashboard/VendorTrendAnalysis';
+import VendorEfficiencyMetrics from '@/components/dashboard/VendorEfficiencyMetrics';
 import VendorProjectsList from '@/components/dashboard/VendorProjectsList';
 import VendorRiskIndicators from '@/components/dashboard/VendorRiskIndicators';
 
@@ -235,40 +236,31 @@ function VendorDetailContent() {
         </motion.div>
       )}
 
-      {/* Tabs: Overview, Analytics, Projects, Performance */}
+      {/* Tabs: Overview, Analytics, Projects */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
       >
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
-            <TabsTrigger value="performance">Performance</TabsTrigger>
           </TabsList>
           
           <TabsContent value="overview" className="mt-6 space-y-4">
-            {vendor.performanceMetrics && (
-              <VendorPerformanceCard vendor={vendor} />
-            )}
+            <VendorTrendAnalysis vendorId={vendor.id} />
             <VendorAnalyticsCard vendorId={vendor.id} view="category" />
           </TabsContent>
           
           <TabsContent value="analytics" className="mt-6 space-y-4">
             <VendorAnalyticsCard vendorId={vendor.id} view="category" />
-            <VendorAnalyticsCard vendorId={vendor.id} view="vendor" />
+            <VendorEfficiencyMetrics vendorId={vendor.id} />
           </TabsContent>
           
           <TabsContent value="projects" className="mt-6 space-y-4">
             <VendorProjectsList vendorId={vendor.id} vendorName={vendor.name} />
-          </TabsContent>
-          
-          <TabsContent value="performance" className="mt-6 space-y-4">
-            {vendor.performanceMetrics && (
-              <VendorPerformanceCard vendor={vendor} />
-            )}
           </TabsContent>
         </Tabs>
       </motion.div>

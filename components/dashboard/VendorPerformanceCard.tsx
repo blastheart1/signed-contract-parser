@@ -77,10 +77,16 @@ export default function VendorPerformanceCard({ vendor }: VendorPerformanceCardP
   };
 
   const getVarianceStatus = (variancePercent: number) => {
-    const absVariance = Math.abs(variancePercent);
-    if (absVariance <= 5) return { color: 'text-green-600', label: 'Acceptable' };
-    if (absVariance <= 10) return { color: 'text-yellow-600', label: 'Monitor' };
-    return { color: 'text-red-600', label: 'Action Required' };
+    // Negative variance (over budget) = bad, positive variance (under budget) = good
+    if (variancePercent < -10) {
+      return { color: 'text-red-600', label: 'Action Required' };
+    } else if (variancePercent < -5) {
+      return { color: 'text-yellow-600', label: 'Monitor' };
+    } else if (variancePercent > 20) {
+      return { color: 'text-yellow-600', label: 'Monitor' }; // Large positive = estimation accuracy concern
+    } else {
+      return { color: 'text-green-600', label: 'Acceptable' };
+    }
   };
 
   const varianceStatus = getVarianceStatus(metrics.costVariancePercentage);

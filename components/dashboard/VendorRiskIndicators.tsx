@@ -48,20 +48,31 @@ export default function VendorRiskIndicators({ vendor }: VendorRiskIndicatorsPro
     });
   }
 
-  // Check for high cost variance
-  if (Math.abs(metrics.costVariancePercentage) > 15) {
+  // Check for high cost variance (negative variance = over budget = bad)
+  // Positive variance (under budget) is good, only flag if very large (estimation accuracy concern)
+  if (metrics.costVariancePercentage < -15) {
+    // Over budget by more than 15% = High risk
     riskFactors.push({
       type: 'high_variance',
       severity: 'high',
-      message: `Cost variance is ${metrics.costVariancePercentage >= 0 ? '+' : ''}${metrics.costVariancePercentage.toFixed(2)}% (${Math.abs(metrics.costVariancePercentage) > 15 ? 'exceeds' : 'approaches'} 15% threshold)`,
-      recommendation: 'Investigate estimation accuracy and execution consistency. Consider improving estimation process or vendor communication.',
+      message: `Cost variance is ${metrics.costVariancePercentage.toFixed(2)}% (over budget by more than 15%)`,
+      recommendation: 'Vendor is significantly over budget. Investigate cost overruns and consider renegotiating or finding alternative vendors.',
     });
-  } else if (Math.abs(metrics.costVariancePercentage) > 10) {
+  } else if (metrics.costVariancePercentage < -10) {
+    // Over budget by 10-15% = Medium risk
     riskFactors.push({
       type: 'moderate_variance',
       severity: 'medium',
-      message: `Cost variance is ${metrics.costVariancePercentage >= 0 ? '+' : ''}${metrics.costVariancePercentage.toFixed(2)}% (approaching 10% threshold)`,
-      recommendation: 'Monitor cost estimates closely and ensure accurate project scoping.',
+      message: `Cost variance is ${metrics.costVariancePercentage.toFixed(2)}% (over budget by 10-15%)`,
+      recommendation: 'Monitor cost estimates closely. Vendor is consistently over budget - review estimation process.',
+    });
+  } else if (metrics.costVariancePercentage > 30) {
+    // Under budget by more than 30% = Monitor (estimation accuracy concern, but not bad)
+    riskFactors.push({
+      type: 'estimation_accuracy',
+      severity: 'low',
+      message: `Cost variance is +${metrics.costVariancePercentage.toFixed(2)}% (significantly under budget)`,
+      recommendation: 'Vendor is significantly under budget. While favorable, this may indicate estimation accuracy issues. Review estimation process.',
     });
   }
 

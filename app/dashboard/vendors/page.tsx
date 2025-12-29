@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Search, Plus, RefreshCw, Trash2, Building2, Download, Upload } from 'lucide-react';
+import { Search, Plus, RefreshCw, Trash2, Building2, Download, Upload, Edit, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('active');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showTrash, setShowTrash] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(10);
@@ -69,10 +68,6 @@ export default function VendorsPage() {
       
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
-      }
-      
-      if (categoryFilter !== 'all') {
-        params.append('category', categoryFilter);
       }
       
       if (searchTerm) {
@@ -113,12 +108,12 @@ export default function VendorsPage() {
 
   useEffect(() => {
     fetchVendors();
-  }, [statusFilter, categoryFilter, showTrash, currentPage, pageSize]);
+  }, [statusFilter, showTrash, currentPage, pageSize]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, categoryFilter, showTrash]);
+  }, [searchTerm, statusFilter, showTrash]);
 
   // Get unique categories for filter
   const categories = useMemo(() => {
@@ -253,9 +248,6 @@ export default function VendorsPage() {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
-      }
-      if (categoryFilter !== 'all') {
-        params.append('category', categoryFilter);
       }
       if (showTrash) {
         params.append('includeDeleted', 'true');
@@ -445,19 +437,6 @@ export default function VendorsPage() {
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full md:w-[180px]">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={showTrash}
@@ -473,16 +452,15 @@ export default function VendorsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Category</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Contact</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="w-24">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedVendors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                         {loading ? 'Loading...' : 'No vendors found'}
                       </TableCell>
                     </TableRow>
@@ -508,13 +486,6 @@ export default function VendorsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {vendor.category ? (
-                            <Badge variant="outline">{vendor.category}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
                           <Badge variant={vendor.status === 'active' ? 'default' : 'secondary'}>
                             {vendor.status}
                           </Badge>
@@ -529,28 +500,31 @@ export default function VendorsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="h-8 w-8 p-0"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleEditVendor(vendor);
                               }}
+                              title="Edit vendor"
                             >
-                              Edit
+                              <Edit className="h-4 w-4" />
                             </Button>
                             {!showTrash && (
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDeleteVendor(vendor.id);
                                 }}
-                                className="text-destructive hover:text-destructive"
+                                title="Delete vendor"
                               >
-                                Delete
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
