@@ -31,6 +31,10 @@ test-output.xlsx
 # TypeScript
 tsconfig.tsbuildinfo
 
+# Log files
+*.log
+.cursor/debug.log
+
 # Archived files (not tracked)
 archive/
 docs/archive/
