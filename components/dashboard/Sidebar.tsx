@@ -11,6 +11,7 @@ import SidebarNavigation from './SidebarNavigation';
 import { createPortal } from 'react-dom';
 import ChangelogModal from './ChangelogModal';
 import ThemeSelector from './ThemeSelector';
+import VendorProfileModal from './VendorProfileModal';
 
 export interface User {
   id: string;
@@ -24,6 +25,7 @@ export interface NavigationItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
+  isSubItem?: boolean; // For nested items like Vendor Negotiation under Vendors
 }
 
 interface SidebarProps {
@@ -56,6 +58,7 @@ export default function Sidebar({
   const [isMounted, setIsMounted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('1.0.0');
 
   // Determine if we're in controlled or uncontrolled mode
@@ -296,8 +299,14 @@ export default function Sidebar({
           transition={{ duration: 0.15 }}
           className={cn(
             'mb-2 px-3 py-2 text-sm',
-            collapsed && !isMobile ? 'overflow-hidden' : ''
+            collapsed && !isMobile ? 'overflow-hidden' : '',
+            (!collapsed || isMobile) && user.role === 'vendor' ? 'cursor-pointer hover:bg-muted/50 rounded transition-colors' : ''
           )}
+          onClick={() => {
+            if ((!collapsed || isMobile) && user.role === 'vendor') {
+              setProfileModalOpen(true);
+            }
+          }}
         >
           {(!collapsed || isMobile) && (
             <>
@@ -321,6 +330,9 @@ export default function Sidebar({
         </Button>
       </div>
       <ChangelogModal open={changelogOpen} onOpenChange={setChangelogOpen} />
+      {user.role === 'vendor' && (
+        <VendorProfileModal user={user} open={profileModalOpen} onOpenChange={setProfileModalOpen} />
+      )}
     </motion.aside>
   );
 

@@ -70,7 +70,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { username, password, email, role, status, salesRepName } = body;
+    let { username, password, email, role, status, salesRepName } = body;
+
+    // For vendor users, use email as username by default if username is not provided
+    if (role === 'vendor' && !username && email) {
+      username = email;
+    }
 
     if (!username || !password) {
       return NextResponse.json(

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Users, TrendingUp, ArrowRight, RefreshCw, Trash2, AlertCircle, CheckCircle2, Clock, FileText, DollarSign } from 'lucide-react';
@@ -24,6 +25,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [contracts, setContracts] = useState<StoredContract[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalCustomers: 0,
@@ -39,6 +41,22 @@ export default function DashboardPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(10);
+
+  // Redirect vendor users to vendor-negotiation page
+  useEffect(() => {
+    const checkUserRole = async () => {
+      try {
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
+        if (data.success && data.user && data.user.role === 'vendor') {
+          router.push('/dashboard/vendor-negotiation');
+        }
+      } catch (error) {
+        console.error('Error checking user role:', error);
+      }
+    };
+    checkUserRole();
+  }, [router]);
 
   const fetchDashboardData = async () => {
     setLoading(true);

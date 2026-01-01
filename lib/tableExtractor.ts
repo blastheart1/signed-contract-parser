@@ -50,6 +50,7 @@ export interface OrderItem {
   totalAmountWorkCompleted?: number | string;
   vendorBillingToDate?: number | string;
   vendorSavingsDeficit?: number | string;
+  negotiatedVendorAmount?: number | string; // For Part 2: negotiated amount per item
 }
 
 /**

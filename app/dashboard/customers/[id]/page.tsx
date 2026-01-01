@@ -43,6 +43,8 @@ function CustomerDetailContent() {
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<'order-items' | 'vendor-selection' | 'invoices'>('order-items');
+  const [vendorPage, setVendorPage] = useState<1 | 2 | 3>(1);
   
   // Get user session for role-based permissions
   const { user } = useSession();
@@ -51,6 +53,8 @@ function CustomerDetailContent() {
   // Refresh invoice summary when order items are saved
   const handleOrderItemsSave = async () => {
     await refreshContract();
+    // Add a small delay to ensure database write is complete before refreshing invoice summary
+    await new Promise(resolve => setTimeout(resolve, 500));
     setInvoiceRefreshTrigger(prev => prev + 1); // Also refresh invoice summary
   };
 
@@ -458,6 +462,7 @@ function CustomerDetailContent() {
             <CustomerInfo 
               contract={contract}
               isDeleted={isDeleted}
+              activeTab={activeTab}
               onContractUpdate={async (updatedContract) => {
                 setContract(updatedContract);
                 // Refresh from server after a short delay to ensure update is saved
@@ -475,7 +480,7 @@ function CustomerDetailContent() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
       >
-        <Tabs defaultValue="order-items" className="w-full">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'order-items' | 'vendor-selection' | 'invoices')} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="order-items">Order Items</TabsTrigger>
             <TabsTrigger value="vendor-selection">Vendor Selection</TabsTrigger>
@@ -496,14 +501,34 @@ function CustomerDetailContent() {
               projectStartDate={(contract.order as any)?.projectStartDate}
               userRole={userRole}
               visibleColumnSet="order-items"
+              customerId={contract.customer?.dbxCustomerId}
             />
           </TabsContent>
           <TabsContent value="vendor-selection" className="mt-6 space-y-4">
-            <OrderItemsValidationAlert 
-              contract={contract} 
-              currentItems={currentItems}
-              customerId={contract.customer?.dbxCustomerId}
-            />
+            {/* Pagination Controls */}
+            <div className="flex gap-2 justify-center mb-4">
+              <Button
+                variant={vendorPage === 1 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setVendorPage(1)}
+              >
+                Page 1 (Base)
+              </Button>
+              <Button
+                variant={vendorPage === 2 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setVendorPage(2)}
+              >
+                Page 2 (Revised version part 1)
+              </Button>
+              <Button
+                variant={vendorPage === 3 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setVendorPage(3)}
+              >
+                Page 3 (Revised version part 2)
+              </Button>
+            </div>
             <OrderTable 
               items={contract.items} 
               onItemsChange={setCurrentItems} 
@@ -513,6 +538,8 @@ function CustomerDetailContent() {
               projectStartDate={(contract.order as any)?.projectStartDate}
               userRole={userRole}
               visibleColumnSet="vendor-selection"
+              vendorPage={vendorPage}
+              customerId={contract.customer?.dbxCustomerId}
             />
           </TabsContent>
           <TabsContent value="invoices" className="mt-6 space-y-6">

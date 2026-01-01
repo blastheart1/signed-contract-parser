@@ -71,6 +71,27 @@
       "when": 1766773330712,
       "tag": "0009_careful_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1767292503878,
+      "tag": "0010_add_vendor_selection_to_order_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1767292503879,
+      "tag": "0012_add_order_approvals_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1767292503880,
+      "tag": "0014_make_order_id_nullable_in_approvals",
+      "breakpoints": true
     }
   ]
 }

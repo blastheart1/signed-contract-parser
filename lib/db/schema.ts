@@ -8,6 +8,7 @@ export const itemTypeEnum = pgEnum('item_type', ['maincategory', 'subcategory', 
 export const changeTypeEnum = pgEnum('change_type', ['cell_edit', 'row_add', 'row_delete', 'row_update', 'customer_edit', 'order_edit', 'contract_add', 'stage_update', 'customer_delete', 'customer_restore']);
 export const customerStatusEnum = pgEnum('customer_status', ['pending_updates', 'completed']);
 export const vendorStatusEnum = pgEnum('vendor_status', ['active', 'inactive']);
+export const orderApprovalStageEnum = pgEnum('order_approval_stage', ['draft', 'sent', 'negotiating', 'approved']);
 
 // Users Table
 export const users = pgTable('users', {
@@ -196,6 +197,65 @@ export const vendors = pgTable('vendors', {
   deletedAtIdx: index('vendors_deleted_at_idx').on(table.deletedAt),
 }));
 
+// Order Approvals Table
+export const orderApprovals = pgTable('order_approvals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  referenceNo: varchar('reference_no', { length: 20 }).notNull().unique(), // Format: YYYY-XXXXX
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  customerId: varchar('customer_id', { length: 255 }).notNull().references(() => customers.dbxCustomerId),
+  orderId: uuid('order_id').references(() => orders.id), // Nullable - items can come from multiple orders
+  stage: orderApprovalStageEnum('stage').notNull().default('draft'),
+  pmApproved: boolean('pm_approved').notNull().default(false),
+  vendorApproved: boolean('vendor_approved').notNull().default(false),
+  dateCreated: timestamp('date_created').notNull().defaultNow(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  sentAt: timestamp('sent_at'), // When approval was sent to vendor
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at'), // Soft delete
+}, (table) => ({
+  referenceNoIdx: index('order_approvals_reference_no_idx').on(table.referenceNo),
+  vendorIdIdx: index('order_approvals_vendor_id_idx').on(table.vendorId),
+  customerIdIdx: index('order_approvals_customer_id_idx').on(table.customerId),
+  orderIdIdx: index('order_approvals_order_id_idx').on(table.orderId),
+  stageIdx: index('order_approvals_stage_idx').on(table.stage),
+  deletedAtIdx: index('order_approvals_deleted_at_idx').on(table.deletedAt),
+  createdAtIdx: index('order_approvals_date_created_idx').on(table.dateCreated),
+}));
+
+// Order Approval Items Table (links selected items to approvals)
+// Note: orderItemId does NOT have a foreign key constraint to allow order items
+// to be deleted/updated without blocking. Order approvals are additive and should
+// not affect existing order item functionality.
+// Snapshot fields store a copy of order item data at approval time for reference.
+export const orderApprovalItems = pgTable('order_approval_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderApprovalId: uuid('order_approval_id').notNull().references(() => orderApprovals.id, { onDelete: 'cascade' }),
+  orderItemId: uuid('order_item_id').notNull(), // No FK constraint - additive feature shouldn't block order item updates
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  // Snapshot fields (nullable to support existing records)
+  productService: text('product_service'), // Snapshot of product/service name
+  amount: decimal('amount', { precision: 15, scale: 2 }), // Snapshot of original amount
+  qty: decimal('qty', { precision: 15, scale: 2 }), // Snapshot of quantity
+  rate: decimal('rate', { precision: 15, scale: 2 }), // Snapshot of rate
+  negotiatedVendorAmount: decimal('negotiated_vendor_amount', { precision: 15, scale: 2 }), // Approved/negotiated amount (from Part 2)
+  snapshotDate: timestamp('snapshot_date'), // When snapshot was taken
+}, (table) => ({
+  orderApprovalIdIdx: index('order_approval_items_order_approval_id_idx').on(table.orderApprovalId),
+  orderItemIdIdx: index('order_approval_items_order_item_id_idx').on(table.orderItemId),
+  snapshotDateIdx: index('order_approval_items_snapshot_date_idx').on(table.snapshotDate),
+  uniqueApprovalItem: unique().on(table.orderApprovalId, table.orderItemId), // Prevent duplicate selections
+}));
+
+// Reference Number Sequence Table (for generating YYYY-XXXXX reference numbers)
+export const referenceNumberSequence = pgTable('reference_number_sequence', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  year: integer('year').notNull().unique(),
+  lastSequence: integer('last_sequence').notNull().default(0),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  yearIdx: index('reference_number_sequence_year_idx').on(table.year),
+}));
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -215,4 +275,10 @@ export type AlertAcknowledgment = typeof alertAcknowledgments.$inferSelect;
 export type NewAlertAcknowledgment = typeof alertAcknowledgments.$inferInsert;
 export type Vendor = typeof vendors.$inferSelect;
 export type NewVendor = typeof vendors.$inferInsert;
+export type OrderApproval = typeof orderApprovals.$inferSelect;
+export type NewOrderApproval = typeof orderApprovals.$inferInsert;
+export type OrderApprovalItem = typeof orderApprovalItems.$inferSelect;
+export type NewOrderApprovalItem = typeof orderApprovalItems.$inferInsert;
+export type ReferenceNumberSequence = typeof referenceNumberSequence.$inferSelect;
+export type NewReferenceNumberSequence = typeof referenceNumberSequence.$inferInsert;
 

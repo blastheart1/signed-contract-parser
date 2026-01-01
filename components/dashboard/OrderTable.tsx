@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye, EyeOff, Zap } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import FilterableTableHeaderText from '@/components/dashboard/FilterableTableHeaderText';
 import VendorNameInput from '@/components/dashboard/VendorNameInput';
@@ -47,6 +48,8 @@ interface OrderTableProps {
   projectStartDate?: string; // Project Start Date - required for edit mode (except for accountant role)
   userRole?: UserRole | null; // User role - accountant can edit without projectStartDate
   visibleColumnSet?: 'order-items' | 'vendor-selection'; // Which column set to display
+  vendorPage?: 1 | 2 | 3; // Which vendor page to display (1 = base, 2 = part 1, 3 = part 2)
+  customerId?: string; // Customer ID for fetching approved approvals
 }
 
 interface EditableOrderItem extends OrderItem {
@@ -65,6 +68,7 @@ interface EditableOrderItem extends OrderItem {
   totalAmountWorkCompleted?: number | string;
   vendorBillingToDate?: number | string;
   vendorSavingsDeficit?: number | string;
+  negotiatedVendorAmount?: number | string; // For Part 2: negotiated amount per item
 }
 
 // Sortable row component
@@ -88,6 +92,10 @@ function SortableRow({
   userRole,
   visibleColumnSet = 'order-items',
   vendors = [],
+  vendorPage = 1,
+  approvedApprovals = new Map(),
+  selectedApprovalRef = new Map(),
+  onSelectedApprovalRefChange,
 }: {
   item: EditableOrderItem;
   index: number;
@@ -108,6 +116,23 @@ function SortableRow({
   userRole?: UserRole | null;
   visibleColumnSet?: 'order-items' | 'vendor-selection';
   vendors?: Array<{ id: string; name: string; status: 'active' | 'inactive' }>;
+  vendorPage?: 1 | 2 | 3;
+  approvedApprovals?: Map<string, Array<{
+    approvalId: string;
+    referenceNo: string;
+    vendorId: string;
+    vendorName: string;
+    negotiatedVendorAmount: number | null;
+    approvedAt: Date | null;
+    snapshotData: {
+      productService: string | null;
+      amount: number | null;
+      qty: number | null;
+      rate: number | null;
+    };
+  }>>;
+  selectedApprovalRef?: Map<string, string>;
+  onSelectedApprovalRefChange?: (itemId: string, referenceNo: string) => void;
 }) {
   const {
     attributes,
@@ -154,6 +179,8 @@ function SortableRow({
   // Column N (THIS BILL) = M * H (where M is percentage as decimal)
   // Note: In Excel, percentages are stored as decimals (0.5 = 50%), but in our UI we use whole numbers (50 = 50%)
   const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
+  const qty = typeof item.qty === 'number' ? item.qty : parseFloat(String(item.qty || 0)) || 0;
+  const rate = typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate || 0)) || 0;
   const progressOverallPct = typeof item.progressOverallPct === 'number' 
     ? item.progressOverallPct 
     : parseFloat(String(item.progressOverallPct || 0)) || 0;
@@ -243,11 +270,15 @@ function SortableRow({
       {/* Insertion line above row */}
       {showInsertAbove && (
         <tr className="relative">
-          <td colSpan={
-            visibleColumnSet === 'vendor-selection' 
+        <td colSpan={
+          visibleColumnSet === 'vendor-selection' 
+            ? vendorPage === 1
               ? (isEditing && showActionsColumn ? 9 : 8)
-              : (isEditing && showActionsColumn ? 11 : 10)
-          } className="h-2 p-0 relative">
+              : vendorPage === 2
+              ? (isEditing && showActionsColumn ? 5 : 4)
+              : (isEditing && showActionsColumn ? 8 : 7)
+            : (isEditing && showActionsColumn ? 11 : 10)
+        } className="h-2 p-0 relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full h-0.5 bg-primary border-t-2 border-t-primary border-dashed"></div>
               <div className="absolute left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-semibold shadow-lg whitespace-nowrap">
@@ -511,8 +542,8 @@ function SortableRow({
       </TableCell>
         </>
       )}
-      {/* Vendor Selection Columns (Q-W) - only show when visibleColumnSet is 'vendor-selection' */}
-      {visibleColumnSet === 'vendor-selection' && (
+      {/* Vendor Selection Columns - Page 1 (Base) */}
+      {visibleColumnSet === 'vendor-selection' && vendorPage === 1 && (
         <>
           <TableCell className="text-center align-middle" style={{ width: '15%' }}>
             {isEditing && isItem ? (
@@ -642,6 +673,204 @@ function SortableRow({
           </TableCell>
         </>
       )}
+      {/* Vendor Selection Columns - Page 2 (Part 1) */}
+      {visibleColumnSet === 'vendor-selection' && vendorPage === 2 && (
+        <>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (qty ? formatNumber(qty) : <span className="text-muted-foreground/30">—</span>) : ''}
+            </div>
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '20%' }}>
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (() => {
+                const estimatedCost = item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null
+                  ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+                  : (amount ? amount * 0.5 : 0);
+                const qtyNum = typeof qty === 'number' ? qty : parseFloat(String(qty || 0)) || 0;
+                const estimatedRate = qtyNum > 0 ? estimatedCost / qtyNum : 0;
+                return estimatedRate > 0 ? `$${formatNumber(estimatedRate)}` : <span className="text-muted-foreground/30">—</span>;
+              })() : ''}
+            </div>
+          </TableCell>
+          <TableCell className={cn("text-right min-h-[32px]", isEditing && showActionsColumn && "border-r border-black")} style={{ width: '20%' }}>
+            {isEditing && isItem ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={item.estimatedVendorCost ?? (amount * 0.5)}
+                onChange={(e) => onCellChange(item.id, 'estimatedVendorCost', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                placeholder="0.00"
+                disabled={isDeleted}
+              />
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.estimatedVendorCost ? `$${formatNumber(item.estimatedVendorCost)}` : (amount ? `$${formatNumber(amount * 0.5)}` : <span className="text-muted-foreground/30">—</span>)) : ''}
+              </div>
+            )}
+          </TableCell>
+        </>
+      )}
+      {/* Vendor Selection Columns - Page 3 (Part 2) */}
+      {visibleColumnSet === 'vendor-selection' && vendorPage === 3 && (
+        <>
+          <TableCell className="text-center align-middle" style={{ width: '15%' }}>
+            {isEditing && isItem ? (
+              <div className="flex items-center justify-center">
+                <VendorNameInput
+                  value={item.vendorName1 || ''}
+                  onChange={(value) => onCellChange(item.id, 'vendorName1', value)}
+                  className="h-8 w-full box-border !px-1 text-center"
+                  placeholder="Vendor name"
+                  disabled={isDeleted}
+                  vendors={vendors}
+                />
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-center">
+                {isItem ? (item.vendorName1 || <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '12%' }}>
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (qty ? formatNumber(qty) : <span className="text-muted-foreground/30">—</span>) : ''}
+            </div>
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (rate ? `$${formatNumber(rate)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+            </div>
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            {isEditing && isItem ? (
+              <div className="flex items-center justify-end gap-1">
+                <div className="flex-1 flex flex-col gap-1">
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={item.negotiatedVendorAmount ?? ''}
+                      onChange={(e) => onCellChange(item.id, 'negotiatedVendorAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                      className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                      placeholder="0.00"
+                      disabled={isDeleted}
+                    />
+                    {(!item.negotiatedVendorAmount || item.negotiatedVendorAmount === 0 || item.negotiatedVendorAmount === '') && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                const halfAmount = amount * 0.5;
+                                onCellChange(item.id, 'negotiatedVendorAmount', halfAmount);
+                              }}
+                              disabled={isDeleted || amount === 0}
+                            >
+                              <Zap className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Set to 50% of Order Items amount</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {/* Approved Approvals Dropdown - only show when vendor is selected and approvals exist */}
+                  {item.vendorName1 && approvedApprovals.has(item.id) && approvedApprovals.get(item.id)!.length > 0 && (
+                    <Select
+                      value={selectedApprovalRef.get(item.id) || ''}
+                      onValueChange={(value) => {
+                        const approvals = approvedApprovals.get(item.id);
+                        const selectedApproval = approvals?.find(a => a.referenceNo === value);
+                        if (selectedApproval && selectedApproval.negotiatedVendorAmount !== null) {
+                          onCellChange(item.id, 'negotiatedVendorAmount', selectedApproval.negotiatedVendorAmount);
+                          if (onSelectedApprovalRefChange) {
+                            onSelectedApprovalRefChange(item.id, value);
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select approved price" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {approvedApprovals.get(item.id)?.map((approval) => (
+                          <SelectItem key={approval.approvalId} value={approval.referenceNo}>
+                            Ref: {approval.referenceNo} - ${formatNumber(approval.negotiatedVendorAmount || 0)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {/* Reference Number Display */}
+                  {selectedApprovalRef.get(item.id) && (
+                    <div className="text-xs text-muted-foreground text-right">
+                      Ref: {selectedApprovalRef.get(item.id)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.negotiatedVendorAmount ? `$${formatNumber(item.negotiatedVendorAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+          <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (() => {
+                const estimatedCost = item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null
+                  ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+                  : (amount * 0.5);
+                const negotiatedAmount = item.negotiatedVendorAmount !== undefined && item.negotiatedVendorAmount !== null
+                  ? (typeof item.negotiatedVendorAmount === 'number' ? item.negotiatedVendorAmount : parseFloat(String(item.negotiatedVendorAmount)) || 0)
+                  : 0;
+                const priceDifference = estimatedCost - negotiatedAmount;
+                return priceDifference !== 0 ? (
+                  <span className={priceDifference >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {priceDifference >= 0 ? '+' : ''}${formatNumber(priceDifference)}
+                  </span>
+                ) : <span className="text-muted-foreground/30">—</span>;
+              })() : ''}
+            </div>
+          </TableCell>
+          <TableCell className={cn("text-right min-h-[32px]", isEditing && showActionsColumn && "border-r border-black")} style={{ width: '15%' }}>
+            {(isEditing || editingColumn === 'progressOverall') && isItem ? (
+              <div className="flex items-center justify-end gap-1 w-full">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={item.progressOverallPct ?? ''}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
+                    if (value !== '' && typeof value === 'number') {
+                      value = Math.max(0, Math.min(100, value));
+                    }
+                    onCellChange(item.id, 'progressOverallPct', value);
+                  }}
+                  className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                  placeholder="0"
+                />
+                <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
+              </div>
+            ) : (
+              <div className="min-h-[32px] flex items-center justify-end">
+                {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+              </div>
+            )}
+          </TableCell>
+        </>
+      )}
       {isEditing && showActionsColumn && (
         <TableCell className="w-[80px]">
           <div className="flex gap-1">
@@ -703,7 +932,11 @@ function SortableRow({
       <tr className="relative">
         <td colSpan={
           visibleColumnSet === 'vendor-selection' 
-            ? (isEditing && showActionsColumn ? 9 : 8)
+            ? vendorPage === 1
+              ? (isEditing && showActionsColumn ? 9 : 8)
+              : vendorPage === 2
+              ? (isEditing && showActionsColumn ? 5 : 4)
+              : (isEditing && showActionsColumn ? 8 : 7)
             : (isEditing && showActionsColumn ? 11 : 10)
         } className="h-2 p-0 relative">
           <div className="absolute inset-0 flex items-center">
@@ -719,7 +952,18 @@ function SortableRow({
   );
 }
 
-export default function OrderTable({ items: initialItems, onItemsChange, orderId, onSaveSuccess, isDeleted = false, projectStartDate, userRole, visibleColumnSet = 'order-items' }: OrderTableProps) {
+export default function OrderTable({ 
+  items: initialItems, 
+  onItemsChange, 
+  orderId, 
+  onSaveSuccess, 
+  isDeleted = false, 
+  projectStartDate, 
+  userRole, 
+  visibleColumnSet = 'order-items', 
+  vendorPage = 1,
+  customerId,
+}: OrderTableProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editingColumn, setEditingColumn] = useState<'progressOverall' | 'previouslyInvoiced' | null>(null);
@@ -733,6 +977,24 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   // Load vendors once for all VendorNameInput components
   const [vendors, setVendors] = useState<Array<{ id: string; name: string; status: 'active' | 'inactive' }>>([]);
   const [vendorsLoading, setVendorsLoading] = useState(false);
+  
+  // State for approved approvals per line item (for Vendor Selection Page 3)
+  interface ApprovedApproval {
+    approvalId: string;
+    referenceNo: string;
+    vendorId: string;
+    vendorName: string;
+    negotiatedVendorAmount: number | null;
+    approvedAt: Date | null;
+    snapshotData: {
+      productService: string | null;
+      amount: number | null;
+      qty: number | null;
+      rate: number | null;
+    };
+  }
+  const [approvedApprovals, setApprovedApprovals] = useState<Map<string, ApprovedApproval[]>>(new Map());
+  const [selectedApprovalRef, setSelectedApprovalRef] = useState<Map<string, string>>(new Map()); // itemId -> referenceNo
   
   useEffect(() => {
     // Only load vendors if we're in vendor-selection mode
@@ -780,6 +1042,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       mounted = false;
     };
   }, [visibleColumnSet]);
+
 
   // Compute if edit mode is allowed
   // Accountant role can edit without projectStartDate, other roles require it
@@ -860,9 +1123,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [items, setItems] = useState<EditableOrderItem[]>(() => 
     initialItems.map((item, index) => {
       const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
-      const editableItem = {
+      // Check if item has an id property (for items from database)
+      const itemId = ('id' in item && typeof (item as any).id === 'string' && (item as any).id) 
+        ? (item as any).id 
+        : `item-${index}`;
+      const editableItem: EditableOrderItem = {
         ...item,
-        id: `item-${index}`,
+        // Only generate synthetic ID if item doesn't already have a real ID (UUID)
+        id: itemId,
         progressOverallPct: item.progressOverallPct || '',
         completedAmount: item.completedAmount || '',
         previouslyInvoicedPct: item.previouslyInvoicedPct || '',
@@ -888,6 +1156,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             })(),
             vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null ? item.vendorBillingToDate : '',
             vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null ? item.vendorSavingsDeficit : '',
+            negotiatedVendorAmount: item.negotiatedVendorAmount !== undefined && item.negotiatedVendorAmount !== null ? item.negotiatedVendorAmount : '',
       };
       return autoComputeRate(editableItem);
     })
@@ -904,9 +1173,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       setItems(
         initialItems.map((item, index) => {
           const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
-          const editableItem = {
+          // Check if item has an id property (for items from database)
+          const itemId = ('id' in item && typeof (item as any).id === 'string' && (item as any).id) 
+            ? (item as any).id 
+            : `item-${index}`;
+          const editableItem: EditableOrderItem = {
             ...item,
-            id: `item-${index}`,
+            // Only generate synthetic ID if item doesn't already have a real ID (UUID)
+            id: itemId,
             progressOverallPct: item.progressOverallPct || '',
             completedAmount: item.completedAmount || '',
             previouslyInvoicedPct: item.previouslyInvoicedPct || '',
@@ -932,6 +1206,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
             })(),
             vendorBillingToDate: item.vendorBillingToDate !== undefined && item.vendorBillingToDate !== null ? item.vendorBillingToDate : '',
             vendorSavingsDeficit: item.vendorSavingsDeficit !== undefined && item.vendorSavingsDeficit !== null ? item.vendorSavingsDeficit : '',
+            negotiatedVendorAmount: item.negotiatedVendorAmount !== undefined && item.negotiatedVendorAmount !== null ? item.negotiatedVendorAmount : '',
           };
           return autoComputeRate(editableItem);
         })
@@ -942,6 +1217,47 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [insertPosition, setInsertPosition] = useState<'above' | 'below' | null>(null);
+
+  // Fetch approved approvals when vendor is selected for a line item (Vendor Selection Page 3)
+  useEffect(() => {
+    // Only fetch in Vendor Selection Page 3 mode
+    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3 || !customerId) {
+      return;
+    }
+
+    // Find items with vendors selected
+    const itemsWithVendors = items.filter(
+      item => item.type === 'item' && item.vendorName1 && item.id
+    );
+
+    // Fetch approved approvals for each item
+    const fetchApprovedApprovals = async () => {
+      const newApprovedApprovals = new Map<string, ApprovedApproval[]>();
+
+      for (const item of itemsWithVendors) {
+        if (!item.id) continue;
+
+        try {
+          const response = await fetch(
+            `/api/order-approvals/approved?orderItemId=${item.id}&customerId=${customerId}`
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && Array.isArray(data.data)) {
+              newApprovedApprovals.set(item.id, data.data);
+            }
+          }
+        } catch (error) {
+          console.error(`[OrderTable] Error fetching approved approvals for item ${item.id}:`, error);
+        }
+      }
+
+      setApprovedApprovals(newApprovedApprovals);
+    };
+
+    fetchApprovedApprovals();
+  }, [items, visibleColumnSet, vendorPage, customerId]);
 
   // Convert EditableOrderItem back to OrderItem format
   const convertToOrderItem = (editableItem: EditableOrderItem): OrderItem => {
@@ -1239,9 +1555,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
         setSaveError(null);
         setItems(initialItems.map((item, index) => {
           const amount = typeof item.amount === 'number' ? item.amount : (typeof item.amount === 'string' ? parseFloat(item.amount) || 0 : 0);
-          const editableItem = {
+          // Check if item has an id property (for items from database)
+          const itemId = ('id' in item && typeof (item as any).id === 'string' && (item as any).id) 
+            ? (item as any).id 
+            : `item-${index}`;
+          const editableItem: EditableOrderItem = {
             ...item,
-            id: `item-${index}`,
+            // Only generate synthetic ID if item doesn't already have a real ID (UUID)
+            id: itemId,
             progressOverallPct: item.progressOverallPct || '',
             completedAmount: item.completedAmount || '',
             previouslyInvoicedPct: item.previouslyInvoicedPct || '',
@@ -1619,10 +1940,14 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle>Order Items</CardTitle>
-            <CardDescription>
-              {items.length} item{items.length !== 1 ? 's' : ''} in this order
-            </CardDescription>
+            {(
+              <>
+                <CardTitle>Order Items</CardTitle>
+                <CardDescription>
+                  {items.length} item{items.length !== 1 ? 's' : ''} in this order
+                </CardDescription>
+              </>
+            )}
           </div>
           {!isEditing && !editingColumn ? (
             <div className="flex items-center gap-2">
@@ -1677,7 +2002,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     {isDeleted ? (
                       <Button onClick={() => {}} variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed w-[130px]">
                         <Edit2 className="mr-2 h-4 w-4" />
-                        Edit Table
+                        Edit Items
                       </Button>
                       ) : !canEdit ? (
                         <Button 
@@ -1696,7 +2021,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           aria-disabled="true"
                         >
                           <Edit2 className="mr-2 h-4 w-4" />
-                          Edit Table
+                          Edit Items
                         </Button>
                     ) : (
                       <Button onClick={() => {
@@ -1709,7 +2034,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                           });
                       }} variant="outline" size="sm" className="w-[130px]">
                         <Edit2 className="mr-2 h-4 w-4" />
-                        Edit Table
+                        Edit Items
                       </Button>
                     )}
                     </span>
@@ -1804,21 +2129,30 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         setIsEditing(false);
                         setEditingColumn(null);
                         setSaveError(null);
-                        // Reset items to initial state on cancel
-                        setItems(initialItems.map((item, index) => ({
-                          ...item,
-                          id: `item-${index}`,
-                          progressOverallPct: item.progressOverallPct || '',
-                          completedAmount: item.completedAmount || '',
-                          previouslyInvoicedPct: item.previouslyInvoicedPct || '',
-                          previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
-                          newProgressPct: item.newProgressPct || '',
-                          thisBill: item.thisBill || '',
-                        })));
+                        // Reset items to initial state on cancel (without reloading)
+                        setItems(initialItems.map((item, index) => {
+                          // Check if item has an id property (for items from database)
+                          const itemId = ('id' in item && typeof (item as any).id === 'string' && (item as any).id) 
+                            ? (item as any).id 
+                            : `item-${index}`;
+                          return {
+                            ...item,
+                            // Only generate synthetic ID if item doesn't already have a real ID (UUID)
+                            id: itemId,
+                            progressOverallPct: item.progressOverallPct || '',
+                            completedAmount: item.completedAmount || '',
+                            previouslyInvoicedPct: item.previouslyInvoicedPct || '',
+                            previouslyInvoicedAmount: item.previouslyInvoicedAmount || '',
+                            newProgressPct: item.newProgressPct || '',
+                            thisBill: item.thisBill || '',
+                          } as EditableOrderItem;
+                        }));
                       }} 
                       variant="outline" 
                       size="sm"
@@ -1937,7 +2271,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                   <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "w-[100px] whitespace-nowrap h-8")}>THIS BILL</TableHead>
                     </>
                   )}
-                  {visibleColumnSet === 'vendor-selection' && (
+                  {visibleColumnSet === 'vendor-selection' && vendorPage === 1 && (
                     <>
                       <TableHead className="sticky top-0 z-10 bg-background border-r border-black h-8 text-center align-middle" style={{ width: '15%' }}>VENDOR NAME 1</TableHead>
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '8%' }}>%</TableHead>
@@ -1946,6 +2280,23 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>TOTAL Amount of work<br />Completed to date</TableHead>
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '13%' }}>Vendor billing<br />to date</TableHead>
                       <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "h-8")} style={{ width: '21%' }}>Vendor Savings<br />(Deficit)</TableHead>
+                    </>
+                  )}
+                  {visibleColumnSet === 'vendor-selection' && vendorPage === 2 && (
+                    <>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>QTY</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '20%' }}>Estimated Rate</TableHead>
+                      <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "h-8")} style={{ width: '20%' }}>Estimated<br />Vendor Cost</TableHead>
+                    </>
+                  )}
+                  {visibleColumnSet === 'vendor-selection' && vendorPage === 3 && (
+                    <>
+                      <TableHead className="sticky top-0 z-10 bg-background border-r border-black h-8 text-center align-middle" style={{ width: '15%' }}>VENDOR NAME</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '12%' }}>QTY</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>RATE</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>AMOUNT</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>PRICE<br />DIFFERENCE</TableHead>
+                      <TableHead className={cn("sticky top-0 z-10 bg-background text-right", isEditing && showActionsColumn && "border-r border-black", "h-8")} style={{ width: '15%' }}>% Progress<br />Overall</TableHead>
                     </>
                   )}
                   {isEditing && showActionsColumn && <TableHead className="w-[80px] h-8">Actions</TableHead>}
@@ -1979,6 +2330,15 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         canEdit={canEdit}
                         userRole={userRole}
                         vendors={vendors}
+                        approvedApprovals={approvedApprovals}
+                        selectedApprovalRef={selectedApprovalRef}
+                        onSelectedApprovalRefChange={(itemId, referenceNo) => {
+                          setSelectedApprovalRef(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(itemId, referenceNo);
+                            return newMap;
+                          });
+                        }}
                         onEnterEditMode={() => {
                           if (canEdit) {
                           setIsEditing(true);
@@ -1993,6 +2353,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         }}
                         showActionsColumn={showActionsColumn}
                         visibleColumnSet={visibleColumnSet}
+                        vendorPage={vendorPage}
                       />
                     );
                   })}
@@ -2028,7 +2389,7 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                     </TableCell>
                       </>
                     )}
-                    {visibleColumnSet === 'vendor-selection' && (
+                    {visibleColumnSet === 'vendor-selection' && vendorPage === 1 && (
                       <>
                         <TableCell className="text-center"></TableCell>
                         <TableCell className="text-right font-bold border-r border-black">
@@ -2048,6 +2409,28 @@ export default function OrderTable({ items: initialItems, onItemsChange, orderId
                         </TableCell>
                         <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
                           {!isNaN(totalVendorSavingsDeficit) && totalVendorSavingsDeficit !== 0 ? `$${formatTotalNumber(totalVendorSavingsDeficit)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                      </>
+                    )}
+                    {visibleColumnSet === 'vendor-selection' && vendorPage === 2 && (
+                      <>
+                        <TableCell className="text-right font-bold border-r border-black"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black"></TableCell>
+                        <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
+                          {!isNaN(totalEstimatedVendorCost) && totalEstimatedVendorCost !== 0 ? `$${formatTotalNumber(totalEstimatedVendorCost)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                      </>
+                    )}
+                    {visibleColumnSet === 'vendor-selection' && vendorPage === 3 && (
+                      <>
+                        <TableCell className="text-center"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black"></TableCell>
+                        <TableCell className="text-right font-bold border-r border-black">
+                          {!isNaN(totalAmount) && totalAmount !== 0 ? `$${formatTotalNumber(totalAmount)}` : <span className="text-muted-foreground/30">—</span>}
+                        </TableCell>
+                        <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
+                          {!isNaN(totalProgressOverallPct) && totalProgressOverallPct !== 0 ? `${formatTotalPercent(totalProgressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>}
                         </TableCell>
                       </>
                     )}

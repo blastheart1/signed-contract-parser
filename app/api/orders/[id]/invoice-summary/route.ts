@@ -32,15 +32,38 @@ export async function GET(
     const originalInvoice = parseFloat(order.orderGrandTotal?.toString() || '0');
     console.log(`[Invoice Summary] Original Invoice: ${originalInvoice}`);
 
-    // Total Completed - Sum of completedAmount from order items table
-    // This represents the work completed based on order items progress
-    const completedAmountResult = await db
-      .select({ total: sql<number>`COALESCE(SUM(${orderItems.completedAmount}::numeric), 0)` })
+    // Total Completed - Calculate from progressOverallPct * amount for each item
+    // This ensures real-time calculation based on current table values
+    // Formula: completedAmount = (progressOverallPct / 100) * amount
+    const allOrderItems = await db
+      .select({
+        amount: orderItems.amount,
+        progressOverallPct: orderItems.progressOverallPct,
+        itemType: orderItems.itemType,
+      })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId));
 
-    const totalCompleted = parseFloat(completedAmountResult[0]?.total?.toString() || '0');
-    console.log(`[Invoice Summary] Total Completed (from order items): ${totalCompleted}`);
+    // Calculate total completed amount from progressOverallPct * amount for each item
+    let totalCompleted = 0;
+    for (const item of allOrderItems) {
+      // Only calculate for actual line items (not categories)
+      if (item.itemType === 'item') {
+        const amount = parseFloat(item.amount?.toString() || '0');
+        const progressPct = parseFloat(item.progressOverallPct?.toString() || '0');
+        
+        if (amount > 0 && progressPct > 0) {
+          // Calculate: (progressPct / 100) * amount
+          const itemCompletedAmount = (progressPct / 100) * amount;
+          totalCompleted += itemCompletedAmount;
+        } else if (item.amount && parseFloat(item.amount.toString()) > 0) {
+          // Fallback: if progressPct is 0 or null, use 0 for completed amount
+          // This matches the calculation logic in the save endpoint
+        }
+      }
+    }
+    
+    console.log(`[Invoice Summary] Total Completed (calculated from progressOverallPct * amount): ${totalCompleted}`);
 
     // Balance Remaining (N346: =H342-J342)
     // Original Invoice minus Total Completed (from order items)

@@ -37,7 +37,8 @@ export default function InvoiceSummary({ orderId, customerId, refreshTrigger }: 
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`/api/orders/${orderId}/invoice-summary`);
+      // Add cache-busting timestamp to ensure fresh data
+      const response = await fetch(`/api/orders/${orderId}/invoice-summary?t=${Date.now()}`);
       const data = await response.json();
 
       if (data.success) {
@@ -117,7 +118,18 @@ export default function InvoiceSummary({ orderId, customerId, refreshTrigger }: 
     setLoading(true);
     fetchSummary();
     fetchCustomerStatus();
-  }, [fetchSummary, fetchCustomerStatus, refreshTrigger]); // Refresh when orderId or refreshTrigger changes
+  }, [fetchSummary, fetchCustomerStatus]); // Refresh when orderId changes
+
+  // Refresh when refreshTrigger changes (with a small delay to ensure DB is updated)
+  useEffect(() => {
+    if (refreshTrigger !== undefined && refreshTrigger > 0) {
+      const timer = setTimeout(() => {
+        fetchSummary();
+      }, 300); // Wait 300ms after trigger to ensure database write is complete
+      
+      return () => clearTimeout(timer);
+    }
+  }, [refreshTrigger, fetchSummary]);
 
   if (loading) {
     return (

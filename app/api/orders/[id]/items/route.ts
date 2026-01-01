@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { orders, orderItems, changeHistory, invoices } from '@/lib/db/schema';
+import { orders, orderItems, changeHistory, invoices, orderApprovalItems, orderApprovals } from '@/lib/db/schema';
 import { eq, inArray, and, or, isNull, sql, gt } from 'drizzle-orm';
 import { recalculateCustomerStatusForOrder } from '@/lib/services/customerStatus';
 import { logOrderItemChange, valueToString, valuesAreEqual } from '@/lib/services/changeHistory';
@@ -439,6 +439,68 @@ export async function PUT(
         console.log(`[PUT /api/orders/${orderId}/items] Completed invoice linkedLineItems remapping (${invoicesUpdated} invoices updated)`);
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:390',message:'Invoice remapping completed',data:{invoicesUpdated,totalInvoices:allInvoices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+        // #endregion
+      }
+
+      // Remap order_approval_items: old itemIds -> new itemIds using rowIndex as stable identifier
+      // This is critical - order_approval_items references order items by ID, but PUT recreates items with new IDs
+      if (itemIdRemap.size > 0) {
+        console.log(`[PUT /api/orders/${orderId}/items] Remapping ${itemIdRemap.size} item IDs in order_approval_items...`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:444',message:'Starting order_approval_items remapping',data:{remapCount:itemIdRemap.size,sampleRemaps:Array.from(itemIdRemap.entries()).slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        // First, let's check what approval items exist for any of the old item IDs
+        const oldItemIds = Array.from(itemIdRemap.keys());
+        
+        // Query ALL approval items that reference ANY of the old item IDs (before they were deleted)
+        // Since oldItemIds contains IDs from the order being updated, we query directly
+        const approvalItemsToUpdate = await db
+          .select({
+            id: orderApprovalItems.id,
+            orderItemId: orderApprovalItems.orderItemId,
+            orderApprovalId: orderApprovalItems.orderApprovalId,
+          })
+          .from(orderApprovalItems)
+          .where(inArray(orderApprovalItems.orderItemId, oldItemIds));
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:463',message:'Found approval items to remap (direct query)',data:{approvalItemsCount:approvalItemsToUpdate.length,oldItemIdsCount:oldItemIds.length,oldItemIdsSample:oldItemIds.slice(0,5),orderId,approvalItemsSample:approvalItemsToUpdate.slice(0,3).map((item:any)=>({id:item.id,orderItemId:item.orderItemId,orderApprovalId:item.orderApprovalId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        // Also check if there are ANY approval items in the database at all (for debugging)
+        const allApprovalItems = await db
+          .select()
+          .from(orderApprovalItems)
+          .limit(10);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:470',message:'Sample approval items in database',data:{sampleCount:allApprovalItems.length,sampleOrderItemIds:allApprovalItems.slice(0,5).map((item:any)=>item.orderItemId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        let approvalItemsUpdated = 0;
+        for (const approvalItem of approvalItemsToUpdate) {
+          const oldItemId = approvalItem.orderItemId;
+          const newItemId = itemIdRemap.get(oldItemId);
+          if (newItemId && newItemId !== oldItemId) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:474',message:'Remapping approval item',data:{approvalItemId:approvalItem.id,approvalId:approvalItem.orderApprovalId,oldItemId,newItemId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            await db
+              .update(orderApprovalItems)
+              .set({
+                orderItemId: newItemId,
+              })
+              .where(eq(orderApprovalItems.id, approvalItem.id));
+            approvalItemsUpdated++;
+          }
+        }
+        console.log(`[PUT /api/orders/${orderId}/items] Completed order_approval_items remapping (${approvalItemsUpdated} items updated)`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:488',message:'Approval items remapping completed',data:{approvalItemsUpdated,totalApprovalItems:approvalItemsToUpdate.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/orders/[id]/items/route.ts:492',message:'No item ID remapping needed for approval items',data:{itemIdRemapSize:itemIdRemap.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
       }
 

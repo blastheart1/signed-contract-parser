@@ -17,16 +17,18 @@ import CustomerHistory from './CustomerHistory';
 import RestoreContractDialog from './RestoreContractDialog';
 import PermanentDeleteDialog from './PermanentDeleteDialog';
 import InvoiceSummary from './InvoiceSummary';
+import VendorMetricsCard from './VendorMetricsCard';
 import { mmddyyyyToYyyymmdd, yyyymmddToMmddyyyy, formatDateForDisplay } from '@/lib/utils/dateFormat';
 
 interface CustomerInfoProps {
   contract: StoredContract;
   isDeleted?: boolean;
+  activeTab?: 'order-items' | 'vendor-selection' | 'invoices';
   onContractUpdate?: (updatedContract: StoredContract) => void;
   onInvoiceChange?: number; // Trigger value that changes when invoices are updated
 }
 
-export default function CustomerInfo({ contract, isDeleted = false, onContractUpdate, onInvoiceChange }: CustomerInfoProps) {
+export default function CustomerInfo({ contract, isDeleted = false, activeTab, onContractUpdate, onInvoiceChange }: CustomerInfoProps) {
   console.log('[CustomerInfo] ===== Component Render =====');
   console.log('[CustomerInfo] contract:', contract ? {
     hasId: !!contract.id,
@@ -672,10 +674,18 @@ export default function CustomerInfo({ contract, isDeleted = false, onContractUp
           </div>
         )}
         {currentContract?.id && (
-          <InvoiceSummary 
-            orderId={currentContract.id} 
-            customerId={currentContract.customer?.dbxCustomerId}
-          />
+          activeTab === 'vendor-selection' ? (
+            <VendorMetricsCard
+              orderId={currentContract.id}
+              items={currentContract.items || []}
+              customerId={currentContract.customer?.dbxCustomerId}
+            />
+          ) : (
+            <InvoiceSummary 
+              orderId={currentContract.id} 
+              customerId={currentContract.customer?.dbxCustomerId}
+            />
+          )
         )}
       </motion.div>
     </div>

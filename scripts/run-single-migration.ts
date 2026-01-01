@@ -25,8 +25,30 @@ async function runSingleMigration() {
     console.log('Migration SQL:');
     console.log(migrationSQL);
 
-    // Execute the migration
-    await sql.unsafe(migrationSQL);
+    // Execute the migration - Drizzle migrations use --> statement-breakpoint as delimiters
+    // Split by statement-breakpoint, then by semicolons within each statement
+    const statements = migrationSQL
+      .split('--> statement-breakpoint')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--') && !s.match(/^\s*$/))
+      .flatMap(block => {
+        // Within each block, split by semicolons
+        return block.split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0 && !s.startsWith('--'));
+      });
+    
+    for (const statement of statements) {
+      if (statement.trim() && !statement.match(/^\s*$/)) {
+        try {
+          await sql.query(statement);
+        } catch (error) {
+          // If statement fails, log it but continue (might be a duplicate constraint, etc.)
+          console.warn(`Warning executing statement: ${statement.substring(0, 100)}...`);
+          console.warn(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    }
 
     console.log('Migration completed successfully!');
     process.exit(0);

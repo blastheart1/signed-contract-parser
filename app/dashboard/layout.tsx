@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Users, Clock, BarChart3, Trash2, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, BarChart3, Trash2, Building2, FileText } from 'lucide-react';
 import Sidebar, { type User } from '@/components/dashboard/Sidebar';
 
 export default function DashboardLayout({
@@ -48,14 +48,21 @@ export default function DashboardLayout({
     }
   };
 
-  const navigationItems = [
+  // Filter navigation items based on user role
+  const allNavigationItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/dashboard/customers', label: 'Customers', icon: Users },
     { href: '/dashboard/vendors', label: 'Vendors', icon: Building2 },
+    { href: '/dashboard/vendor-negotiation', label: 'Vendor Negotiation', icon: FileText, isSubItem: true },
     { href: '/dashboard/timeline', label: 'Timeline', icon: Clock },
     { href: '/dashboard/reports', label: 'Reports and Analytics', icon: BarChart3 },
     { href: '/dashboard/trash', label: 'Trash', icon: Trash2 },
   ];
+
+  // For vendors, show only Negotiation/Approval navigation item
+  const navigationItems = user?.role === 'vendor'
+    ? [{ href: '/dashboard/vendor-negotiation', label: 'Negotiation/Approval', icon: FileText }]
+    : allNavigationItems;
 
   if (loading) {
     return (
