@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
-type SortableColumn = 'reference_no' | 'vendor' | 'date_created' | 'stage';
+type SortableColumn = 'reference_no' | 'vendor' | 'customer' | 'date_created' | 'stage';
 
 interface OrderApproval {
   id: string;
@@ -74,14 +74,12 @@ interface PaginationInfo {
 
 const STAGE_COLORS: Record<string, string> = {
   draft: 'bg-gray-500',
-  sent: 'bg-blue-500',
   negotiating: 'bg-yellow-500',
   approved: 'bg-green-500',
 };
 
 const STAGE_LABELS: Record<string, string> = {
   draft: 'Draft',
-  sent: 'Sent',
   negotiating: 'Negotiating',
   approved: 'Approved',
 };
@@ -396,25 +394,31 @@ export default function VendorNegotiationPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; date_created: string; stage: string }>
+                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; customer: string; date_created: string; stage: string }>
                         column="reference_no"
                         title="Ref No"
                         currentSort={sortState}
                         onSortChange={handleSortChange}
                       />
-                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; date_created: string; stage: string }>
+                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; customer: string; date_created: string; stage: string }>
                         column="vendor"
                         title="Vendor"
                         currentSort={sortState}
                         onSortChange={handleSortChange}
                       />
-                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; date_created: string; stage: string }>
+                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; customer: string; date_created: string; stage: string }>
+                        column="customer"
+                        title="Customer"
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                      />
+                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; customer: string; date_created: string; stage: string }>
                         column="date_created"
                         title="Date Created"
                         currentSort={sortState}
                         onSortChange={handleSortChange}
                       />
-                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; date_created: string; stage: string }>
+                      <SortableTableHeaderArrowOnly<{ reference_no: string; vendor: string; customer: string; date_created: string; stage: string }>
                         column="stage"
                         title="Stage"
                         currentSort={sortState}
@@ -437,11 +441,14 @@ export default function VendorNegotiationPage() {
                           {approval.vendorName || <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell>
+                          {approval.customerName || <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell>
                           {new Date(approval.dateCreated).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
                           <Badge
-                            className={STAGE_COLORS[approval.stage] || 'bg-gray-500'}
+                            className={`text-center flex items-center justify-center px-3 ${STAGE_COLORS[approval.stage] || 'bg-gray-500'}`}
                           >
                             {STAGE_LABELS[approval.stage] || approval.stage}
                           </Badge>

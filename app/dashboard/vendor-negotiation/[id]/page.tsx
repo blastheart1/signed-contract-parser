@@ -44,19 +44,17 @@ interface OrderApproval {
 
 const STAGE_COLORS: Record<string, string> = {
   draft: 'bg-gray-500',
-  sent: 'bg-blue-500',
   negotiating: 'bg-yellow-500',
   approved: 'bg-green-500',
 };
 
 const STAGE_LABELS: Record<string, string> = {
   draft: 'Draft',
-  sent: 'Sent',
   negotiating: 'Negotiating',
   approved: 'Approved',
 };
 
-const STAGE_ORDER = ['draft', 'sent', 'negotiating', 'approved'];
+const STAGE_ORDER = ['draft', 'negotiating', 'approved'];
 
 export default function OrderApprovalDetailPage() {
   const params = useParams();
@@ -309,17 +307,11 @@ export default function OrderApprovalDetailPage() {
       const updateData: any = {};
       
       if (isPmApproval) {
-        updateData.pmApproved = true;
+        // PM: Toggle approval (can approve or retract)
+        updateData.pmApproved = !approval.pmApproved;
       } else {
-        updateData.vendorApproved = true;
-      }
-
-      // If both are approved, move to approved stage
-      const willBePmApproved = isPmApproval ? true : approval.pmApproved;
-      const willBeVendorApproved = isPmApproval ? approval.vendorApproved : true;
-
-      if (willBePmApproved && willBeVendorApproved) {
-        updateData.stage = 'approved';
+        // Vendor: Toggle approval (can approve or retract)
+        updateData.vendorApproved = !approval.vendorApproved;
       }
 
       const response = await fetch(`/api/order-approvals/${approval.id}`, {
@@ -331,23 +323,24 @@ export default function OrderApprovalDetailPage() {
       const data = await response.json();
 
       if (data.success) {
+        const action = (isPmApproval ? !approval.pmApproved : !approval.vendorApproved) ? 'approved' : 'retracted';
         toast({
           title: 'Success',
-          description: 'Approval recorded successfully',
+          description: `Approval ${action} successfully`,
         });
         fetchApproval();
       } else {
         toast({
           title: 'Error',
-          description: data.error || 'Failed to approve',
+          description: data.error || 'Failed to update approval',
           variant: 'destructive',
         });
       }
     } catch (error) {
-      console.error('Error approving:', error);
+      console.error('Error updating approval:', error);
       toast({
         title: 'Error',
-        description: 'Failed to approve',
+        description: 'Failed to update approval',
         variant: 'destructive',
       });
     } finally {
@@ -424,36 +417,26 @@ export default function OrderApprovalDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/vendor-negotiation">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Order Approval</h1>
-            <p className="text-muted-foreground mt-1">
-              Reference: <span className="font-mono">{approval.referenceNo}</span>
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge className={STAGE_COLORS[approval.stage] || 'bg-gray-500'}>
-            {STAGE_LABELS[approval.stage] || approval.stage}
-          </Badge>
-        </div>
-      </div>
+      <Button variant="outline" size="sm" asChild>
+        <Link href="/dashboard/vendor-negotiation">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Link>
+      </Button>
 
       <Card>
         <CardHeader>
-          <CardTitle>Approval Details</CardTitle>
+          <CardTitle>{approval.customerName || '—'}</CardTitle>
           <CardDescription>
-            Vendor: {approval.vendorName || '—'} | Customer: {approval.customerName || '—'}
+            Vendor: {approval.vendorName || '—'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Reference</p>
+            <p className="font-medium font-mono">{approval.referenceNo}</p>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Date Created</p>
@@ -490,42 +473,57 @@ export default function OrderApprovalDetailPage() {
             </div>
           </div>
 
-          {canChangeStage && (
-            <div className="flex items-center gap-2 pt-4 border-t">
-              <span className="text-sm font-medium">Stage:</span>
-              {canGoBack && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setNewStage(STAGE_ORDER[currentStageIndex - 1]);
-                    setStageChangeDialogOpen(true);
-                  }}
-                  disabled={saving}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-              )}
-              <Badge className={STAGE_COLORS[approval.stage] || 'bg-gray-500'}>
-                {STAGE_LABELS[approval.stage] || approval.stage}
-              </Badge>
-              {canGoForward && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setNewStage(STAGE_ORDER[currentStageIndex + 1]);
-                    setStageChangeDialogOpen(true);
-                  }}
-                  disabled={saving}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              )}
+          <div className="pt-4 border-t">
+            <p className="text-sm font-medium mb-3">Stage:</p>
+            <div className="flex items-center gap-2">
+              {STAGE_ORDER.map((stage, index) => {
+                const isCurrent = approval.stage === stage;
+                const isCompleted = index < currentStageIndex;
+                // Only allow clicking to move to 'approved' if both parties have approved
+                let isClickable = false;
+                if (canChangeStage && !saving && index !== currentStageIndex) {
+                  if (stage === 'approved') {
+                    // Can only move to approved if both parties have approved
+                    isClickable = approval.pmApproved && approval.vendorApproved;
+                  } else {
+                    // Can move to other stages normally
+                    isClickable = true;
+                  }
+                }
+                
+                return (
+                  <div key={stage} className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isClickable) {
+                          setNewStage(stage);
+                          setStageChangeDialogOpen(true);
+                        }
+                      }}
+                      disabled={!isClickable}
+                      className={`
+                        min-w-[100px] text-center flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                        ${isCurrent 
+                          ? `${STAGE_COLORS[stage] || 'bg-gray-500'} text-white cursor-default` 
+                          : isCompleted
+                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 cursor-default'
+                          : isClickable
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer'
+                          : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                        }
+                      `}
+                    >
+                      {STAGE_LABELS[stage]}
+                    </button>
+                    {index < STAGE_ORDER.length - 1 && (
+                      <div className={`w-2 h-0.5 mx-1 ${isCompleted ? 'bg-gray-400' : 'bg-gray-300 dark:bg-gray-700'}`} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
 
 
           {canSendToVendor && (
@@ -537,29 +535,42 @@ export default function OrderApprovalDetailPage() {
             </div>
           )}
 
-          {!isVendor && !approval.pmApproved && approval.stage !== 'approved' && (
-            <div className="pt-4 border-t">
-              <Button
-                onClick={() => setApprovalDialogOpen(true)}
-                disabled={saving}
-                variant="outline"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve (PM)
-              </Button>
-            </div>
-          )}
+          {approval.stage === 'negotiating' && (
+            <div className="pt-4 border-t space-y-2">
+              {!isVendor && (
+                <Button
+                  onClick={() => setApprovalDialogOpen(true)}
+                  disabled={saving}
+                  variant="outline"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  {approval.pmApproved ? 'Retract Approval (PM)' : 'Approve (PM)'}
+                </Button>
+              )}
 
-          {isVendor && !approval.vendorApproved && approval.stage !== 'approved' && (
-            <div className="pt-4 border-t">
-              <Button
-                onClick={() => setApprovalDialogOpen(true)}
-                disabled={saving}
-                variant="outline"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve (Vendor)
-              </Button>
+              {isVendor && (
+                <Button
+                  onClick={() => setApprovalDialogOpen(true)}
+                  disabled={saving}
+                  variant="outline"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  {approval.vendorApproved ? 'Retract Approval (Vendor)' : 'Approve (Vendor)'}
+                </Button>
+              )}
+
+              {!isVendor && approval.pmApproved && approval.vendorApproved && (
+                <Button
+                  onClick={() => {
+                    setNewStage('approved');
+                    setStageChangeDialogOpen(true);
+                  }}
+                  disabled={saving}
+                  className="ml-2"
+                >
+                  Move to Approved
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -602,17 +613,36 @@ export default function OrderApprovalDetailPage() {
       <AlertDialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Approve Order</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isVendor 
+                ? (approval.vendorApproved ? 'Retract Vendor Approval' : 'Approve Order (Vendor)')
+                : (approval.pmApproved ? 'Retract PM Approval' : 'Approve Order (PM)')
+              }
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {approval.pmApproved && approval.vendorApproved
-                ? 'Both parties have approved. This will move the approval to "Approved" stage and make it read-only. Continue?'
-                : 'Are you sure you want to approve this order?'}
+              {isVendor
+                ? (approval.vendorApproved 
+                    ? 'Are you sure you want to retract your approval?'
+                    : 'Are you sure you want to approve this order?')
+                : (approval.pmApproved
+                    ? 'Are you sure you want to retract your approval?'
+                    : 'Are you sure you want to approve this order?')
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleApprove} disabled={saving}>
-              {saving ? 'Approving...' : 'Approve'}
+              {saving 
+                ? (isVendor 
+                    ? (approval.vendorApproved ? 'Updating...' : 'Approving...')
+                    : (approval.pmApproved ? 'Updating...' : 'Approving...')
+                  )
+                : (isVendor
+                    ? (approval.vendorApproved ? 'Retract' : 'Approve')
+                    : (approval.pmApproved ? 'Retract' : 'Approve')
+                  )
+              }
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -598,11 +598,8 @@ export default function VendorApprovalOrderItemsTable({
                 <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black whitespace-nowrap h-8" style={{ width: '100px' }}>
                   RATE
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black whitespace-nowrap h-8" style={{ width: '130px' }}>
+                <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isAmountEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
                   AMOUNT
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black whitespace-nowrap h-8" style={{ width: '140px' }}>
-                  PRICE<br />DIFFERENCE
                 </TableHead>
                 <TableHead className={cn("sticky top-0 z-10 bg-background text-right", (isEditMode || isAmountEditMode) && canEdit && "border-r border-black", "h-8")} style={{ width: '100px' }}>
                   % Progress<br />Overall
@@ -613,7 +610,7 @@ export default function VendorApprovalOrderItemsTable({
               {displayItems.length === 0 ? (
                 <TableRow>
                   <TableCell 
-                    colSpan={(isEditMode || isAmountEditMode) && canEdit ? 7 : (isEditMode || isAmountEditMode) ? 6 : 5} 
+                    colSpan={(isEditMode && canEdit && !isAmountEditMode) ? 6 : 5} 
                     className="text-center py-8 text-muted-foreground"
                   >
                     {isEditMode || isAmountEditMode ? 'No items available' : 'No items selected'}
@@ -639,26 +636,23 @@ export default function VendorApprovalOrderItemsTable({
                     ? editedItem.negotiatedVendorAmount 
                     : (item.negotiatedVendorAmount || '');
                   
-                  // Calculate Price Difference (Original Order Items AMOUNT - Negotiated Vendor Amount)
                   const negotiatedAmount = typeof negotiatedVendorAmount === 'number' 
                     ? negotiatedVendorAmount 
                     : parseFloat(String(negotiatedVendorAmount || 0)) || 0;
-                  const priceDifference = amount - negotiatedAmount;
 
                   if (isCategory) {
                     return (
                       <TableRow 
                         key={item.id}
                         className={cn(
-                          'font-semibold',
-                          item.type === 'maincategory' ? 'bg-muted/50' : 'bg-muted/30'
+                          item.type === 'maincategory' ? 'font-bold' : 'font-semibold',
+                          item.type === 'maincategory' ? 'bg-primary/20 dark:bg-primary/30' : 'bg-primary/10 dark:bg-primary/20'
                         )}
                       >
                         <TableCell 
-                          colSpan={(isEditMode || isAmountEditMode) && canEdit ? 7 : (isEditMode || isAmountEditMode) ? 6 : 5}
+                          colSpan={(isEditMode && canEdit && !isAmountEditMode) ? 6 : 5}
                           className={cn(
                             'py-2',
-                            !isEditMode && !isAmountEditMode && 'border-r border-black',
                             item.type === 'maincategory' ? 'text-base' : 'text-sm pl-8'
                           )}
                         >
@@ -687,16 +681,16 @@ export default function VendorApprovalOrderItemsTable({
                           />
                         </TableCell>
                       )}
-                      <TableCell className={cn("font-medium pl-2 align-top", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ minWidth: '300px' }}>
+                      <TableCell className="font-medium pl-2 align-top" style={{ minWidth: '300px' }}>
                         {item.productService || '—'}
                       </TableCell>
-                      <TableCell className={cn("text-right align-top whitespace-nowrap", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ width: '80px' }}>
+                      <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '80px' }}>
                         {qty ? formatNumber(qty) : '—'}
                       </TableCell>
-                      <TableCell className={cn("text-right align-top whitespace-nowrap", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ width: '100px' }}>
+                      <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '100px' }}>
                         {rate ? formatCurrency(rate) : '—'}
                       </TableCell>
-                      <TableCell className={cn("text-right align-top whitespace-nowrap", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ width: '130px' }}>
+                      <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '130px' }}>
                         {isAmountEditMode && isItem ? (
                           <div className="flex items-center justify-end gap-1 min-w-0">
                             <div className="flex-1 min-w-0">
@@ -735,19 +729,7 @@ export default function VendorApprovalOrderItemsTable({
                           negotiatedAmount > 0 ? formatCurrency(negotiatedAmount) : formatCurrency(amount)
                         )}
                       </TableCell>
-                      <TableCell className={cn("text-right align-top whitespace-nowrap", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ width: '140px' }}>
-                        {priceDifference !== 0 ? (
-                          <span className={cn(
-                            "font-medium",
-                            priceDifference > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
-                            {priceDifference > 0 ? '+' : ''}${Math.abs(priceDifference).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
-                      <TableCell className={cn("text-right align-top", !isEditMode && !isAmountEditMode && "border-r border-black")} style={{ width: '100px' }}>
+                      <TableCell className="text-right align-top" style={{ width: '100px' }}>
                         {progressPct ? formatPercent(progressPct) : '—'}
                       </TableCell>
                     </TableRow>

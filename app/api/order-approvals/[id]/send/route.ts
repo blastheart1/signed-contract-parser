@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 
 /**
  * PATCH /api/order-approvals/[id]/send
- * Send approval to vendor (change stage to 'sent')
+ * Send approval to vendor (change stage to 'negotiating')
  * Only allowed from 'draft' stage
  * Sets sent_at timestamp
  */
@@ -64,11 +64,11 @@ export async function PATCH(
       );
     }
 
-    // Update approval: change stage to 'sent' and set sent_at
+    // Update approval: change stage to 'negotiating' and set sent_at
     const [updated] = await db
       .update(schema.orderApprovals)
       .set({
-        stage: 'sent',
+        stage: 'negotiating',
         sentAt: new Date(),
         updatedAt: new Date(),
       })

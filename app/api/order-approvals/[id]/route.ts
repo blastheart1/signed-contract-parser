@@ -181,20 +181,25 @@ export async function PATCH(
 
       // Vendors can only set vendorApproved, not change stage or pmApproved
       if (stage !== undefined || pmApproved !== undefined) {
-        return NextResponse.json({ error: 'Vendors can only approve items' }, { status: 403 });
+        return NextResponse.json({ error: 'Vendors can only approve/retract items' }, { status: 403 });
       }
 
-      // Only allow setting vendorApproved to true
-      if (vendorApproved !== true) {
-        return NextResponse.json({ error: 'Vendors can only approve' }, { status: 400 });
+      // Vendors can toggle vendorApproved (approve or retract) in negotiating stage
+      if (existing.stage !== 'negotiating') {
+        return NextResponse.json({ error: 'Vendors can only approve/retract in negotiating stage' }, { status: 400 });
       }
     }
 
     // Validate stage transitions
     if (stage !== undefined) {
-      const validStages = ['draft', 'sent', 'negotiating', 'approved'];
+      const validStages = ['draft', 'negotiating', 'approved'];
       if (!validStages.includes(stage)) {
         return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
+      }
+
+      // Only PM can change stages
+      if (user.role === 'vendor') {
+        return NextResponse.json({ error: 'Vendors cannot change stages' }, { status: 403 });
       }
 
       // Check if stage transition is valid (can go forward or backward one step)
