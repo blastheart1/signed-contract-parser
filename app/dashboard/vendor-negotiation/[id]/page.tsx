@@ -587,6 +587,7 @@ export default function OrderApprovalDetailPage() {
         onSaveSuccess={fetchApproval}
         saving={saving}
         onSavingChange={setSaving}
+        isVendor={isVendor}
       />
 
       <AlertDialog open={stageChangeDialogOpen} onOpenChange={setStageChangeDialogOpen}>

@@ -23,6 +23,7 @@ interface VendorApprovalOrderItemsTableProps {
   onSaveSuccess?: () => void;
   saving?: boolean;
   onSavingChange?: (saving: boolean) => void;
+  isVendor?: boolean;
 }
 
 interface ItemWithId extends OrderItem {
@@ -41,6 +42,7 @@ export default function VendorApprovalOrderItemsTable({
   onSaveSuccess,
   saving = false,
   onSavingChange,
+  isVendor = false,
 }: VendorApprovalOrderItemsTableProps) {
   const { toast } = useToast();
   const initialSelectedItemIdsRef = useRef<Set<string>>(new Set());
@@ -191,7 +193,12 @@ export default function VendorApprovalOrderItemsTable({
     const itemsMap = new Map<string, ItemWithId>();
     itemsWithIds.forEach(item => {
       if (item.type === 'item') {
-        itemsMap.set(item.id, { ...item, negotiatedVendorAmount: item.negotiatedVendorAmount || '' });
+        // Preserve existing values including 0, only default to empty string for null/undefined
+        const existingValue = item.negotiatedVendorAmount;
+        itemsMap.set(item.id, { 
+          ...item, 
+          negotiatedVendorAmount: existingValue !== null && existingValue !== undefined ? existingValue : '' 
+        });
       }
     });
     setEditedItems(itemsMap);
@@ -601,6 +608,11 @@ export default function VendorApprovalOrderItemsTable({
                 <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isAmountEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
                   AMOUNT
                 </TableHead>
+                {!isVendor && (
+                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isAmountEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
+                    Price Difference
+                  </TableHead>
+                )}
                 <TableHead className={cn("sticky top-0 z-10 bg-background text-right", (isEditMode || isAmountEditMode) && canEdit && "border-r border-black", "h-8")} style={{ width: '100px' }}>
                   % Progress<br />Overall
                 </TableHead>
@@ -610,7 +622,7 @@ export default function VendorApprovalOrderItemsTable({
               {displayItems.length === 0 ? (
                 <TableRow>
                   <TableCell 
-                    colSpan={(isEditMode && canEdit && !isAmountEditMode) ? 6 : 5} 
+                    colSpan={(isEditMode && canEdit && !isAmountEditMode) ? (6 + (isVendor ? 0 : 1)) : (5 + (isVendor ? 0 : 1))} 
                     className="text-center py-8 text-muted-foreground"
                   >
                     {isEditMode || isAmountEditMode ? 'No items available' : 'No items selected'}
@@ -634,11 +646,18 @@ export default function VendorApprovalOrderItemsTable({
                   const editedItem = editedItems.get(item.id);
                   const negotiatedVendorAmount = editedItem?.negotiatedVendorAmount !== undefined 
                     ? editedItem.negotiatedVendorAmount 
-                    : (item.negotiatedVendorAmount || '');
+                    : (item.negotiatedVendorAmount !== null && item.negotiatedVendorAmount !== undefined ? item.negotiatedVendorAmount : '');
                   
                   const negotiatedAmount = typeof negotiatedVendorAmount === 'number' 
                     ? negotiatedVendorAmount 
                     : parseFloat(String(negotiatedVendorAmount || 0)) || 0;
+                  
+                  // Calculate price difference (original amount - negotiated amount) for non-vendor users
+                  // Show difference only if there's a negotiated amount set (not null/undefined)
+                  const hasNegotiatedAmount = negotiatedVendorAmount !== null && negotiatedVendorAmount !== undefined && negotiatedVendorAmount !== '';
+                  const priceDifference = !isVendor && hasNegotiatedAmount 
+                    ? amount - negotiatedAmount 
+                    : null;
 
                   if (isCategory) {
                     return (
@@ -650,7 +669,7 @@ export default function VendorApprovalOrderItemsTable({
                         )}
                       >
                         <TableCell 
-                          colSpan={(isEditMode && canEdit && !isAmountEditMode) ? 6 : 5}
+                          colSpan={(isEditMode && canEdit && !isAmountEditMode) ? (6 + (isVendor ? 0 : 1)) : (5 + (isVendor ? 0 : 1))}
                           className={cn(
                             'py-2',
                             item.type === 'maincategory' ? 'text-base' : 'text-sm pl-8'
@@ -729,6 +748,17 @@ export default function VendorApprovalOrderItemsTable({
                           negotiatedAmount > 0 ? formatCurrency(negotiatedAmount) : formatCurrency(amount)
                         )}
                       </TableCell>
+                      {!isVendor && (
+                        <TableCell className="text-right align-top" style={{ width: '130px' }}>
+                          {priceDifference !== null ? (
+                            <span className={priceDifference >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {priceDifference >= 0 ? '+' : ''}{formatCurrency(priceDifference)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right align-top" style={{ width: '100px' }}>
                         {progressPct ? formatPercent(progressPct) : '—'}
                       </TableCell>
