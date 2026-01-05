@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Edit2, Save, X, Plus, Trash2, GripVertical, Folder, FolderOpen, Loader2, ChevronDown, Eye, EyeOff, Zap } from 'lucide-react';
 import {
@@ -254,6 +255,41 @@ function SortableRow({
     return num.toFixed(2);
   };
 
+  // Get filtered vendors for this item (only vendors with approved approvals for this line item) - Page 3 only
+  const getFilteredVendorsForThisItem = (): Array<{ id: string; name: string; status: 'active' | 'inactive' }> => {
+    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3) {
+      return vendors; // Return all vendors for other pages
+    }
+    const approvals = approvedApprovals.get(item.id);
+    if (!approvals || approvals.length === 0) {
+      return []; // No approved approvals, so no vendors to show
+    }
+    // Extract unique vendor IDs from approvals
+    const vendorIds = new Set(approvals.map(a => a.vendorId));
+    // Filter vendors to only include those with approved approvals
+    return vendors.filter(vendor => vendorIds.has(vendor.id));
+  };
+
+  // Get the selected approval for this item
+  const getSelectedApproval = () => {
+    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3) {
+      return null;
+    }
+    const refNo = selectedApprovalRef.get(item.id);
+    if (!refNo) return null;
+    const approvals = approvedApprovals.get(item.id);
+    if (!approvals) return null;
+    return approvals.find(a => a.referenceNo === refNo) || null;
+  };
+
+  // Get approval ID from reference number for linking
+  const getApprovalIdFromRef = (referenceNo: string): string | null => {
+    const approvals = approvedApprovals.get(item.id);
+    if (!approvals) return null;
+    const approval = approvals.find(a => a.referenceNo === referenceNo);
+    return approval?.approvalId || null;
+  };
+
   // Determine row background color
   const rowBgClass = isMainCategory
     ? 'bg-primary/20 dark:bg-primary/30'
@@ -276,7 +312,7 @@ function SortableRow({
               ? (isEditing && showActionsColumn ? 9 : 8)
               : vendorPage === 2
               ? (isEditing && showActionsColumn ? 5 : 4)
-              : (isEditing && showActionsColumn ? 8 : 7)
+              : (isEditing && showActionsColumn ? 9 : 8)
             : (isEditing && showActionsColumn ? 11 : 10)
         } className="h-2 p-0 relative">
             <div className="absolute inset-0 flex items-center">
@@ -548,9 +584,6 @@ function SortableRow({
           <TableCell className="text-center align-middle" style={{ width: '15%' }}>
             {isEditing && isItem ? (
               <div className="flex items-center justify-center">
-                {/* #region agent log */}
-                {(()=>{fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:502',message:'Rendering VendorNameInput component',data:{itemId:item.id,rowIndex:index},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'A'})}).catch(()=>{});return null;})()}
-                {/* #endregion */}
                 <VendorNameInput
                   value={item.vendorName1 || ''}
                   onChange={(value) => onCellChange(item.id, 'vendorName1', value)}
@@ -725,6 +758,7 @@ function SortableRow({
                   placeholder="Vendor name"
                   disabled={isDeleted}
                   vendors={vendors}
+                  filteredVendors={getFilteredVendorsForThisItem()}
                 />
               </div>
             ) : (
@@ -732,6 +766,27 @@ function SortableRow({
                 {isItem ? (item.vendorName1 || <span className="text-muted-foreground/30">—</span>) : ''}
               </div>
             )}
+          </TableCell>
+          <TableCell className="text-center align-middle min-h-[32px]" style={{ width: '12%' }}>
+            {isItem ? (
+              (() => {
+                const refNo = selectedApprovalRef.get(item.id);
+                const approvalId = refNo ? getApprovalIdFromRef(refNo) : null;
+                return refNo && approvalId ? (
+                  <Link
+                    href={`/dashboard/vendor-negotiation/${approvalId}`}
+                    className="text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {refNo}
+                  </Link>
+                ) : refNo ? (
+                  <span>{refNo}</span>
+                ) : (
+                  <span className="text-muted-foreground/30">—</span>
+                );
+              })()
+            ) : ''}
           </TableCell>
           <TableCell className="text-right min-h-[32px]" style={{ width: '12%' }}>
             <div className="min-h-[32px] flex items-center justify-end">
@@ -744,94 +799,26 @@ function SortableRow({
             </div>
           </TableCell>
           <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
-            {isEditing && isItem ? (
-              <div className="flex items-center justify-end gap-1">
-                <div className="flex-1 flex flex-col gap-1">
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.negotiatedVendorAmount ?? ''}
-                      onChange={(e) => onCellChange(item.id, 'negotiatedVendorAmount', e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-                      className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
-                      placeholder="0.00"
-                      disabled={isDeleted}
-                    />
-                    {(!item.negotiatedVendorAmount || item.negotiatedVendorAmount === 0 || item.negotiatedVendorAmount === '') && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => {
-                                const halfAmount = amount * 0.5;
-                                onCellChange(item.id, 'negotiatedVendorAmount', halfAmount);
-                              }}
-                              disabled={isDeleted || amount === 0}
-                            >
-                              <Zap className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Set to 50% of Order Items amount</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-                  {/* Approved Approvals Dropdown - only show when vendor is selected and approvals exist */}
-                  {item.vendorName1 && approvedApprovals.has(item.id) && approvedApprovals.get(item.id)!.length > 0 && (
-                    <Select
-                      value={selectedApprovalRef.get(item.id) || ''}
-                      onValueChange={(value) => {
-                        const approvals = approvedApprovals.get(item.id);
-                        const selectedApproval = approvals?.find(a => a.referenceNo === value);
-                        if (selectedApproval && selectedApproval.negotiatedVendorAmount !== null) {
-                          onCellChange(item.id, 'negotiatedVendorAmount', selectedApproval.negotiatedVendorAmount);
-                          if (onSelectedApprovalRefChange) {
-                            onSelectedApprovalRefChange(item.id, value);
-                          }
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue placeholder="Select approved price" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {approvedApprovals.get(item.id)?.map((approval) => (
-                          <SelectItem key={approval.approvalId} value={approval.referenceNo}>
-                            Ref: {approval.referenceNo} - ${formatNumber(approval.negotiatedVendorAmount || 0)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {/* Reference Number Display */}
-                  {selectedApprovalRef.get(item.id) && (
-                    <div className="text-xs text-muted-foreground text-right">
-                      Ref: {selectedApprovalRef.get(item.id)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="min-h-[32px] flex items-center justify-end">
-                {isItem ? (item.negotiatedVendorAmount ? `$${formatNumber(item.negotiatedVendorAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
-              </div>
-            )}
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (item.negotiatedVendorAmount ? `$${formatNumber(item.negotiatedVendorAmount)}` : <span className="text-muted-foreground/30">—</span>) : ''}
+            </div>
           </TableCell>
           <TableCell className="text-right min-h-[32px]" style={{ width: '15%' }}>
             <div className="min-h-[32px] flex items-center justify-end">
               {isItem ? (() => {
-                const estimatedCost = item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null
-                  ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
-                  : (amount * 0.5);
+                // Get the selected approval to use its snapshot data for price difference calculation
+                const selectedApproval = getSelectedApproval();
                 const negotiatedAmount = item.negotiatedVendorAmount !== undefined && item.negotiatedVendorAmount !== null
                   ? (typeof item.negotiatedVendorAmount === 'number' ? item.negotiatedVendorAmount : parseFloat(String(item.negotiatedVendorAmount)) || 0)
                   : 0;
+                
+                // Use snapshot amount from approval if available, otherwise fall back to estimatedVendorCost or amount * 0.5
+                const estimatedCost = selectedApproval && selectedApproval.snapshotData && selectedApproval.snapshotData.amount !== null
+                  ? (selectedApproval.snapshotData.amount || 0)
+                  : (item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null
+                      ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+                      : (amount * 0.5));
+                
                 const priceDifference = estimatedCost - negotiatedAmount;
                 return priceDifference !== 0 ? (
                   <span className={priceDifference >= 0 ? 'text-green-600' : 'text-red-600'}>
@@ -842,32 +829,9 @@ function SortableRow({
             </div>
           </TableCell>
           <TableCell className={cn("text-right min-h-[32px]", isEditing && showActionsColumn && "border-r border-black")} style={{ width: '15%' }}>
-            {(isEditing || editingColumn === 'progressOverall') && isItem ? (
-              <div className="flex items-center justify-end gap-1 w-full">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={item.progressOverallPct ?? ''}
-                  onChange={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    let value = e.target.value === '' || isNaN(parsed) ? '' : parsed;
-                    if (value !== '' && typeof value === 'number') {
-                      value = Math.max(0, Math.min(100, value));
-                    }
-                    onCellChange(item.id, 'progressOverallPct', value);
-                  }}
-                  className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
-                  placeholder="0"
-                />
-                <span className="text-muted-foreground text-sm whitespace-nowrap flex-shrink-0">%</span>
-              </div>
-            ) : (
-              <div className="min-h-[32px] flex items-center justify-end">
-                {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
-              </div>
-            )}
+            <div className="min-h-[32px] flex items-center justify-end">
+              {isItem ? (item.progressOverallPct ? `${formatPercent(item.progressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>) : ''}
+            </div>
           </TableCell>
         </>
       )}
@@ -936,7 +900,7 @@ function SortableRow({
               ? (isEditing && showActionsColumn ? 9 : 8)
               : vendorPage === 2
               ? (isEditing && showActionsColumn ? 5 : 4)
-              : (isEditing && showActionsColumn ? 8 : 7)
+              : (isEditing && showActionsColumn ? 9 : 8)
             : (isEditing && showActionsColumn ? 11 : 10)
         } className="h-2 p-0 relative">
           <div className="absolute inset-0 flex items-center">
@@ -995,6 +959,7 @@ export default function OrderTable({
   }
   const [approvedApprovals, setApprovedApprovals] = useState<Map<string, ApprovedApproval[]>>(new Map());
   const [selectedApprovalRef, setSelectedApprovalRef] = useState<Map<string, string>>(new Map()); // itemId -> referenceNo
+  const [itemIdToDbIdMap, setItemIdToDbIdMap] = useState<Map<string, string>>(new Map()); // temporary/itemId -> database UUID
   
   useEffect(() => {
     // Only load vendors if we're in vendor-selection mode
@@ -1005,9 +970,6 @@ export default function OrderTable({
     let mounted = true;
 
     const loadVendors = async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:720',message:'OrderTable loading vendors once',data:{visibleColumnSet},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
-      // #endregion
       try {
         setVendorsLoading(true);
         const response = await fetch('/api/vendors?status=active&pageSize=1000');
@@ -1019,16 +981,10 @@ export default function OrderTable({
         const data = await response.json();
         
         if (mounted && data.success) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:732',message:'OrderTable vendors loaded successfully',data:{vendorCount:data.data?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
-          // #endregion
           setVendors(data.data || []);
         }
       } catch (error) {
         console.error('[OrderTable] Error loading vendors:', error);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'OrderTable.tsx:738',message:'OrderTable vendor API call failed',data:{error:error instanceof Error?error.message:'Unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'FIX'})}).catch(()=>{});
-        // #endregion
       } finally {
         if (mounted) {
           setVendorsLoading(false);
@@ -1214,50 +1170,203 @@ export default function OrderTable({
       prevInitialItemsRef.current = initialItems;
     }
   }, [initialItems, isEditing]);
+
+  // Restore selectedApprovalRef and negotiatedVendorAmount after items and approvals are loaded (for Page 3)
+  useEffect(() => {
+    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3 || approvedApprovals.size === 0 || items.length === 0 || vendors.length === 0) {
+      return;
+    }
+
+    // Restore selectedApprovalRef by matching saved vendorName1 to approvals
+    // Also restore negotiatedVendorAmount from the matching approval
+    const newSelectedApprovalRef = new Map<string, string>();
+    const itemsToUpdate: Array<{ id: string; negotiatedVendorAmount: number | null }> = [];
+    
+    for (const item of items) {
+      if (item.type !== 'item' || !item.vendorName1) {
+        continue;
+      }
+
+      const approvals = approvedApprovals.get(item.id);
+      if (!approvals || approvals.length === 0) {
+        continue;
+      }
+
+      // Find the selected vendor
+      const selectedVendor = vendors.find(v => v.name === item.vendorName1);
+      if (!selectedVendor) {
+        continue;
+      }
+
+      // Find approvals for this vendor (match by vendor ID only)
+      const vendorApprovals = approvals.filter(a => a.vendorId === selectedVendor.id);
+      if (vendorApprovals.length === 0) {
+        continue;
+      }
+
+      // Use the first approval for this vendor (matching the behavior when vendor is selected)
+      const matchingApproval = vendorApprovals[0];
+      newSelectedApprovalRef.set(item.id, matchingApproval.referenceNo);
+      
+      // Also restore the negotiatedVendorAmount from the approval
+      if (matchingApproval.negotiatedVendorAmount !== null && matchingApproval.negotiatedVendorAmount !== undefined) {
+        itemsToUpdate.push({
+          id: item.id,
+          negotiatedVendorAmount: matchingApproval.negotiatedVendorAmount,
+        });
+      }
+    }
+
+    // Update selectedApprovalRef if there are changes (use functional update to avoid dependency)
+    setSelectedApprovalRef(prev => {
+      const refsChanged = Array.from(newSelectedApprovalRef.entries()).some(([itemId, refNo]) => 
+        prev.get(itemId) !== refNo
+      ) || Array.from(prev.entries()).some(([itemId, refNo]) =>
+        newSelectedApprovalRef.get(itemId) !== refNo
+      );
+
+      if (refsChanged) {
+        return newSelectedApprovalRef;
+      }
+      return prev;
+    });
+
+    // Update items with negotiatedVendorAmount from approvals (only if items need updating)
+    if (itemsToUpdate.length > 0) {
+      setItems(prevItems => {
+        let hasChanges = false;
+        const updatedItems = prevItems.map(item => {
+          const update = itemsToUpdate.find(u => u.id === item.id);
+          if (update) {
+            const currentAmount = typeof item.negotiatedVendorAmount === 'number' 
+              ? item.negotiatedVendorAmount 
+              : (item.negotiatedVendorAmount ? parseFloat(String(item.negotiatedVendorAmount)) : undefined);
+            if (currentAmount !== update.negotiatedVendorAmount) {
+              hasChanges = true;
+              // Convert null to undefined to match EditableOrderItem type
+              const newAmount: number | undefined = update.negotiatedVendorAmount ?? undefined;
+              return { ...item, negotiatedVendorAmount: newAmount };
+            }
+          }
+          return item;
+        });
+        return hasChanges ? updatedItems : prevItems;
+      });
+    }
+  }, [items, approvedApprovals, vendors, visibleColumnSet, vendorPage]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [insertPosition, setInsertPosition] = useState<'above' | 'below' | null>(null);
 
-  // Fetch approved approvals when vendor is selected for a line item (Vendor Selection Page 3)
+  // Fetch approved approvals for all items (Vendor Selection Page 3)
   useEffect(() => {
     // Only fetch in Vendor Selection Page 3 mode
-    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3 || !customerId) {
+    if (visibleColumnSet !== 'vendor-selection' || vendorPage !== 3 || !customerId || !orderId) {
       return;
     }
 
-    // Find items with vendors selected
-    const itemsWithVendors = items.filter(
-      item => item.type === 'item' && item.vendorName1 && item.id
-    );
+    // Helper function to check if ID is a UUID (database ID) vs temporary ID
+    const isUUID = (id: string): boolean => {
+      // UUID format: 8-4-4-4-12 hex digits (e.g., "123e4567-e89b-12d3-a456-426614174000")
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(id);
+    };
 
-    // Fetch approved approvals for each item
+    // Fetch all approved approvals in a single batch request
     const fetchApprovedApprovals = async () => {
-      const newApprovedApprovals = new Map<string, ApprovedApproval[]>();
-
-      for (const item of itemsWithVendors) {
-        if (!item.id) continue;
-
-        try {
-          const response = await fetch(
-            `/api/order-approvals/approved?orderItemId=${item.id}&customerId=${customerId}`
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && Array.isArray(data.data)) {
-              newApprovedApprovals.set(item.id, data.data);
-            }
-          }
-        } catch (error) {
-          console.error(`[OrderTable] Error fetching approved approvals for item ${item.id}:`, error);
+      try {
+        // Fetch items from database to get UUIDs and create mapping
+        const itemsResponse = await fetch(`/api/orders/${orderId}/items`);
+        if (!itemsResponse.ok) {
+          return;
         }
-      }
 
-      setApprovedApprovals(newApprovedApprovals);
+        const itemsData = await itemsResponse.json();
+        if (!itemsData.success || !Array.isArray(itemsData.items)) {
+          return;
+        }
+
+        // Filter to only item type items (not categories) with valid UUIDs
+        const dbItems = itemsData.items.filter((item: any) => 
+          item.itemType === 'item' && item.id && isUUID(item.id)
+        );
+
+        // Create mapping from displayed item IDs to database UUIDs by matching productService
+        const newItemIdToDbIdMap = new Map<string, string>();
+        for (let i = 0; i < items.length; i++) {
+          const displayItem = items[i];
+          if (displayItem.type !== 'item') continue;
+          
+          // Try to find matching database item by productService
+          const matchingDbItem = dbItems.find((dbItem: any) => {
+            const dbProductService = (dbItem.productService || '').trim().toLowerCase();
+            const displayProductService = (displayItem.productService || '').trim().toLowerCase();
+            return dbProductService === displayProductService && dbProductService !== '';
+          });
+          
+          if (matchingDbItem && matchingDbItem.id) {
+            newItemIdToDbIdMap.set(displayItem.id, matchingDbItem.id);
+          }
+        }
+        
+        setItemIdToDbIdMap(newItemIdToDbIdMap);
+
+        // Fetch all approvals for all items in a single batch request
+        const approvalsResponse = await fetch(
+          `/api/order-approvals/approved-batch?orderId=${orderId}&customerId=${customerId}`
+        );
+
+        if (!approvalsResponse.ok) {
+          console.warn(`[OrderTable] Failed to fetch approved approvals batch: ${approvalsResponse.status}`);
+          return;
+        }
+
+        const approvalsData = await approvalsResponse.json();
+        if (!approvalsData.success || !approvalsData.data) {
+          return;
+        }
+
+        // Create approvals map keyed by database UUIDs first
+        const approvalsByDbId = new Map<string, ApprovedApproval[]>();
+        for (const [dbItemId, approvals] of Object.entries(approvalsData.data)) {
+          if (Array.isArray(approvals)) {
+            approvalsByDbId.set(dbItemId, approvals as ApprovedApproval[]);
+          }
+        }
+
+        // Create approvals map keyed by displayed item IDs (temporary IDs)
+        const approvalsByDisplayId = new Map<string, ApprovedApproval[]>();
+        for (const [displayId, dbId] of newItemIdToDbIdMap.entries()) {
+          const approvals = approvalsByDbId.get(dbId);
+          if (approvals) {
+            approvalsByDisplayId.set(displayId, approvals);
+          }
+        }
+        
+        setApprovedApprovals(approvalsByDisplayId);
+      } catch (error) {
+        console.error('[OrderTable] Error fetching approved approvals:', error);
+      }
     };
 
     fetchApprovedApprovals();
-  }, [items, visibleColumnSet, vendorPage, customerId]);
+  }, [orderId, visibleColumnSet, vendorPage, customerId, items]);
+
+  // Helper function to get filtered vendors for a specific line item (only vendors with approved approvals)
+  const getFilteredVendorsForItem = useMemo(() => {
+    return (itemId: string): Array<{ id: string; name: string; status: 'active' | 'inactive' }> => {
+      const approvals = approvedApprovals.get(itemId);
+      if (!approvals || approvals.length === 0) {
+        return []; // No approved approvals, so no vendors to show
+      }
+      
+      // Extract unique vendor IDs from approvals
+      const vendorIds = new Set(approvals.map(a => a.vendorId));
+      
+      // Filter vendors to only include those with approved approvals
+      return vendors.filter(vendor => vendorIds.has(vendor.id));
+    };
+  }, [approvedApprovals, vendors]);
 
   // Convert EditableOrderItem back to OrderItem format
   const convertToOrderItem = (editableItem: EditableOrderItem): OrderItem => {
@@ -1389,6 +1498,31 @@ export default function OrderTable({
     const newItems = items.map(item => {
       if (item.id === itemId) {
         const updatedItem = { ...item, [field]: value };
+        
+        // Handle vendor selection for Page 3 - auto-select first approval and set amount
+        if (field === 'vendorName1' && visibleColumnSet === 'vendor-selection' && vendorPage === 3) {
+          const approvals = approvedApprovals.get(itemId);
+          if (approvals && approvals.length > 0) {
+            // Find approvals for the selected vendor
+            const selectedVendor = vendors.find(v => v.name === value);
+            if (selectedVendor) {
+              const vendorApprovals = approvals.filter(a => a.vendorId === selectedVendor.id);
+              if (vendorApprovals.length > 0) {
+                // Auto-select first approval for this vendor
+                const firstApproval = vendorApprovals[0];
+                // Update selected approval ref immediately (before state update)
+                const newSelectedApprovalRef = new Map(selectedApprovalRef);
+                newSelectedApprovalRef.set(itemId, firstApproval.referenceNo);
+                setSelectedApprovalRef(newSelectedApprovalRef);
+                // Set negotiated amount from approval
+                if (firstApproval.negotiatedVendorAmount !== null && firstApproval.negotiatedVendorAmount !== undefined) {
+                  updatedItem.negotiatedVendorAmount = firstApproval.negotiatedVendorAmount;
+                }
+              }
+            }
+          }
+        }
+        
         // Auto-compute rate if amount or qty changed and rate is empty
         if ((field === 'amount' || field === 'qty') && updatedItem.type === 'item') {
           return autoComputeRate(updatedItem);
@@ -1462,16 +1596,6 @@ export default function OrderTable({
 
     try {
       const orderItems = items.map(convertToOrderItem);
-      // #region agent log
-      const vendorItems = orderItems.filter((item, idx) => {
-        const hasVendorData = item.vendorName1 || item.vendorPercentage !== undefined || item.totalWorkAssignedToVendor !== undefined || item.estimatedVendorCost !== undefined || item.totalAmountWorkCompleted !== undefined || item.vendorBillingToDate !== undefined || item.vendorSavingsDeficit !== undefined;
-        if (hasVendorData && idx < 3) {
-          fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/dashboard/OrderTable.tsx:1020',message:'Saving vendor data',data:{itemIndex:idx,hasVendorName1:!!item.vendorName1,vendorName1:item.vendorName1,vendorPercentage:item.vendorPercentage,totalWorkAssignedToVendor:item.totalWorkAssignedToVendor,estimatedVendorCost:item.estimatedVendorCost},timestamp:Date.now(),sessionId:'debug-session',runId:'save-vendor',hypothesisId:'A'})}).catch(()=>{});
-        }
-        return hasVendorData;
-      });
-      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/dashboard/OrderTable.tsx:1020',message:'Save request summary',data:{totalItems:orderItems.length,itemsWithVendorData:vendorItems.length,firstItemVendorName1:orderItems[0]?.vendorName1,firstItemVendorPercentage:orderItems[0]?.vendorPercentage},timestamp:Date.now(),sessionId:'debug-session',runId:'save-vendor',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       
       const response = await fetch(`/api/orders/${orderId}/items`, {
         method: 'PUT',
@@ -2292,6 +2416,7 @@ export default function OrderTable({
                   {visibleColumnSet === 'vendor-selection' && vendorPage === 3 && (
                     <>
                       <TableHead className="sticky top-0 z-10 bg-background border-r border-black h-8 text-center align-middle" style={{ width: '15%' }}>VENDOR NAME</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background text-center border-r border-black h-8" style={{ width: '12%' }}>APPROVAL<br />REF NO.</TableHead>
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '12%' }}>QTY</TableHead>
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>RATE</TableHead>
                       <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black h-8" style={{ width: '15%' }}>AMOUNT</TableHead>
@@ -2424,11 +2549,13 @@ export default function OrderTable({
                     {visibleColumnSet === 'vendor-selection' && vendorPage === 3 && (
                       <>
                         <TableCell className="text-center"></TableCell>
+                        <TableCell className="text-center"></TableCell>
                         <TableCell className="text-right font-bold border-r border-black"></TableCell>
                         <TableCell className="text-right font-bold border-r border-black"></TableCell>
                         <TableCell className="text-right font-bold border-r border-black">
                           {!isNaN(totalAmount) && totalAmount !== 0 ? `$${formatTotalNumber(totalAmount)}` : <span className="text-muted-foreground/30">—</span>}
                         </TableCell>
+                        <TableCell className="text-right font-bold border-r border-black"></TableCell>
                         <TableCell className={cn("text-right font-bold", isEditing && showActionsColumn && "border-r border-black")}>
                           {!isNaN(totalProgressOverallPct) && totalProgressOverallPct !== 0 ? `${formatTotalPercent(totalProgressOverallPct)}%` : <span className="text-muted-foreground/30">—</span>}
                         </TableCell>

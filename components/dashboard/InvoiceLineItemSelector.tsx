@@ -122,6 +122,11 @@ export default function InvoiceLineItemSelector({
     const newSelected = new Set(selectedIds);
     const item = availableItems.find(i => i.id === itemId);
     
+    // Prevent selection if remainingBillable is 0 or less
+    if (item && item.remainingBillable <= 0) {
+      return;
+    }
+    
     if (newSelected.has(itemId)) {
       newSelected.delete(itemId);
       // Remove amount when unselected
@@ -130,10 +135,11 @@ export default function InvoiceLineItemSelector({
       setItemAmounts(newAmounts);
     } else {
       newSelected.add(itemId);
-      // Initialize with thisBill value when selected
+      // Initialize with thisBill value when selected (capped at remainingBillable)
       if (item) {
         const newAmounts = new Map(itemAmounts);
-        newAmounts.set(itemId, item.thisBill);
+        const initialAmount = Math.min(item.thisBill, item.remainingBillable);
+        newAmounts.set(itemId, initialAmount);
         setItemAmounts(newAmounts);
       }
     }
@@ -144,21 +150,35 @@ export default function InvoiceLineItemSelector({
     const item = availableItems.find(i => i.id === itemId);
     if (!item) return;
 
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
-      // Allow empty input
+    // Allow empty input
+    if (value === '' || value === '.') {
       const newAmounts = new Map(itemAmounts);
       newAmounts.set(itemId, 0);
       setItemAmounts(newAmounts);
       return;
     }
 
-    // Validate: cannot exceed remaining billable amount
+    // Validate and restrict to 2 decimal places
+    const decimalRegex = /^\d*\.?\d{0,2}$/;
+    if (!decimalRegex.test(value)) {
+      // Invalid format (more than 2 decimal places), don't update
+      return;
+    }
+
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) {
+      return;
+    }
+
+    // Validate: cannot exceed remaining billable amount (THIS BILL - REMAINING logic: max is remainingBillable)
     const maxAmount = item.remainingBillable;
     const clampedValue = Math.max(0, Math.min(numValue, maxAmount));
     
+    // Round to 2 decimal places
+    const roundedValue = Math.round(clampedValue * 100) / 100;
+    
     const newAmounts = new Map(itemAmounts);
-    newAmounts.set(itemId, clampedValue);
+    newAmounts.set(itemId, roundedValue);
     setItemAmounts(newAmounts);
 
     // Show warning if user tried to exceed limit
@@ -203,7 +223,7 @@ export default function InvoiceLineItemSelector({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Link Line Items to Invoice</DialogTitle>
           <DialogDescription>
@@ -249,15 +269,18 @@ export default function InvoiceLineItemSelector({
                   {availableItems.map((item, index) => {
                     const isSelected = selectedIds.has(item.id);
                     const isEvenRow = index % 2 === 0;
+                    const isDisabled = item.remainingBillable <= 0;
                     return (
                       <TableRow 
                         key={item.id}
-                        className={isEvenRow ? 'bg-muted/50 dark:bg-muted/30' : 'bg-background'}
+                        className={`${isEvenRow ? 'bg-muted/50 dark:bg-muted/30' : 'bg-background'} ${isDisabled ? 'opacity-60' : ''}`}
                       >
                         <TableCell className="align-top">
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleToggleItem(item.id)}
+                            disabled={isDisabled}
+                            className={isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
                           />
                         </TableCell>
                         <TableCell className="min-w-[150px] max-w-[200px] break-words align-top text-muted-foreground">
