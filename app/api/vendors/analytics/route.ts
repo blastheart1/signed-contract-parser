@@ -37,14 +37,43 @@ export async function GET(request: NextRequest) {
     const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
     // Query order_items - join with orders and customers to filter out deleted customers
-    // Calculate profitability metrics
+    // Use amount from order approvals (negotiatedVendorAmount if available, otherwise amount) for ACTUAL COST
     const analyticsData = await db
       .select({
         subCategory: schema.orderItems.subCategory,
         vendorName: schema.orderItems.vendorName1,
         totalWorkAssigned: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.totalWorkAssignedToVendor} AS NUMERIC)), 0)`,
         totalEstimatedCost: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.estimatedVendorCost} AS NUMERIC)), 0)`,
-        totalActualCost: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.vendorBillingToDate} AS NUMERIC)), 0)`,
+        // Use amount from orderApprovalItems: negotiatedVendorAmount (approved amount) if available, otherwise amount (snapshot)
+        // Fall back to vendorBillingToDate if no approved approval exists
+        // Use a subquery to get the approval amount per item to avoid double-counting
+        totalActualCost: sql<number>`
+          COALESCE(
+            SUM(
+              CAST(
+                COALESCE(
+                  (
+                    SELECT COALESCE(
+                      CAST(oai.negotiated_vendor_amount AS NUMERIC),
+                      CAST(oai.amount AS NUMERIC)
+                    )
+                    FROM order_approval_items oai
+                    INNER JOIN order_approvals oa ON oai.order_approval_id = oa.id
+                    INNER JOIN vendors v ON oa.vendor_id = v.id
+                    WHERE oai.order_item_id = ${schema.orderItems.id}
+                      AND oa.stage = 'approved'
+                      AND oa.deleted_at IS NULL
+                      AND v.name = ${schema.orderItems.vendorName1}
+                    ORDER BY oa.updated_at DESC
+                    LIMIT 1
+                  ),
+                  CAST(${schema.orderItems.vendorBillingToDate} AS NUMERIC)
+                ) AS NUMERIC
+              )
+            ),
+            0
+          )
+        `,
         totalSavingsDeficit: sql<number>`COALESCE(SUM(CAST(${schema.orderItems.vendorSavingsDeficit} AS NUMERIC)), 0)`,
         itemCount: sql<number>`COUNT(*)`,
         projectCount: sql<number>`COUNT(DISTINCT ${schema.orderItems.orderId})`,
