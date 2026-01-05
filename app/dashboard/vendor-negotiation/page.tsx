@@ -438,10 +438,34 @@ export default function VendorNegotiationPage() {
                           {approval.referenceNo}
                         </TableCell>
                         <TableCell>
-                          {approval.vendorName || <span className="text-muted-foreground">—</span>}
+                          {approval.vendorName ? (
+                            <Link
+                              href={`/dashboard/vendors?vendorId=${approval.vendorId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {approval.vendorName}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          {approval.customerName || <span className="text-muted-foreground">—</span>}
+                          {approval.customerName ? (
+                            <Link
+                              href={`/dashboard/customers/${approval.customerId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {approval.customerName}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {new Date(approval.dateCreated).toLocaleDateString()}

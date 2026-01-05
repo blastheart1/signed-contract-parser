@@ -775,6 +775,8 @@ function SortableRow({
                 return refNo && approvalId ? (
                   <Link
                     href={`/dashboard/vendor-negotiation/${approvalId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-primary hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
