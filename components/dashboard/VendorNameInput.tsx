@@ -17,6 +17,7 @@ interface VendorNameInputProps {
   disabled?: boolean;
   className?: string;
   vendors?: Vendor[]; // Optional: if provided, use these instead of loading
+  filteredVendors?: Vendor[]; // Optional: if provided, use these filtered vendors (overrides vendors prop)
 }
 
 export default function VendorNameInput({
@@ -26,8 +27,11 @@ export default function VendorNameInput({
   disabled = false,
   className = '',
   vendors: providedVendors,
+  filteredVendors,
 }: VendorNameInputProps) {
-  const [vendors, setVendors] = useState<Vendor[]>(providedVendors || []);
+  // Use filteredVendors if provided (even if empty), otherwise use providedVendors
+  const vendorsToUse = filteredVendors !== undefined ? filteredVendors : (providedVendors || []);
+  const [vendors, setVendors] = useState<Vendor[]>(vendorsToUse);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchTerm, setSearchTerm] = useState(value || '');
@@ -37,6 +41,13 @@ export default function VendorNameInput({
 
   // Load vendors from API only if not provided as prop
   useEffect(() => {
+    // If filteredVendors are provided (even if empty array), use them (highest priority)
+    if (filteredVendors !== undefined) {
+      setVendors(filteredVendors);
+      setUseFallback(false);
+      return;
+    }
+    
     // If vendors are provided as prop, use them and skip API call
     if (providedVendors && providedVendors.length > 0) {
       // #region agent log
@@ -100,7 +111,7 @@ export default function VendorNameInput({
       // #endregion
       mounted = false;
     };
-  }, [providedVendors]);
+  }, [providedVendors, filteredVendors]);
 
   // Update search term when value changes externally
   useEffect(() => {
@@ -127,7 +138,7 @@ export default function VendorNameInput({
   }, []);
 
   // Filter vendors based on search term
-  const filteredVendors = vendors.filter(vendor =>
+  const searchFilteredVendors = vendors.filter(vendor =>
     vendor.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -145,7 +156,7 @@ export default function VendorNameInput({
     if (!useFallback && vendors.length > 0) {
       setShowDropdown(true);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorNameInput.tsx:116',message:'Setting showDropdown to true',data:{filteredCount:filteredVendors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorNameInput.tsx:116',message:'Setting showDropdown to true',data:{filteredCount:searchFilteredVendors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
     }
   };
@@ -191,7 +202,7 @@ export default function VendorNameInput({
             type="button"
             onClick={() => {
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorNameInput.tsx:155',message:'Chevron button clicked',data:{currentShowDropdown:showDropdown,filteredCount:filteredVendors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'B'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorNameInput.tsx:155',message:'Chevron button clicked',data:{currentShowDropdown:showDropdown,filteredCount:searchFilteredVendors.length},timestamp:Date.now(),sessionId:'debug-session',runId:'vendor-api-debug',hypothesisId:'B'})}).catch(()=>{});
               // #endregion
               setShowDropdown(!showDropdown);
             }}
@@ -204,7 +215,7 @@ export default function VendorNameInput({
       </div>
 
       {/* Dropdown */}
-      {showDropdown && filteredVendors.length > 0 && (
+      {showDropdown && searchFilteredVendors.length > 0 && (
         <div
           ref={dropdownRef}
           className="absolute z-[1000] w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto"
@@ -213,7 +224,7 @@ export default function VendorNameInput({
           data-debug-dropdown="visible"
           // #endregion
         >
-          {filteredVendors.map((vendor) => (
+          {searchFilteredVendors.map((vendor) => (
             <button
               key={vendor.id}
               type="button"
@@ -227,7 +238,7 @@ export default function VendorNameInput({
             </button>
           ))}
           {/* Option to use custom value */}
-          {searchTerm && !filteredVendors.some(v => v.name.toLowerCase() === searchTerm.toLowerCase()) && (
+          {searchTerm && !searchFilteredVendors.some(v => v.name.toLowerCase() === searchTerm.toLowerCase()) && (
             <button
               type="button"
               onClick={() => {

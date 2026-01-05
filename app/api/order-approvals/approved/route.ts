@@ -29,6 +29,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Validate that orderItemId is a valid UUID (not a temporary ID like "item-84")
+    // UUID format: 8-4-4-4-12 hex digits
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orderItemId)) {
+      // Return empty array instead of error for temporary IDs
+      // This is expected behavior - items with temporary IDs haven't been saved yet
+      return NextResponse.json({
+        success: true,
+        data: [],
+      });
+    }
+
     // Build where conditions
     const whereConditions = [
       eq(schema.orderApprovalItems.orderItemId, orderItemId),
