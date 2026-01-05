@@ -13,3 +13,5 @@ DROP COLUMN IF EXISTS "rate",
 DROP COLUMN IF EXISTS "negotiated_vendor_amount",
 DROP COLUMN IF EXISTS "snapshot_date";
 
+
+

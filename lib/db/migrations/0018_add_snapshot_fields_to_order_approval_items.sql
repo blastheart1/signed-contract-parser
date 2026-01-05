@@ -14,3 +14,5 @@ ADD COLUMN IF NOT EXISTS "snapshot_date" TIMESTAMP;
 -- Add index on snapshot_date for querying by date
 CREATE INDEX IF NOT EXISTS "order_approval_items_snapshot_date_idx" ON "order_approval_items" ("snapshot_date");
 
+
+
