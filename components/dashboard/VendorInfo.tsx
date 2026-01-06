@@ -83,20 +83,20 @@ export default function VendorInfo({ vendor, isDeleted = false, onVendorUpdate }
 
   return (
     <>
-      <Card className="h-full max-h-[336px] flex flex-col overflow-hidden">
-        <CardContent className={`pt-6 flex flex-col ${showMoreInfo ? 'overflow-y-auto max-h-[336px]' : 'flex-1 min-h-0 overflow-hidden'}`}>
+      <Card className="h-full flex flex-col overflow-hidden">
+        <CardContent className={`pt-6 flex flex-col ${showMoreInfo ? 'overflow-y-auto' : 'flex-1 min-h-0 overflow-hidden'}`}>
           <div className="pb-3 flex items-start justify-between gap-4">
             <div className="flex-1 flex items-center gap-3 flex-wrap">
               <h1 className="text-4xl font-bold tracking-tight">{currentVendor.name}</h1>
               <Badge
                 variant={currentVendor.status === 'active' ? 'default' : 'secondary'}
-                className={`min-w-[100px] text-center ${
+                className={`min-w-[100px] flex items-center justify-center ${
                   currentVendor.status === 'active' 
                     ? 'bg-green-600 hover:bg-green-700' 
                     : 'bg-gray-500 hover:bg-gray-600'
                 }`}
               >
-                {currentVendor.status}
+                {currentVendor.status.charAt(0).toUpperCase() + currentVendor.status.slice(1).toLowerCase()}
               </Badge>
               {currentVendor.category && (
                 <Badge variant="outline">{currentVendor.category}</Badge>
@@ -153,7 +153,7 @@ export default function VendorInfo({ vendor, isDeleted = false, onVendorUpdate }
 
           {/* Performance Metrics Summary */}
           {currentVendor.performanceMetrics && (
-            <div className="pb-3 border-b mb-3">
+            <div className="pb-3 mb-3">
               <div className="grid grid-cols-4 gap-4 text-sm">
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Total Work Assigned</div>
@@ -181,6 +181,14 @@ export default function VendorInfo({ vendor, isDeleted = false, onVendorUpdate }
             </div>
           )}
 
+          {/* Contact Information - Always Visible */}
+          <div className="space-y-1 mb-3">
+            <InfoRow label="Email" value={currentVendor.email} />
+            <InfoRow label="Phone" value={currentVendor.phone} />
+            <InfoRow label="Contact Person" value={currentVendor.contactPerson} />
+          </div>
+
+          {/* Additional Information - Expandable */}
           <div className={`${showMoreInfo ? 'flex-shrink-0' : 'flex-1 min-h-0'} overflow-hidden`}>
             <motion.div
               initial={false}
@@ -193,14 +201,10 @@ export default function VendorInfo({ vendor, isDeleted = false, onVendorUpdate }
               className="flex-shrink-0"
             >
               {showMoreInfo && (
-                <div className="mt-2 pt-2 border-t h-full relative">
+                <div className="mt-2 pt-2 h-full relative">
                   <div className="space-y-1 pb-12 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                    <InfoRow label="Email" value={currentVendor.email} />
-                    <InfoRow label="Phone" value={currentVendor.phone} />
-                    <InfoRow label="Contact Person" value={currentVendor.contactPerson} />
                     {currentVendor.address && (
                       <>
-                        <div className="pt-1 border-t mt-2 mb-2"></div>
                         <InfoRow label="Address" value={currentVendor.address} />
                         <InfoRow label="City" value={currentVendor.city} />
                         <InfoRow label="State" value={currentVendor.state} />
@@ -216,26 +220,19 @@ export default function VendorInfo({ vendor, isDeleted = false, onVendorUpdate }
                       </>
                     )}
                     {currentVendor.specialties && currentVendor.specialties.length > 0 && (
-                      <>
-                        <div className="pt-1 border-t mt-2 mb-2"></div>
-                        <div className="flex justify-between items-start py-1">
-                          <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Specialties</dt>
-                          <dd className="text-sm text-foreground font-medium text-right flex-1">
-                            {currentVendor.specialties.join(', ')}
-                          </dd>
-                        </div>
-                      </>
+                      <div className="flex justify-between items-start py-1">
+                        <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Specialties</dt>
+                        <dd className="text-sm text-foreground font-medium text-right flex-1">
+                          {currentVendor.specialties.join(', ')}
+                        </dd>
+                      </div>
                     )}
                     {currentVendor.notes && (
-                      <>
-                        <div className="pt-1 border-t mt-2 mb-2"></div>
-                        <div className="flex justify-between items-start py-1">
-                          <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Notes</dt>
-                          <dd className="text-sm text-foreground font-medium text-right flex-1">{currentVendor.notes}</dd>
-                        </div>
-                      </>
+                      <div className="flex justify-between items-start py-1">
+                        <dt className="text-sm font-medium text-muted-foreground min-w-[140px]">Notes</dt>
+                        <dd className="text-sm text-foreground font-medium text-right flex-1">{currentVendor.notes}</dd>
+                      </div>
                     )}
-                    <div className="pt-1 border-t mt-2 mb-2"></div>
                     <InfoRow label="Created" value={new Date(currentVendor.createdAt).toLocaleDateString()} />
                     <InfoRow label="Updated" value={new Date(currentVendor.updatedAt).toLocaleDateString()} />
                   </div>

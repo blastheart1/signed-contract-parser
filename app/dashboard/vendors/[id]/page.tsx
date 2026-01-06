@@ -11,7 +11,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import VendorInfo from '@/components/dashboard/VendorInfo';
 import VendorAnalyticsCard from '@/components/dashboard/VendorAnalyticsCard';
-import VendorTrendAnalysis from '@/components/dashboard/VendorTrendAnalysis';
 import VendorEfficiencyMetrics from '@/components/dashboard/VendorEfficiencyMetrics';
 import VendorProjectsList from '@/components/dashboard/VendorProjectsList';
 import VendorRiskIndicators from '@/components/dashboard/VendorRiskIndicators';
@@ -212,29 +211,29 @@ function VendorDetailContent() {
         </div>
       </motion.div>
 
-      {/* Vendor Info */}
+      {/* Vendor Info and Risk Assessment - Side by Side */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
       >
-        <VendorInfo 
-          vendor={vendor}
-          isDeleted={isDeleted}
-          onVendorUpdate={handleVendorUpdate}
-        />
-      </motion.div>
+        {/* Vendor Info Card */}
+        <div className="flex flex-col">
+          <VendorInfo 
+            vendor={vendor}
+            isDeleted={isDeleted}
+            onVendorUpdate={handleVendorUpdate}
+          />
+        </div>
 
-      {/* Risk Indicators */}
-      {vendor.performanceMetrics && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.15 }}
-        >
-          <VendorRiskIndicators vendor={vendor} />
-        </motion.div>
-      )}
+        {/* Risk Assessment Card */}
+        {vendor.performanceMetrics && (
+          <div className="flex flex-col">
+            <VendorRiskIndicators vendor={vendor} />
+          </div>
+        )}
+      </motion.div>
 
       {/* Tabs: Overview, Analytics, Projects */}
       <motion.div
@@ -250,7 +249,6 @@ function VendorDetailContent() {
           </TabsList>
           
           <TabsContent value="overview" className="mt-6 space-y-4">
-            <VendorTrendAnalysis vendorId={vendor.id} />
             <VendorAnalyticsCard vendorId={vendor.id} view="category" />
           </TabsContent>
           

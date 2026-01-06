@@ -111,7 +111,7 @@ export default function VendorRiskIndicators({ vendor }: VendorRiskIndicatorsPro
 
   if (riskFactors.length === 0 && metrics.riskLevel === 'low') {
     return (
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-green-600" />
@@ -119,7 +119,7 @@ export default function VendorRiskIndicators({ vendor }: VendorRiskIndicatorsPro
           </CardTitle>
           <CardDescription>Vendor risk indicators and recommendations</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1">
           <Alert className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
             <AlertCircle className="h-4 w-4 text-green-600" />
             <AlertTitle>Low Risk</AlertTitle>
@@ -133,7 +133,7 @@ export default function VendorRiskIndicators({ vendor }: VendorRiskIndicatorsPro
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -151,7 +151,7 @@ export default function VendorRiskIndicators({ vendor }: VendorRiskIndicatorsPro
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 flex-1 overflow-y-auto">
         {riskFactors.map((factor, index) => (
           <Alert
             key={index}
