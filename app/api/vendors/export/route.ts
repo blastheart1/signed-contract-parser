@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
+import { getSession } from '@/lib/auth/session';
+import { isAdmin } from '@/lib/auth/permissions';
 import { isNull, eq, and } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
+    // Check if user is admin
+    const user = await getSession();
+    if (!user || !isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Admin access required.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const category = searchParams.get('category');

@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
+import { getSession } from '@/lib/auth/session';
+import { isAdmin } from '@/lib/auth/permissions';
 import { sql } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if user is admin
+    const user = await getSession();
+    if (!user || !isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Admin access required.' },
+        { status: 403 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
