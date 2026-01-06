@@ -19,6 +19,8 @@ import {
 import { Pagination } from '@/components/ui/pagination';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useSession } from '@/hooks/use-session';
+import { isAdmin } from '@/lib/auth/permissions';
 import VendorAnalyticsCard from '@/components/dashboard/VendorAnalyticsCard';
 import VendorDetailsModal from '@/components/dashboard/VendorDetailsModal';
 
@@ -53,8 +55,10 @@ export default function VendorsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const { toast } = useToast();
+  const { user } = useSession();
+  const userIsAdmin = isAdmin(user);
 
-  const fetchVendors = async () => {
+  const fetchVendors = useCallback(async () => {
     setLoading(true);
     try {
       let url = '/api/vendors';
@@ -69,13 +73,6 @@ export default function VendorsPage() {
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
       }
-      
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
-      
-      params.append('page', currentPage.toString());
-      params.append('pageSize', pageSize === 'all' ? '1000' : pageSize.toString());
       
       if (params.toString()) {
         url += '?' + params.toString();
@@ -104,11 +101,11 @@ export default function VendorsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showTrash, statusFilter, toast]);
 
   useEffect(() => {
     fetchVendors();
-  }, [statusFilter, showTrash, currentPage, pageSize]);
+  }, [fetchVendors]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -126,27 +123,51 @@ export default function VendorsPage() {
     return Array.from(cats).sort();
   }, [vendors]);
 
-  // Filter vendors by search term (client-side for better UX)
-  const filteredVendors = useMemo(() => {
-    if (!searchTerm) return vendors;
-    
-    const searchLower = searchTerm.toLowerCase();
-    return vendors.filter((vendor) => {
-      return (
-        vendor.name.toLowerCase().includes(searchLower) ||
-        vendor.email?.toLowerCase().includes(searchLower) ||
-        vendor.phone?.toLowerCase().includes(searchLower) ||
-        vendor.category?.toLowerCase().includes(searchLower)
-      );
-    });
+  // Efficient data processing pipeline (memoized) - follows Customers pattern
+  const processedVendors = useMemo(() => {
+    // Step 1: Apply global search filter (instant, in-memory)
+    const searched = searchTerm
+      ? vendors.filter((vendor) => {
+          const searchLower = searchTerm.toLowerCase();
+          return (
+            vendor.name.toLowerCase().includes(searchLower) ||
+            vendor.email?.toLowerCase().includes(searchLower) ||
+            vendor.phone?.toLowerCase().includes(searchLower) ||
+            vendor.category?.toLowerCase().includes(searchLower)
+          );
+        })
+      : vendors;
+
+    // Step 2: Apply status filter (if needed - though API already filters, this ensures consistency)
+    // Note: API already filters by status, but we keep this for client-side flexibility
+    const filtered = searched;
+
+    return filtered;
   }, [vendors, searchTerm]);
 
   // Calculate pagination
-  const effectivePageSize = pageSize === 'all' ? filteredVendors.length : pageSize;
-  const totalPages = pageSize === 'all' ? 1 : Math.ceil(filteredVendors.length / pageSize);
+  const effectivePageSize = pageSize === 'all' ? processedVendors.length : pageSize;
+  const totalPages = pageSize === 'all' ? 1 : Math.ceil(processedVendors.length / pageSize);
   const startIndex = (currentPage - 1) * effectivePageSize;
   const endIndex = startIndex + effectivePageSize;
-  const paginatedVendors = filteredVendors.slice(startIndex, endIndex);
+  const paginatedVendors = processedVendors.slice(startIndex, endIndex);
+
+  // Calculate minimum rows for table height (use pageSize or default to 10)
+  const minRows = pageSize === 'all' ? 10 : (typeof pageSize === 'number' ? pageSize : 10);
+
+  // Event handlers with useCallback for performance
+  const handleStatusFilterChange = useCallback((value: string) => {
+    setStatusFilter(value);
+  }, []);
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
+
+  const handlePageSizeChange = useCallback((size: number | 'all') => {
+    setPageSize(size);
+    setCurrentPage(1); // Reset to first page when page size changes
+  }, []);
 
   const handleSeedVendors = async () => {
     try {
@@ -355,40 +376,44 @@ export default function VendorsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleSeedVendors}
-              className="flex items-center gap-2"
-            >
-              <Upload className="h-4 w-4" />
-              Seed from CSV
-            </Button>
-            <label className="cursor-pointer">
-              <Button
-                variant="outline"
-                asChild
-                className="flex items-center gap-2"
-              >
-                <span>
+            {userIsAdmin && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleSeedVendors}
+                  className="flex items-center gap-2"
+                >
                   <Upload className="h-4 w-4" />
-                  Import CSV
-                </span>
-              </Button>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleImportVendors}
-                className="hidden"
-              />
-            </label>
-            <Button
-              variant="outline"
-              onClick={handleExportVendors}
-              className="flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Export CSV
-            </Button>
+                  Seed from CSV
+                </Button>
+                <label className="cursor-pointer">
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="flex items-center gap-2"
+                  >
+                    <span>
+                      <Upload className="h-4 w-4" />
+                      Import CSV
+                    </span>
+                  </Button>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportVendors}
+                    className="hidden"
+                  />
+                </label>
+                <Button
+                  variant="outline"
+                  onClick={handleExportVendors}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </Button>
+              </>
+            )}
             <Button
               onClick={handleAddVendor}
               className="flex items-center gap-2"
@@ -427,7 +452,7 @@ export default function VendorsPage() {
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                 <SelectTrigger className="w-full md:w-[180px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -459,94 +484,107 @@ export default function VendorsPage() {
                 </TableHeader>
                 <TableBody>
                   {paginatedVendors.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                        {loading ? 'Loading...' : 'No vendors found'}
-                      </TableCell>
-                    </TableRow>
+                    <>
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          {loading ? 'Loading...' : 'No vendors found'}
+                        </TableCell>
+                      </TableRow>
+                      {/* Fill remaining rows to maintain minimum height */}
+                      {!loading && Array.from({ length: minRows - 1 }).map((_, index) => (
+                        <TableRow key={`empty-${index}`} className="h-[40px]">
+                          <TableCell colSpan={4} className="h-[40px]"></TableCell>
+                        </TableRow>
+                      ))}
+                    </>
                   ) : (
-                    paginatedVendors.map((vendor, index) => (
-                      <motion.tr
-                        key={vendor.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className={`border-b transition-colors duration-150 ${!showTrash ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm' : ''}`}
-                      >
-                        <TableCell className="font-medium">
-                          {!showTrash ? (
-                            <Link
-                              href={`/dashboard/vendors/${vendor.id}`}
-                              className="hover:underline"
-                            >
-                              {vendor.name}
-                            </Link>
-                          ) : (
-                            vendor.name
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={vendor.status === 'active' ? 'default' : 'secondary'}>
-                            {vendor.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {vendor.email && <div>{vendor.email}</div>}
-                            {vendor.phone && <div className="text-muted-foreground">{vendor.phone}</div>}
-                            {!vendor.email && !vendor.phone && (
-                              <span className="text-muted-foreground">—</span>
+                    <>
+                      {paginatedVendors.map((vendor, index) => (
+                        <motion.tr
+                          key={vendor.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3, delay: index * 0.05 }}
+                          className={`border-b transition-colors duration-150 ${!showTrash ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm' : ''}`}
+                        >
+                          <TableCell className="font-medium">
+                            {!showTrash ? (
+                              <Link
+                                href={`/dashboard/vendors/${vendor.id}`}
+                                className="hover:underline"
+                              >
+                                {vendor.name}
+                              </Link>
+                            ) : (
+                              vendor.name
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditVendor(vendor);
-                              }}
-                              title="Edit vendor"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {!showTrash && (
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={vendor.status === 'active' ? 'default' : 'secondary'}>
+                              {vendor.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {vendor.email && <div>{vendor.email}</div>}
+                              {vendor.phone && <div className="text-muted-foreground">{vendor.phone}</div>}
+                              {!vendor.email && !vendor.phone && (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                className="h-8 w-8 p-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteVendor(vendor.id);
+                                  handleEditVendor(vendor);
                                 }}
-                                title="Delete vendor"
+                                title="Edit vendor"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Edit className="h-4 w-4" />
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </motion.tr>
-                    ))
+                              {!showTrash && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteVendor(vendor.id);
+                                  }}
+                                  title="Delete vendor"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </motion.tr>
+                      ))}
+                      {/* Fill remaining rows to maintain minimum height */}
+                      {paginatedVendors.length < minRows && !loading && Array.from({ length: minRows - paginatedVendors.length }).map((_, index) => (
+                        <TableRow key={`empty-${index}`} className="h-[40px]">
+                          <TableCell colSpan={4} className="h-[40px]"></TableCell>
+                        </TableRow>
+                      ))}
+                    </>
                   )}
                 </TableBody>
               </Table>
             </div>
 
             {/* Pagination */}
-            {filteredVendors.length > 0 && (
+            {processedVendors.length > 0 && (
               <Pagination
                 currentPage={currentPage}
-                totalItems={filteredVendors.length}
+                totalItems={processedVendors.length}
                 pageSize={pageSize}
-                onPageChange={setCurrentPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setCurrentPage(1); // Reset to first page when page size changes
-                }}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
                 pageSizeOptions={[10, 30, 50]}
               />
             )}

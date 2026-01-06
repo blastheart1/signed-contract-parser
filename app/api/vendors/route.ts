@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull, and, isNotNull, desc, or, like, sql } from 'drizzle-orm';
+import { eq, isNull, and, isNotNull } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search');
     const status = searchParams.get('status');
     const category = searchParams.get('category');
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '10');
     const includeDeleted = searchParams.get('includeDeleted') === 'true';
     const trashOnly = searchParams.get('trashOnly') === 'true';
 
@@ -39,42 +36,18 @@ export async function GET(request: NextRequest) {
       whereConditions.push(eq(schema.vendors.category, category));
     }
 
-    // Add search filter if provided
-    if (search) {
-      const searchPattern = `%${search}%`;
-      whereConditions.push(
-        or(
-          like(schema.vendors.name, searchPattern),
-          like(schema.vendors.email, searchPattern),
-          like(schema.vendors.phone, searchPattern)
-        )!
-      );
-    }
-
     const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
-    // Fetch vendors with filters, sorted by name
+    // Fetch all vendors with filters, sorted by name (no pagination)
     const vendors = await db
       .select()
       .from(schema.vendors)
       .where(whereClause)
       .orderBy(schema.vendors.name);
 
-    // Calculate pagination
-    const total = vendors.length;
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const paginatedVendors = vendors.slice(startIndex, endIndex);
-
     return NextResponse.json({
       success: true,
-      data: paginatedVendors,
-      pagination: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      data: vendors,
     });
   } catch (error) {
     console.error('[Vendors API] Error fetching vendors:', error);
