@@ -15,3 +15,4 @@ DROP COLUMN IF EXISTS "snapshot_date";
 
 
 
+

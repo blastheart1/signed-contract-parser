@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
 import { getSession } from '@/lib/auth/session';
 import { hasRole } from '@/lib/auth/permissions';
-import { eq, isNull, isNotNull, and, or, desc, asc, like, sql } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, or, desc, asc, like, sql, inArray } from 'drizzle-orm';
 import { generateReferenceNumber } from '@/lib/services/referenceNumberGenerator';
 
 /**
@@ -60,6 +60,8 @@ export async function GET(request: NextRequest) {
         
         if (vendorRecord.length > 0) {
           whereConditions.push(eq(schema.orderApprovals.vendorId, vendorRecord[0].id));
+          // Vendors can only see 'negotiating' and 'approved' stages
+          whereConditions.push(inArray(schema.orderApprovals.stage, ['negotiating', 'approved']));
         } else {
           // Vendor user has no vendor record - return empty
           return NextResponse.json({

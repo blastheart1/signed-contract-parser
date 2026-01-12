@@ -69,13 +69,16 @@ export async function GET(
       }
     }
 
-    // Fetch selected order items - include negotiatedVendorAmount if column exists
+    // Fetch selected order items - include snapshot fields (qty, rate, amount) and negotiatedVendorAmount
     let selectedItems;
     try {
       selectedItems = await db
         .select({
           id: schema.orderApprovalItems.id,
           orderItemId: schema.orderApprovalItems.orderItemId,
+          qty: schema.orderApprovalItems.qty,
+          rate: schema.orderApprovalItems.rate,
+          amount: schema.orderApprovalItems.amount,
           negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
           orderItem: schema.orderItems,
         })
@@ -83,17 +86,35 @@ export async function GET(
         .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
         .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
     } catch (error: any) {
-      // If negotiatedVendorAmount column doesn't exist, select without it
+      // If snapshot columns don't exist, select without them
       if (error?.cause?.code === '42703' || error?.message?.includes('does not exist')) {
-        selectedItems = await db
-          .select({
-            id: schema.orderApprovalItems.id,
-            orderItemId: schema.orderApprovalItems.orderItemId,
-            orderItem: schema.orderItems,
-          })
-          .from(schema.orderApprovalItems)
-          .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
-          .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        try {
+          selectedItems = await db
+            .select({
+              id: schema.orderApprovalItems.id,
+              orderItemId: schema.orderApprovalItems.orderItemId,
+              negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
+              orderItem: schema.orderItems,
+            })
+            .from(schema.orderApprovalItems)
+            .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+            .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        } catch (fallbackError: any) {
+          // If negotiatedVendorAmount also doesn't exist, select base fields only
+          if (fallbackError?.cause?.code === '42703' || fallbackError?.message?.includes('does not exist')) {
+            selectedItems = await db
+              .select({
+                id: schema.orderApprovalItems.id,
+                orderItemId: schema.orderApprovalItems.orderItemId,
+                orderItem: schema.orderItems,
+              })
+              .from(schema.orderApprovalItems)
+              .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+              .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+          } else {
+            throw fallbackError;
+          }
+        }
       } else {
         throw error;
       }
@@ -106,6 +127,9 @@ export async function GET(
         selectedItems: selectedItems.map(item => ({
           id: item.id,
           orderItemId: item.orderItemId,
+          qty: (item as any).qty || null,
+          rate: (item as any).rate || null,
+          amount: (item as any).amount || null,
           negotiatedVendorAmount: (item as any).negotiatedVendorAmount || null,
           orderItem: item.orderItem,
         })),

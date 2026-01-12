@@ -164,45 +164,81 @@ export default function OrderApprovalDetailPage() {
           fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/dashboard/vendor-negotiation/[id]/page.tsx:126',message:'Total items before conversion',data:{totalItems:allItems.length,orderIdsProcessed:allOrderIds.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
           // #endregion
           
-          // Create a map of orderItemId -> negotiatedVendorAmount from selectedItems
+          // Create maps from selectedItems (snapshot data)
           const negotiatedAmountMap = new Map<string, number | null>();
+          const snapshotQtyMap = new Map<string, number | string>();
+          const snapshotRateMap = new Map<string, number | string>();
+          const snapshotAmountMap = new Map<string, number>();
           if (data.data.selectedItems) {
             data.data.selectedItems.forEach((selectedItem: any) => {
-              if (selectedItem.orderItemId && selectedItem.negotiatedVendorAmount !== undefined) {
-                const amount = selectedItem.negotiatedVendorAmount 
-                  ? parseFloat(String(selectedItem.negotiatedVendorAmount)) 
-                  : null;
-                negotiatedAmountMap.set(selectedItem.orderItemId, amount);
+              if (selectedItem.orderItemId) {
+                if (selectedItem.negotiatedVendorAmount !== undefined) {
+                  const amount = selectedItem.negotiatedVendorAmount 
+                    ? parseFloat(String(selectedItem.negotiatedVendorAmount)) 
+                    : null;
+                  negotiatedAmountMap.set(selectedItem.orderItemId, amount);
+                }
+                // Use snapshot qty/rate/amount if available, otherwise use order_items values
+                if (selectedItem.qty !== null && selectedItem.qty !== undefined) {
+                  snapshotQtyMap.set(selectedItem.orderItemId, selectedItem.qty);
+                }
+                if (selectedItem.rate !== null && selectedItem.rate !== undefined) {
+                  snapshotRateMap.set(selectedItem.orderItemId, selectedItem.rate);
+                }
+                if (selectedItem.amount !== null && selectedItem.amount !== undefined) {
+                  snapshotAmountMap.set(selectedItem.orderItemId, parseFloat(String(selectedItem.amount)) || 0);
+                }
               }
             });
           }
 
-          // Convert database order items to OrderItem format
-          const convertedItems: OrderItem[] = allItems.map((dbItem: any) => ({
-            id: dbItem.id,
-            type: dbItem.itemType || 'item',
-            productService: dbItem.productService || '',
-            qty: dbItem.qty ? parseFloat(String(dbItem.qty)) : '',
-            rate: dbItem.rate ? parseFloat(String(dbItem.rate)) : '',
-            amount: dbItem.amount ? parseFloat(String(dbItem.amount)) : 0,
-            progressOverallPct: dbItem.progressOverallPct ? parseFloat(String(dbItem.progressOverallPct)) : undefined,
-            completedAmount: dbItem.completedAmount ? parseFloat(String(dbItem.completedAmount)) : undefined,
-            previouslyInvoicedPct: dbItem.previouslyInvoicedPct ? parseFloat(String(dbItem.previouslyInvoicedPct)) : undefined,
-            previouslyInvoicedAmount: dbItem.previouslyInvoicedAmount ? parseFloat(String(dbItem.previouslyInvoicedAmount)) : undefined,
-            newProgressPct: dbItem.newProgressPct ? parseFloat(String(dbItem.newProgressPct)) : undefined,
-            thisBill: dbItem.thisBill ? parseFloat(String(dbItem.thisBill)) : undefined,
-            mainCategory: dbItem.mainCategory || undefined,
-            subCategory: dbItem.subCategory || undefined,
-            // Vendor selection fields
-            vendorName1: dbItem.vendorName1 || undefined,
-            vendorPercentage: dbItem.vendorPercentage ? parseFloat(String(dbItem.vendorPercentage)) : undefined,
-            totalWorkAssignedToVendor: dbItem.totalWorkAssignedToVendor ? parseFloat(String(dbItem.totalWorkAssignedToVendor)) : undefined,
-            estimatedVendorCost: dbItem.estimatedVendorCost ? parseFloat(String(dbItem.estimatedVendorCost)) : undefined,
-            totalAmountWorkCompleted: dbItem.totalAmountWorkCompleted ? parseFloat(String(dbItem.totalAmountWorkCompleted)) : undefined,
-            vendorBillingToDate: dbItem.vendorBillingToDate ? parseFloat(String(dbItem.vendorBillingToDate)) : undefined,
-            vendorSavingsDeficit: dbItem.vendorSavingsDeficit ? parseFloat(String(dbItem.vendorSavingsDeficit)) : undefined,
-            negotiatedVendorAmount: negotiatedAmountMap.get(dbItem.id) ?? undefined,
-          }));
+          // Convert database order items to OrderItem format, using snapshot data when available
+          // Determine if current user is vendor (we need this here to conditionally include originalAmount)
+          const currentUserIsVendor = user?.role === 'vendor';
+          
+          const convertedItems: (OrderItem & { originalAmount?: number })[] = allItems.map((dbItem: any) => {
+            const snapshotQty = snapshotQtyMap.get(dbItem.id);
+            const snapshotRate = snapshotRateMap.get(dbItem.id);
+            const snapshotAmount = snapshotAmountMap.get(dbItem.id);
+            
+            // Get original amount from order_items (only for PM users, not vendors)
+            const originalAmount = dbItem.amount ? parseFloat(String(dbItem.amount)) : 0;
+            
+            return {
+              id: dbItem.id,
+              type: dbItem.itemType || 'item',
+              productService: dbItem.productService || '',
+              // Use only snapshot data - do NOT fall back to order_items (prevents vendors from seeing original estimates)
+              qty: snapshotQty !== undefined 
+                ? (typeof snapshotQty === 'number' ? snapshotQty : parseFloat(String(snapshotQty)) || '')
+                : '',
+              rate: snapshotRate !== undefined
+                ? (typeof snapshotRate === 'number' ? snapshotRate : parseFloat(String(snapshotRate)) || '')
+                : '',
+              amount: snapshotAmount !== undefined
+                ? snapshotAmount
+                : 0,
+              // Include originalAmount only for PM users (not vendors) - used for price difference calculation
+              ...(currentUserIsVendor ? {} : { originalAmount }),
+              progressOverallPct: dbItem.progressOverallPct ? parseFloat(String(dbItem.progressOverallPct)) : undefined,
+              completedAmount: dbItem.completedAmount ? parseFloat(String(dbItem.completedAmount)) : undefined,
+              previouslyInvoicedPct: dbItem.previouslyInvoicedPct ? parseFloat(String(dbItem.previouslyInvoicedPct)) : undefined,
+              previouslyInvoicedAmount: dbItem.previouslyInvoicedAmount ? parseFloat(String(dbItem.previouslyInvoicedAmount)) : undefined,
+              newProgressPct: dbItem.newProgressPct ? parseFloat(String(dbItem.newProgressPct)) : undefined,
+              thisBill: dbItem.thisBill ? parseFloat(String(dbItem.thisBill)) : undefined,
+              mainCategory: dbItem.mainCategory || undefined,
+              subCategory: dbItem.subCategory || undefined,
+              // Vendor selection fields
+              vendorName1: dbItem.vendorName1 || undefined,
+              vendorPercentage: dbItem.vendorPercentage ? parseFloat(String(dbItem.vendorPercentage)) : undefined,
+              totalWorkAssignedToVendor: dbItem.totalWorkAssignedToVendor ? parseFloat(String(dbItem.totalWorkAssignedToVendor)) : undefined,
+              estimatedVendorCost: dbItem.estimatedVendorCost ? parseFloat(String(dbItem.estimatedVendorCost)) : undefined,
+              totalAmountWorkCompleted: dbItem.totalAmountWorkCompleted ? parseFloat(String(dbItem.totalAmountWorkCompleted)) : undefined,
+              vendorBillingToDate: dbItem.vendorBillingToDate ? parseFloat(String(dbItem.vendorBillingToDate)) : undefined,
+              vendorSavingsDeficit: dbItem.vendorSavingsDeficit ? parseFloat(String(dbItem.vendorSavingsDeficit)) : undefined,
+              negotiatedVendorAmount: negotiatedAmountMap.get(dbItem.id) ?? undefined,
+            };
+          });
           
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/6b8d521d-ec00-4db7-90b9-4fcc586b69d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/dashboard/vendor-negotiation/[id]/page.tsx:155',message:'Items after conversion',data:{convertedCount:convertedItems.length,originalCount:allItems.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -386,7 +422,8 @@ export default function OrderApprovalDetailPage() {
   };
 
 
-  const canEditItems = approval?.stage === 'draft' && !isVendor;
+  // PM can edit in draft stage, vendors can edit in negotiating stage
+  const canEditItems = approval?.stage === 'draft' && !isVendor || approval?.stage === 'negotiating' && isVendor;
   const isReadOnly = approval?.stage === 'approved';
   const canChangeStage = !isReadOnly && !isVendor;
   const canSendToVendor = approval?.stage === 'draft' && selectedItemIds.size > 0 && !isVendor;

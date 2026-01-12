@@ -47,7 +47,7 @@ export async function GET(
       }
     }
 
-    // Fetch selected items - include negotiatedVendorAmount if column exists
+    // Fetch selected items - include snapshot fields (qty, rate, amount) and negotiatedVendorAmount
     // Use try/catch to handle case where snapshot columns don't exist
     let selectedItems;
     try {
@@ -56,6 +56,9 @@ export async function GET(
           id: schema.orderApprovalItems.id,
           orderItemId: schema.orderApprovalItems.orderItemId,
           createdAt: schema.orderApprovalItems.createdAt,
+          qty: schema.orderApprovalItems.qty,
+          rate: schema.orderApprovalItems.rate,
+          amount: schema.orderApprovalItems.amount,
           negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
           orderItem: schema.orderItems,
         })
@@ -63,18 +66,37 @@ export async function GET(
         .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
         .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
     } catch (error: any) {
-      // If negotiatedVendorAmount column doesn't exist, select without it
+      // If snapshot columns don't exist, select without them
       if (error?.cause?.code === '42703' || error?.message?.includes('does not exist')) {
-        selectedItems = await db
-          .select({
-            id: schema.orderApprovalItems.id,
-            orderItemId: schema.orderApprovalItems.orderItemId,
-            createdAt: schema.orderApprovalItems.createdAt,
-            orderItem: schema.orderItems,
-          })
-          .from(schema.orderApprovalItems)
-          .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
-          .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        try {
+          selectedItems = await db
+            .select({
+              id: schema.orderApprovalItems.id,
+              orderItemId: schema.orderApprovalItems.orderItemId,
+              createdAt: schema.orderApprovalItems.createdAt,
+              negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
+              orderItem: schema.orderItems,
+            })
+            .from(schema.orderApprovalItems)
+            .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+            .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        } catch (fallbackError: any) {
+          // If negotiatedVendorAmount also doesn't exist, select base fields only
+          if (fallbackError?.cause?.code === '42703' || fallbackError?.message?.includes('does not exist')) {
+            selectedItems = await db
+              .select({
+                id: schema.orderApprovalItems.id,
+                orderItemId: schema.orderApprovalItems.orderItemId,
+                createdAt: schema.orderApprovalItems.createdAt,
+                orderItem: schema.orderItems,
+              })
+              .from(schema.orderApprovalItems)
+              .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+              .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+          } else {
+            throw fallbackError;
+          }
+        }
       } else {
         throw error;
       }
@@ -228,9 +250,9 @@ export async function PUT(
                 createdAt: now,
                 // Snapshot data (nullable - safe for existing records)
                 productService: orderItem?.productService || null,
-                amount: orderItem?.amount ? String(orderItem.amount) : null,
+                amount: '0', // Initially 0 - will be computed as QTY × RATE
                 qty: orderItem?.qty ? String(orderItem.qty) : null,
-                rate: orderItem?.rate ? String(orderItem.rate) : null,
+                rate: '0', // Initially 0 - vendor will fill this during negotiation
                 negotiatedVendorAmount: null, // Will be updated when user edits amounts
                 snapshotDate: now,
               };
@@ -298,8 +320,15 @@ export async function PUT(
 
 /**
  * PATCH /api/order-approvals/[id]/items
- * Update negotiated vendor amounts for order approval items
- * Body: { amounts: Array<{ orderApprovalItemId: string, negotiatedVendorAmount: number | null }> }
+ * Update order approval items
+ * Body: { 
+ *   amounts?: Array<{ orderApprovalItemId: string, negotiatedVendorAmount: number | null }>,
+ *   qty?: Array<{ orderApprovalItemId: string, qty: number | null }>,
+ *   rates?: Array<{ orderApprovalItemId: string, rate: number | null }>
+ * }
+ * - amounts: Update negotiated vendor amounts (PM only)
+ * - qty: Update quantity, compute amount = qty × rate (PM only)
+ * - rates: Update rate, compute amount = qty × rate (Vendor only)
  */
 export async function PATCH(
   request: NextRequest,
@@ -311,17 +340,31 @@ export async function PATCH(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Only non-vendor roles can update amounts
-    if (user.role === 'vendor') {
-      return NextResponse.json({ error: 'Vendors cannot update amounts' }, { status: 403 });
-    }
-
     const approvalId = params.id;
     const body = await request.json();
-    const { amounts } = body;
+    const { amounts, qty, rates } = body;
 
-    if (!Array.isArray(amounts)) {
+    // Validate input
+    if (amounts && !Array.isArray(amounts)) {
       return NextResponse.json({ error: 'amounts must be an array' }, { status: 400 });
+    }
+    if (qty && !Array.isArray(qty)) {
+      return NextResponse.json({ error: 'qty must be an array' }, { status: 400 });
+    }
+    if (rates && !Array.isArray(rates)) {
+      return NextResponse.json({ error: 'rates must be an array' }, { status: 400 });
+    }
+
+    // Role-based permissions
+    const isVendor = user.role === 'vendor';
+    if (amounts && isVendor) {
+      return NextResponse.json({ error: 'Vendors cannot update amounts' }, { status: 403 });
+    }
+    if (qty && isVendor) {
+      return NextResponse.json({ error: 'Vendors cannot update qty' }, { status: 403 });
+    }
+    if (rates && !isVendor) {
+      return NextResponse.json({ error: 'Only vendors can update rates' }, { status: 403 });
     }
 
     // Verify approval exists
@@ -335,20 +378,25 @@ export async function PATCH(
       return NextResponse.json({ error: 'Order approval not found' }, { status: 404 });
     }
 
-    // Verify all orderApprovalItemIds belong to this approval
-    const orderApprovalItemIds = amounts.map(a => a.orderApprovalItemId).filter(Boolean);
-    if (orderApprovalItemIds.length > 0) {
+    // Collect all orderApprovalItemIds to verify
+    const allItemIds = [
+      ...(amounts || []).map((a: any) => a.orderApprovalItemId),
+      ...(qty || []).map((q: any) => q.orderApprovalItemId),
+      ...(rates || []).map((r: any) => r.orderApprovalItemId),
+    ].filter(Boolean);
+
+    if (allItemIds.length > 0) {
       const existingItems = await db
         .select({ id: schema.orderApprovalItems.id })
         .from(schema.orderApprovalItems)
         .where(
           and(
             eq(schema.orderApprovalItems.orderApprovalId, approvalId),
-            inArray(schema.orderApprovalItems.id, orderApprovalItemIds)
+            inArray(schema.orderApprovalItems.id, allItemIds)
           )
         );
 
-      if (existingItems.length !== orderApprovalItemIds.length) {
+      if (existingItems.length !== allItemIds.length) {
         return NextResponse.json(
           { error: 'Some item IDs do not belong to this approval' },
           { status: 400 }
@@ -356,30 +404,184 @@ export async function PATCH(
       }
     }
 
-    // Update amounts using transaction
+    // Update using transaction
     await db.transaction(async (tx) => {
-      for (const { orderApprovalItemId, negotiatedVendorAmount } of amounts) {
-        if (!orderApprovalItemId) continue;
+      // Update amounts (PM only)
+      if (amounts) {
+        for (const { orderApprovalItemId, negotiatedVendorAmount } of amounts) {
+          if (!orderApprovalItemId) continue;
 
-        const amountValue = negotiatedVendorAmount === null || negotiatedVendorAmount === '' 
-          ? null 
-          : (typeof negotiatedVendorAmount === 'number' 
-              ? negotiatedVendorAmount.toString() 
-              : String(negotiatedVendorAmount));
+          const amountValue = negotiatedVendorAmount === null || negotiatedVendorAmount === '' 
+            ? null 
+            : (typeof negotiatedVendorAmount === 'number' 
+                ? negotiatedVendorAmount.toString() 
+                : String(negotiatedVendorAmount));
 
-        try {
-          // Try updating with negotiatedVendorAmount column
-          await tx
-            .update(schema.orderApprovalItems)
-            .set({ negotiatedVendorAmount: amountValue })
-            .where(eq(schema.orderApprovalItems.id, orderApprovalItemId));
-        } catch (updateError: any) {
-          // If column doesn't exist, that's okay - the migration hasn't been applied yet
-          // Just log and continue (amounts will be saved once migration is applied)
-          if (updateError?.cause?.code === '42703' || updateError?.message?.includes('does not exist')) {
-            console.warn('negotiatedVendorAmount column does not exist, skipping update');
+          try {
+            await tx
+              .update(schema.orderApprovalItems)
+              .set({ negotiatedVendorAmount: amountValue })
+              .where(eq(schema.orderApprovalItems.id, orderApprovalItemId));
+          } catch (updateError: any) {
+            if (updateError?.cause?.code === '42703' || updateError?.message?.includes('does not exist')) {
+              console.warn('negotiatedVendorAmount column does not exist, skipping update');
+            } else {
+              throw updateError;
+            }
+          }
+        }
+      }
+
+      // Update qty (PM only) - compute amount = qty × rate
+      if (qty) {
+        for (const { orderApprovalItemId, qty: qtyValue } of qty) {
+          if (!orderApprovalItemId) continue;
+
+          // Get current item to fetch rate
+          const [currentItem] = await tx
+            .select({
+              qty: schema.orderApprovalItems.qty,
+              rate: schema.orderApprovalItems.rate,
+            })
+            .from(schema.orderApprovalItems)
+            .where(eq(schema.orderApprovalItems.id, orderApprovalItemId))
+            .limit(1);
+
+          if (!currentItem) continue;
+
+          const qtyStr = qtyValue === null || qtyValue === '' 
+            ? null 
+            : (typeof qtyValue === 'number' 
+                ? qtyValue.toString() 
+                : String(qtyValue));
+
+          // Use rate from snapshot if available, otherwise from order_items
+          let rate: number | null = null;
+          if (currentItem.rate) {
+            rate = parseFloat(String(currentItem.rate));
           } else {
-            throw updateError;
+            // Fallback: get rate from order_items
+            const [orderApprovalItem] = await tx
+              .select({ orderItemId: schema.orderApprovalItems.orderItemId })
+              .from(schema.orderApprovalItems)
+              .where(eq(schema.orderApprovalItems.id, orderApprovalItemId))
+              .limit(1);
+            
+            if (orderApprovalItem) {
+              const [orderItem] = await tx
+                .select({ rate: schema.orderItems.rate })
+                .from(schema.orderItems)
+                .where(eq(schema.orderItems.id, orderApprovalItem.orderItemId))
+                .limit(1);
+              
+              if (orderItem?.rate) {
+                rate = parseFloat(String(orderItem.rate));
+              }
+            }
+          }
+
+          // Compute amount = qty × rate
+          let amountStr: string | null = null;
+          if (qtyStr) {
+            const qtyNum = parseFloat(qtyStr);
+            if (!isNaN(qtyNum)) {
+              // Use rate from snapshot if available, otherwise 0
+              const rateValue = rate !== null && !isNaN(rate) ? rate : 0;
+              const computedAmount = qtyNum * rateValue;
+              amountStr = computedAmount.toString();
+            }
+          }
+
+          try {
+            await tx
+              .update(schema.orderApprovalItems)
+              .set({ 
+                qty: qtyStr,
+                amount: amountStr,
+              })
+              .where(eq(schema.orderApprovalItems.id, orderApprovalItemId));
+          } catch (updateError: any) {
+            if (updateError?.cause?.code === '42703' || updateError?.message?.includes('does not exist')) {
+              console.warn('qty/amount columns do not exist, skipping update');
+            } else {
+              throw updateError;
+            }
+          }
+        }
+      }
+
+      // Update rates (Vendor only) - compute amount = qty × rate
+      if (rates) {
+        for (const { orderApprovalItemId, rate: rateValue } of rates) {
+          if (!orderApprovalItemId) continue;
+
+          // Get current item to fetch qty
+          const [currentItem] = await tx
+            .select({
+              qty: schema.orderApprovalItems.qty,
+              rate: schema.orderApprovalItems.rate,
+            })
+            .from(schema.orderApprovalItems)
+            .where(eq(schema.orderApprovalItems.id, orderApprovalItemId))
+            .limit(1);
+
+          if (!currentItem) continue;
+
+          const rateStr = rateValue === null || rateValue === '' 
+            ? null 
+            : (typeof rateValue === 'number' 
+                ? rateValue.toString() 
+                : String(rateValue));
+
+          // Use qty from snapshot if available, otherwise from order_items
+          let qty: number | null = null;
+          if (currentItem.qty) {
+            qty = parseFloat(String(currentItem.qty));
+          } else {
+            // Fallback: get qty from order_items
+            const [orderApprovalItem] = await tx
+              .select({ orderItemId: schema.orderApprovalItems.orderItemId })
+              .from(schema.orderApprovalItems)
+              .where(eq(schema.orderApprovalItems.id, orderApprovalItemId))
+              .limit(1);
+            
+            if (orderApprovalItem) {
+              const [orderItem] = await tx
+                .select({ qty: schema.orderItems.qty })
+                .from(schema.orderItems)
+                .where(eq(schema.orderItems.id, orderApprovalItem.orderItemId))
+                .limit(1);
+              
+              if (orderItem?.qty) {
+                qty = parseFloat(String(orderItem.qty));
+              }
+            }
+          }
+
+          // Compute amount = qty × rate
+          let amountStr: string | null = null;
+          if (qty !== null && !isNaN(qty) && rateStr) {
+            const rateNum = parseFloat(rateStr);
+            if (!isNaN(rateNum)) {
+              const computedAmount = qty * rateNum;
+              amountStr = computedAmount.toString();
+            }
+          }
+
+          try {
+            await tx
+              .update(schema.orderApprovalItems)
+              .set({ 
+                rate: rateStr,
+                amount: amountStr,
+              })
+              .where(eq(schema.orderApprovalItems.id, orderApprovalItemId));
+          } catch (updateError: any) {
+            if (updateError?.cause?.code === '42703' || updateError?.message?.includes('does not exist')) {
+              console.warn('rate/amount columns do not exist, skipping update');
+            } else {
+              throw updateError;
+            }
           }
         }
       }
@@ -393,6 +595,9 @@ export async function PATCH(
           id: schema.orderApprovalItems.id,
           orderItemId: schema.orderApprovalItems.orderItemId,
           createdAt: schema.orderApprovalItems.createdAt,
+          qty: schema.orderApprovalItems.qty,
+          rate: schema.orderApprovalItems.rate,
+          amount: schema.orderApprovalItems.amount,
           negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
           orderItem: schema.orderItems,
         })
@@ -401,16 +606,34 @@ export async function PATCH(
         .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
     } catch (error: any) {
       if (error?.cause?.code === '42703' || error?.message?.includes('does not exist')) {
-        updatedItems = await db
-          .select({
-            id: schema.orderApprovalItems.id,
-            orderItemId: schema.orderApprovalItems.orderItemId,
-            createdAt: schema.orderApprovalItems.createdAt,
-            orderItem: schema.orderItems,
-          })
-          .from(schema.orderApprovalItems)
-          .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
-          .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        try {
+          updatedItems = await db
+            .select({
+              id: schema.orderApprovalItems.id,
+              orderItemId: schema.orderApprovalItems.orderItemId,
+              createdAt: schema.orderApprovalItems.createdAt,
+              negotiatedVendorAmount: schema.orderApprovalItems.negotiatedVendorAmount,
+              orderItem: schema.orderItems,
+            })
+            .from(schema.orderApprovalItems)
+            .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+            .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+        } catch (fallbackError: any) {
+          if (fallbackError?.cause?.code === '42703' || fallbackError?.message?.includes('does not exist')) {
+            updatedItems = await db
+              .select({
+                id: schema.orderApprovalItems.id,
+                orderItemId: schema.orderApprovalItems.orderItemId,
+                createdAt: schema.orderApprovalItems.createdAt,
+                orderItem: schema.orderItems,
+              })
+              .from(schema.orderApprovalItems)
+              .innerJoin(schema.orderItems, eq(schema.orderApprovalItems.orderItemId, schema.orderItems.id))
+              .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+          } else {
+            throw fallbackError;
+          }
+        }
       } else {
         throw error;
       }

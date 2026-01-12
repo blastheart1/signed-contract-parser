@@ -29,6 +29,7 @@ interface VendorApprovalOrderItemsTableProps {
 interface ItemWithId extends OrderItem {
   id: string;
   negotiatedVendorAmount?: number | string;
+  originalAmount?: number; // Original amount from order_items table (for PM users only)
 }
 
 export default function VendorApprovalOrderItemsTable({
@@ -50,9 +51,10 @@ export default function VendorApprovalOrderItemsTable({
   const [showSubCategories, setShowSubCategories] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [isAmountEditMode, setIsAmountEditMode] = useState(false);
+  const [isQtyEditMode, setIsQtyEditMode] = useState(false); // PM: QTY editing mode
+  const [isRateEditMode, setIsRateEditMode] = useState(false); // Vendor: RATE editing mode
   const [editedItems, setEditedItems] = useState<Map<string, ItemWithId>>(new Map());
-  // Map of orderItemId -> orderApprovalItemId for saving amounts
+  // Map of orderItemId -> orderApprovalItemId for saving qty/rates
   const [orderApprovalItemIdMap, setOrderApprovalItemIdMap] = useState<Map<string, string>>(new Map());
 
   // Convert items to have IDs
@@ -75,7 +77,7 @@ export default function VendorApprovalOrderItemsTable({
     if (isEditMode) {
       // Select/Deselect mode: show all items (but still respect category visibility)
       filtered = itemsWithIds;
-    } else if (isAmountEditMode) {
+    } else if (isQtyEditMode || isRateEditMode) {
       // Amount Edit mode: show only selected items and their parent categories
       const selectedIds = new Set(selectedItemIds);
       const neededCategories = new Set<string>();
@@ -152,7 +154,7 @@ export default function VendorApprovalOrderItemsTable({
       }
       return true;
     });
-  }, [itemsWithIds, isEditMode, isAmountEditMode, selectedItemIds, showMainCategories, showSubCategories]);
+  }, [itemsWithIds, isEditMode, isQtyEditMode, isRateEditMode, selectedItemIds, showMainCategories, showSubCategories]);
 
   const handleToggleItem = (itemId: string) => {
     if (!isEditMode || !canEdit) return;
@@ -188,63 +190,92 @@ export default function VendorApprovalOrderItemsTable({
     onEditModeChange(true);
   };
 
-  const handleAmountEditClick = () => {
-    // Initialize edited items map with current items
+  const handleQtyEditClick = () => {
+    // Initialize edited items map with current items (PM: QTY editing)
     const itemsMap = new Map<string, ItemWithId>();
     itemsWithIds.forEach(item => {
       if (item.type === 'item') {
-        // Preserve existing values including 0, only default to empty string for null/undefined
-        const existingValue = item.negotiatedVendorAmount;
+        const existingQty = item.qty !== null && item.qty !== undefined ? item.qty : '';
         itemsMap.set(item.id, { 
           ...item, 
-          negotiatedVendorAmount: existingValue !== null && existingValue !== undefined ? existingValue : '' 
+          qty: existingQty
         });
       }
     });
     setEditedItems(itemsMap);
-    setIsAmountEditMode(true);
+    setIsQtyEditMode(true);
   };
 
-  const handleAmountEditCancel = () => {
+  const handleRateEditClick = () => {
+    // Initialize edited items map with current items (Vendor: RATE editing)
+    const itemsMap = new Map<string, ItemWithId>();
+    itemsWithIds.forEach(item => {
+      if (item.type === 'item') {
+        const existingRate = item.rate !== null && item.rate !== undefined ? item.rate : '';
+        itemsMap.set(item.id, { 
+          ...item, 
+          rate: existingRate
+        });
+      }
+    });
+    setEditedItems(itemsMap);
+    setIsRateEditMode(true);
+  };
+
+  const handleQtyEditCancel = () => {
     setEditedItems(new Map());
-    setIsAmountEditMode(false);
+    setIsQtyEditMode(false);
   };
 
-  const handleAmountChange = (itemId: string, value: number | string) => {
+  const handleRateEditCancel = () => {
+    setEditedItems(new Map());
+    setIsRateEditMode(false);
+  };
+
+  const handleQtyChange = (itemId: string, value: number | string) => {
     const newMap = new Map(editedItems);
     const item = newMap.get(itemId);
     if (item) {
-      newMap.set(itemId, { ...item, negotiatedVendorAmount: value });
+      newMap.set(itemId, { ...item, qty: value });
       setEditedItems(newMap);
     }
   };
 
-  const handleAmountSave = async () => {
+  const handleRateChange = (itemId: string, value: number | string) => {
+    const newMap = new Map(editedItems);
+    const item = newMap.get(itemId);
+    if (item) {
+      newMap.set(itemId, { ...item, rate: value });
+      setEditedItems(newMap);
+    }
+  };
+
+  const handleQtySave = async () => {
     if (!onSavingChange) return;
 
     try {
       onSavingChange(true);
 
-      // Build amounts array with orderApprovalItemId and negotiatedVendorAmount
-      const amounts = Array.from(editedItems.entries())
+      // Build qty array with orderApprovalItemId and qty
+      const qtyUpdates = Array.from(editedItems.entries())
         .filter(([itemId]) => selectedItemIds.has(itemId)) // Only include selected items
         .map(([orderItemId, item]) => {
           const orderApprovalItemId = orderApprovalItemIdMap.get(orderItemId);
-          const negotiatedVendorAmount = item.negotiatedVendorAmount;
+          const qtyValue = item.qty;
           
           // Convert to number or null
-          const amountValue = negotiatedVendorAmount === '' || negotiatedVendorAmount === null || negotiatedVendorAmount === undefined
+          const qty = qtyValue === '' || qtyValue === null || qtyValue === undefined
             ? null
-            : (typeof negotiatedVendorAmount === 'number' ? negotiatedVendorAmount : parseFloat(String(negotiatedVendorAmount)) || null);
+            : (typeof qtyValue === 'number' ? qtyValue : parseFloat(String(qtyValue)) || null);
 
           return {
             orderApprovalItemId,
-            negotiatedVendorAmount: amountValue,
+            qty: qty,
           };
         })
         .filter(item => item.orderApprovalItemId); // Only include items with valid orderApprovalItemId
 
-      if (amounts.length === 0) {
+      if (qtyUpdates.length === 0) {
         toast({
           title: 'Error',
           description: 'No valid items to save. Please ensure items are selected.',
@@ -256,7 +287,7 @@ export default function VendorApprovalOrderItemsTable({
       const response = await fetch(`/api/order-approvals/${approvalId}/items`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amounts }),
+        body: JSON.stringify({ qty: qtyUpdates }),
       });
 
       const data = await response.json();
@@ -264,9 +295,9 @@ export default function VendorApprovalOrderItemsTable({
       if (data.success) {
         toast({
           title: 'Success',
-          description: 'Negotiated vendor amounts saved successfully',
+          description: 'Quantities saved successfully',
         });
-        setIsAmountEditMode(false);
+        setIsQtyEditMode(false);
         setEditedItems(new Map());
         if (onSaveSuccess) {
           onSaveSuccess();
@@ -274,15 +305,15 @@ export default function VendorApprovalOrderItemsTable({
       } else {
         toast({
           title: 'Error',
-          description: data.error || 'Failed to save amounts',
+          description: data.error || 'Failed to save quantities',
           variant: 'destructive',
         });
       }
     } catch (error) {
-      console.error('Error saving amounts:', error);
+      console.error('Error saving quantities:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save amounts',
+        description: 'Failed to save quantities',
         variant: 'destructive',
       });
     } finally {
@@ -290,12 +321,74 @@ export default function VendorApprovalOrderItemsTable({
     }
   };
 
-  const handleQuickFill = (itemId: string) => {
-    const item = itemsWithIds.find(i => i.id === itemId);
-    if (item && item.type === 'item') {
-      const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
-      const halfAmount = amount * 0.5;
-      handleAmountChange(itemId, halfAmount);
+  const handleRateSave = async () => {
+    if (!onSavingChange) return;
+
+    try {
+      onSavingChange(true);
+
+      // Build rates array with orderApprovalItemId and rate
+      const rateUpdates = Array.from(editedItems.entries())
+        .filter(([itemId]) => selectedItemIds.has(itemId)) // Only include selected items
+        .map(([orderItemId, item]) => {
+          const orderApprovalItemId = orderApprovalItemIdMap.get(orderItemId);
+          const rateValue = item.rate;
+          
+          // Convert to number or null
+          const rate = rateValue === '' || rateValue === null || rateValue === undefined
+            ? null
+            : (typeof rateValue === 'number' ? rateValue : parseFloat(String(rateValue)) || null);
+
+          return {
+            orderApprovalItemId,
+            rate: rate,
+          };
+        })
+        .filter(item => item.orderApprovalItemId); // Only include items with valid orderApprovalItemId
+
+      if (rateUpdates.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'No valid items to save. Please ensure items are selected.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch(`/api/order-approvals/${approvalId}/items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rates: rateUpdates }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: 'Success',
+          description: 'Rates saved successfully',
+        });
+        setIsRateEditMode(false);
+        setEditedItems(new Map());
+        if (onSaveSuccess) {
+          onSaveSuccess();
+        }
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to save rates',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error saving rates:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save rates',
+        variant: 'destructive',
+      });
+    } finally {
+      onSavingChange(false);
     }
   };
 
@@ -499,22 +592,38 @@ export default function VendorApprovalOrderItemsTable({
             </div>
             {canEdit && (
               <>
-                {!isEditMode && !isAmountEditMode ? (
+                {!isEditMode && !isQtyEditMode && !isRateEditMode ? (
                   <>
-                    <Button onClick={handleEditClick} variant="outline" size="sm">
-                      <Edit2 className="mr-2 h-4 w-4" />
-                      Select/Deselect Items
-                    </Button>
-                    <Button 
-                      onClick={handleAmountEditClick} 
-                      variant="outline" 
-                      size="sm"
-                      disabled={selectedItemIds.size === 0}
-                      title={selectedItemIds.size === 0 ? 'No selected items to edit' : 'Edit negotiated amounts'}
-                    >
-                      <Edit2 className="mr-2 h-4 w-4" />
-                      Edit Items
-                    </Button>
+                    {!isVendor && (
+                      <>
+                        <Button onClick={handleEditClick} variant="outline" size="sm">
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Select/Deselect Items
+                        </Button>
+                        <Button 
+                          onClick={handleQtyEditClick} 
+                          variant="outline" 
+                          size="sm"
+                          disabled={selectedItemIds.size === 0}
+                          title={selectedItemIds.size === 0 ? 'No selected items to edit' : 'Edit quantities'}
+                        >
+                          <Edit2 className="mr-2 h-4 w-4" />
+                          Edit Items
+                        </Button>
+                      </>
+                    )}
+                    {isVendor && (
+                      <Button 
+                        onClick={handleRateEditClick} 
+                        variant="outline" 
+                        size="sm"
+                        disabled={selectedItemIds.size === 0}
+                        title={selectedItemIds.size === 0 ? 'No selected items to edit' : 'Edit rates'}
+                      >
+                        <Edit2 className="mr-2 h-4 w-4" />
+                        Edit Rates
+                      </Button>
+                    )}
                   </>
                 ) : isEditMode ? (
                   <>
@@ -538,7 +647,7 @@ export default function VendorApprovalOrderItemsTable({
                   </>
                 ) : (
                   <>
-                    <Button onClick={handleAmountSave} disabled={saving} size="sm">
+                    <Button onClick={isQtyEditMode ? handleQtySave : handleRateSave} disabled={saving} size="sm">
                       {saving ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -547,11 +656,11 @@ export default function VendorApprovalOrderItemsTable({
                       ) : (
                         <>
                           <Save className="mr-2 h-4 w-4" />
-                          Save Amounts
+                          Save
                         </>
                       )}
                     </Button>
-                    <Button onClick={handleAmountEditCancel} variant="outline" size="sm" disabled={saving}>
+                    <Button onClick={isQtyEditMode ? handleQtyEditCancel : handleRateEditCancel} variant="outline" size="sm" disabled={saving}>
                       <X className="mr-2 h-4 w-4" />
                       Cancel
                     </Button>
@@ -567,7 +676,7 @@ export default function VendorApprovalOrderItemsTable({
           <table className="w-full caption-bottom text-sm border-separate border-spacing-0" style={{ width: '100%', tableLayout: 'auto' }}>
             <TableHeader>
               <TableRow>
-                {isEditMode && canEdit && !isAmountEditMode && (
+                {isEditMode && canEdit && !isQtyEditMode && !isRateEditMode && (
                   <TableHead className="sticky top-0 z-10 bg-background text-center border-r border-black w-[50px] h-8">
                     <div className="flex items-center justify-center gap-2">
                       <Checkbox
@@ -605,27 +714,24 @@ export default function VendorApprovalOrderItemsTable({
                 <TableHead className="sticky top-0 z-10 bg-background text-right border-r border-black whitespace-nowrap h-8" style={{ width: '100px' }}>
                   RATE
                 </TableHead>
-                <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isAmountEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
+                <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isQtyEditMode && !isRateEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
                   AMOUNT
                 </TableHead>
                 {!isVendor && (
-                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isAmountEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
+                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isQtyEditMode && !isRateEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
                     Price Difference
                   </TableHead>
                 )}
-                <TableHead className={cn("sticky top-0 z-10 bg-background text-right", (isEditMode || isAmountEditMode) && canEdit && "border-r border-black", "h-8")} style={{ width: '100px' }}>
-                  % Progress<br />Overall
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {displayItems.length === 0 ? (
                 <TableRow>
                   <TableCell 
-                    colSpan={(isEditMode && canEdit && !isAmountEditMode) ? (6 + (isVendor ? 0 : 1)) : (5 + (isVendor ? 0 : 1))} 
+                    colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (5 + (isVendor ? 0 : 1)) : (4 + (isVendor ? 0 : 1))} 
                     className="text-center py-8 text-muted-foreground"
                   >
-                    {isEditMode || isAmountEditMode ? 'No items available' : 'No items selected'}
+                    {isEditMode || isQtyEditMode || isRateEditMode ? 'No items available' : 'No items selected'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -635,28 +741,45 @@ export default function VendorApprovalOrderItemsTable({
                   const isEvenRow = index % 2 === 0;
                   const isSelected = selectedItemIds.has(item.id);
                   
-                  const qty = typeof item.qty === 'number' ? item.qty : parseFloat(String(item.qty || 0)) || 0;
-                  const rate = typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate || 0)) || 0;
-                  const amount = typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount || 0)) || 0;
-                  const progressPct = typeof item.progressOverallPct === 'number' 
-                    ? item.progressOverallPct 
-                    : parseFloat(String(item.progressOverallPct || 0)) || 0;
-                  
-                  // Get edited negotiatedVendorAmount if in amount edit mode
+                  // Get edited values if in edit mode
                   const editedItem = editedItems.get(item.id);
-                  const negotiatedVendorAmount = editedItem?.negotiatedVendorAmount !== undefined 
-                    ? editedItem.negotiatedVendorAmount 
-                    : (item.negotiatedVendorAmount !== null && item.negotiatedVendorAmount !== undefined ? item.negotiatedVendorAmount : '');
+                  const editedQty = editedItem?.qty !== undefined ? editedItem.qty : item.qty;
+                  const editedRate = editedItem?.rate !== undefined ? editedItem.rate : item.rate;
                   
-                  const negotiatedAmount = typeof negotiatedVendorAmount === 'number' 
-                    ? negotiatedVendorAmount 
-                    : parseFloat(String(negotiatedVendorAmount || 0)) || 0;
+                  // Use only snapshot data (from order_approval_items), do NOT fall back to order_items
+                  // This prevents vendors from seeing original estimated amounts
+                  const displayQty = typeof editedQty === 'number' 
+                    ? editedQty 
+                    : (editedQty !== null && editedQty !== undefined && editedQty !== '' 
+                        ? parseFloat(String(editedQty)) || 0 
+                        : (typeof item.qty === 'number' ? item.qty : (item.qty ? parseFloat(String(item.qty)) || 0 : 0)));
                   
-                  // Calculate price difference (original amount - negotiated amount) for non-vendor users
-                  // Show difference only if there's a negotiated amount set (not null/undefined)
-                  const hasNegotiatedAmount = negotiatedVendorAmount !== null && negotiatedVendorAmount !== undefined && negotiatedVendorAmount !== '';
-                  const priceDifference = !isVendor && hasNegotiatedAmount 
-                    ? amount - negotiatedAmount 
+                  const displayRate = typeof editedRate === 'number'
+                    ? editedRate
+                    : (editedRate !== null && editedRate !== undefined && editedRate !== ''
+                        ? parseFloat(String(editedRate)) || 0
+                        : (typeof item.rate === 'number' ? item.rate : (item.rate ? parseFloat(String(item.rate)) || 0 : 0)));
+                  
+                  // Get snapshot amount (from order_approval_items)
+                  const snapshotAmount = typeof item.amount === 'number' 
+                    ? item.amount 
+                    : (item.amount ? parseFloat(String(item.amount)) || 0 : 0);
+                  
+                  // Compute AMOUNT = QTY × RATE only if rate is not null and not 0
+                  // If rate is null or 0, show "-" (vendor hasn't input rate yet)
+                  const hasValidRate = displayRate !== null && displayRate !== undefined && displayRate !== 0 && !isNaN(displayRate);
+                  const computedAmount = hasValidRate && displayQty ? displayQty * displayRate : null;
+                  
+                  // Calculate price difference: (50% of ORIGINAL AMOUNT from order_items) - (AMOUNT from snapshot)
+                  // Only for PM users (not vendors), and show in negotiating stage
+                  // Use computedAmount if available, otherwise use snapshotAmount
+                  const snapshotAmountForDiff = computedAmount !== null ? computedAmount : snapshotAmount;
+                  const originalAmount = item.originalAmount !== undefined && item.originalAmount !== null
+                    ? (typeof item.originalAmount === 'number' ? item.originalAmount : parseFloat(String(item.originalAmount)) || 0)
+                    : 0;
+                  const originalAmount50Percent = originalAmount * 0.5;
+                  const priceDifference = !isVendor && originalAmount > 0
+                    ? originalAmount50Percent - snapshotAmountForDiff
                     : null;
 
                   if (isCategory) {
@@ -669,7 +792,7 @@ export default function VendorApprovalOrderItemsTable({
                         )}
                       >
                         <TableCell 
-                          colSpan={(isEditMode && canEdit && !isAmountEditMode) ? (6 + (isVendor ? 0 : 1)) : (5 + (isVendor ? 0 : 1))}
+                          colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (5 + (isVendor ? 0 : 1)) : (4 + (isVendor ? 0 : 1))}
                           className={cn(
                             'py-2',
                             item.type === 'maincategory' ? 'text-base' : 'text-sm pl-8'
@@ -692,7 +815,7 @@ export default function VendorApprovalOrderItemsTable({
                         isItem ? 'hover:bg-green-200 dark:hover:bg-green-800/40 hover:shadow-sm transition-colors duration-150' : ''
                       )}
                     >
-                      {isEditMode && canEdit && !isAmountEditMode && (
+                      {isEditMode && canEdit && !isQtyEditMode && !isRateEditMode && (
                         <TableCell className="text-center align-middle">
                           <Checkbox
                             checked={isSelected}
@@ -704,49 +827,35 @@ export default function VendorApprovalOrderItemsTable({
                         {item.productService || '—'}
                       </TableCell>
                       <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '80px' }}>
-                        {qty ? formatNumber(qty) : '—'}
+                        {isQtyEditMode && isItem ? (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editedQty ?? ''}
+                            onChange={(e) => handleQtyChange(item.id, e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                            className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                            placeholder="0.00"
+                          />
+                        ) : (
+                          displayQty ? formatNumber(displayQty) : '—'
+                        )}
                       </TableCell>
                       <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '100px' }}>
-                        {rate ? formatCurrency(rate) : '—'}
+                        {isRateEditMode && isItem ? (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editedRate ?? ''}
+                            onChange={(e) => handleRateChange(item.id, e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                            className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
+                            placeholder="0.00"
+                          />
+                        ) : (
+                          displayRate ? formatCurrency(displayRate) : '—'
+                        )}
                       </TableCell>
                       <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '130px' }}>
-                        {isAmountEditMode && isItem ? (
-                          <div className="flex items-center justify-end gap-1 min-w-0">
-                            <div className="flex-1 min-w-0">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={negotiatedVendorAmount ?? ''}
-                                onChange={(e) => handleAmountChange(item.id, e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-                                className="h-8 w-full box-border text-right !px-1 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-moz-appearance]:textfield"
-                                placeholder="0.00"
-                              />
-                            </div>
-                            {(!negotiatedVendorAmount || negotiatedVendorAmount === 0 || negotiatedVendorAmount === '') && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 flex-shrink-0"
-                                      onClick={() => handleQuickFill(item.id)}
-                                      disabled={amount === 0}
-                                    >
-                                      <Zap className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Set to 50% of Order Items amount</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                        ) : (
-                          negotiatedAmount > 0 ? formatCurrency(negotiatedAmount) : formatCurrency(amount)
-                        )}
+                        {computedAmount !== null && computedAmount > 0 ? formatCurrency(computedAmount) : '—'}
                       </TableCell>
                       {!isVendor && (
                         <TableCell className="text-right align-top" style={{ width: '130px' }}>
@@ -759,9 +868,6 @@ export default function VendorApprovalOrderItemsTable({
                           )}
                         </TableCell>
                       )}
-                      <TableCell className="text-right align-top" style={{ width: '100px' }}>
-                        {progressPct ? formatPercent(progressPct) : '—'}
-                      </TableCell>
                     </TableRow>
                   );
                 })
