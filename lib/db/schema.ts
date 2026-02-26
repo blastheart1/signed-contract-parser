@@ -207,6 +207,7 @@ export const orderApprovals = pgTable('order_approvals', {
   stage: orderApprovalStageEnum('stage').notNull().default('draft'),
   pmApproved: boolean('pm_approved').notNull().default(false),
   vendorApproved: boolean('vendor_approved').notNull().default(false),
+  vendorApprovedAt: timestamp('vendor_approved_at'), // When vendor last approved (set on approve; no retract logic)
   dateCreated: timestamp('date_created').notNull().defaultNow(),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   sentAt: timestamp('sent_at'), // When approval was sent to vendor

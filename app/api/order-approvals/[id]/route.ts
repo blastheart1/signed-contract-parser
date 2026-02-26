@@ -35,6 +35,7 @@ export async function GET(
         stage: schema.orderApprovals.stage,
         pmApproved: schema.orderApprovals.pmApproved,
         vendorApproved: schema.orderApprovals.vendorApproved,
+        vendorApprovedAt: schema.orderApprovals.vendorApprovedAt,
         dateCreated: schema.orderApprovals.dateCreated,
         sentAt: schema.orderApprovals.sentAt,
         createdBy: schema.orderApprovals.createdBy,
@@ -150,7 +151,7 @@ export async function GET(
 /**
  * PATCH /api/order-approvals/[id]
  * Update an order approval (stage, approvals, etc.)
- * Body: { stage?, pmApproved?, vendorApproved? }
+ * Body: { stage?, pmApproved?, vendorApproved?, disclaimerAccepted? }
  */
 export async function PATCH(
   request: NextRequest,
@@ -164,7 +165,7 @@ export async function PATCH(
 
     const approvalId = params.id;
     const body = await request.json();
-    const { stage, pmApproved, vendorApproved } = body;
+    const { stage, pmApproved, vendorApproved, disclaimerAccepted } = body;
 
     // Fetch existing approval
     const [existing] = await db
@@ -264,6 +265,10 @@ export async function PATCH(
     }
     if (vendorApproved !== undefined) {
       updateData.vendorApproved = vendorApproved;
+    }
+    // Record time of approval when vendor approves with disclaimer accepted (optional for backward compatibility)
+    if (user.role === 'vendor' && vendorApproved === true && disclaimerAccepted === true) {
+      updateData.vendorApprovedAt = new Date();
     }
 
     // Update approval

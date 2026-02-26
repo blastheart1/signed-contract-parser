@@ -7,6 +7,7 @@ import { ArrowLeft, Send, CheckCircle, XCircle, ChevronLeft, ChevronRight } from
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useSession } from '@/hooks/use-session';
 import {
@@ -33,6 +34,7 @@ interface OrderApproval {
   stage: 'draft' | 'sent' | 'negotiating' | 'approved';
   pmApproved: boolean;
   vendorApproved: boolean;
+  vendorApprovedAt: string | null;
   dateCreated: string;
   sentAt: string | null;
   selectedItems: Array<{
@@ -40,6 +42,20 @@ interface OrderApproval {
     orderItemId: string;
     orderItem: any;
   }>;
+}
+
+function formatInLATime(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -55,6 +71,18 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const STAGE_ORDER = ['draft', 'negotiating', 'approved'];
+
+const VENDOR_APPROVAL_DISCLAIMER = {
+  heading: 'IMPORTANT: ACKNOWLEDGMENT AND CONSENT',
+  body: `By submitting this approval, I acknowledge that:
+
+• My approval decision, the name of my organization (vendor), and the date and time of approval will be permanently recorded in the system's audit trail and activity logs.
+• This approval constitutes a binding record that may be used for business, legal, and compliance purposes, including as evidence of my agreement to the terms and amounts set out in this order approval.
+• I have reviewed the order items above, including product/service descriptions, quantities, rates, amounts, and any negotiated vendor costs, and I understand the implications of my approval.
+• I am authorized to make this approval decision on behalf of my organization (vendor).
+• I have read and agree to the terms above.`,
+  checkboxLabel: 'I acknowledge and agree to the terms above.',
+};
 
 export default function OrderApprovalDetailPage() {
   const params = useParams();
@@ -78,6 +106,7 @@ export default function OrderApprovalDetailPage() {
   const [newStage, setNewStage] = useState<string | null>(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [isVendor, setIsVendor] = useState(false);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'vendor') {
@@ -348,6 +377,9 @@ export default function OrderApprovalDetailPage() {
       } else {
         // Vendor: Toggle approval (can approve or retract)
         updateData.vendorApproved = !approval.vendorApproved;
+        if (updateData.vendorApproved === true) {
+          updateData.disclaimerAccepted = true;
+        }
       }
 
       const response = await fetch(`/api/order-approvals/${approval.id}`, {
@@ -503,7 +535,12 @@ export default function OrderApprovalDetailPage() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Vendor Approved:</span>
               {approval.vendorApproved ? (
-                <CheckCircle className="h-5 w-5 text-green-500" />
+                <span className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span className="text-sm">
+                    (Vendor Approval Timestamp: {formatInLATime(approval.vendorApprovedAt)})
+                  </span>
+                </span>
               ) : (
                 <XCircle className="h-5 w-5 text-gray-400" />
               )}
@@ -573,7 +610,28 @@ export default function OrderApprovalDetailPage() {
           )}
 
           {approval.stage === 'negotiating' && (
-            <div className="pt-4 border-t space-y-2">
+            <div className="pt-4 border-t space-y-4">
+              {isVendor && (
+                <div className={approval.vendorApproved ? 'rounded-md border bg-muted/50 p-4 space-y-3 opacity-70' : 'rounded-md border bg-muted/50 p-4 space-y-3'}>
+                  <p className="font-semibold text-sm">{VENDOR_APPROVAL_DISCLAIMER.heading}</p>
+                  <p className="text-sm whitespace-pre-line">{VENDOR_APPROVAL_DISCLAIMER.body}</p>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="disclaimer-accept"
+                      checked={approval.vendorApproved ? true : disclaimerAccepted}
+                      onCheckedChange={(checked) => !approval.vendorApproved && setDisclaimerAccepted(checked === true)}
+                      disabled={approval.vendorApproved}
+                    />
+                    <label
+                      htmlFor="disclaimer-accept"
+                      className={`text-sm font-medium leading-none ${approval.vendorApproved ? 'cursor-not-allowed opacity-70' : 'cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70'}`}
+                    >
+                      {VENDOR_APPROVAL_DISCLAIMER.checkboxLabel}
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {!isVendor && (
                 <Button
                   onClick={() => setApprovalDialogOpen(true)}
@@ -588,7 +646,7 @@ export default function OrderApprovalDetailPage() {
               {isVendor && (
                 <Button
                   onClick={() => setApprovalDialogOpen(true)}
-                  disabled={saving}
+                  disabled={saving || (!approval.vendorApproved && !disclaimerAccepted)}
                   variant="outline"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
