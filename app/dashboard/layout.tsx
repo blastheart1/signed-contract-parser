@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Users, Clock, BarChart3, Trash2, Building2, FileText } from 'lucide-react';
 import Sidebar, { type User } from '@/components/dashboard/Sidebar';
+
+/** Vendors are restricted to the vendor negotiation area only. */
+const VENDOR_ALLOWED_PATH_PREFIX = '/dashboard/vendor-negotiation';
 
 export default function DashboardLayout({
   children,
@@ -12,6 +15,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -38,6 +42,17 @@ export default function DashboardLayout({
       setLoading(false);
     }
   };
+
+  // Restrict vendor users to vendor-negotiation only (list and detail pages)
+  useEffect(() => {
+    if (!user || user.role !== 'vendor' || loading) return;
+    const isAllowed =
+      pathname === VENDOR_ALLOWED_PATH_PREFIX ||
+      pathname.startsWith(`${VENDOR_ALLOWED_PATH_PREFIX}/`);
+    if (!isAllowed) {
+      router.replace('/dashboard/vendor-negotiation');
+    }
+  }, [user, pathname, loading, router]);
 
   const handleLogout = async () => {
     try {
