@@ -718,6 +718,11 @@ export default function VendorApprovalOrderItemsTable({
                   AMOUNT
                 </TableHead>
                 {!isVendor && (
+                  <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isQtyEditMode && !isRateEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '120px' }}>
+                    Est. Vendor Cost
+                  </TableHead>
+                )}
+                {!isVendor && (
                   <TableHead className={cn("sticky top-0 z-10 bg-background text-right", !isEditMode && !isQtyEditMode && !isRateEditMode && "border-r border-black", "whitespace-nowrap h-8")} style={{ width: '130px' }}>
                     Price Difference
                   </TableHead>
@@ -728,7 +733,7 @@ export default function VendorApprovalOrderItemsTable({
               {displayItems.length === 0 ? (
                 <TableRow>
                   <TableCell 
-                    colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (5 + (isVendor ? 0 : 1)) : (4 + (isVendor ? 0 : 1))} 
+                    colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (6 + (isVendor ? 0 : 2)) : (5 + (isVendor ? 0 : 2))} 
                     className="text-center py-8 text-muted-foreground"
                   >
                     {isEditMode || isQtyEditMode || isRateEditMode ? 'No items available' : 'No items selected'}
@@ -792,7 +797,7 @@ export default function VendorApprovalOrderItemsTable({
                         )}
                       >
                         <TableCell 
-                          colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (5 + (isVendor ? 0 : 1)) : (4 + (isVendor ? 0 : 1))}
+                          colSpan={(isEditMode && canEdit && !isQtyEditMode && !isRateEditMode) ? (6 + (isVendor ? 0 : 2)) : (5 + (isVendor ? 0 : 2))}
                           className={cn(
                             'py-2',
                             item.type === 'maincategory' ? 'text-base' : 'text-sm pl-8'
@@ -857,6 +862,16 @@ export default function VendorApprovalOrderItemsTable({
                       <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '130px' }}>
                         {computedAmount !== null && computedAmount > 0 ? formatCurrency(computedAmount) : '—'}
                       </TableCell>
+                      {!isVendor && (
+                        <TableCell className="text-right align-top whitespace-nowrap" style={{ width: '120px' }}>
+                          {(() => {
+                            const estCost = item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null && item.estimatedVendorCost !== ''
+                              ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+                              : (snapshotAmountForDiff > 0 ? snapshotAmountForDiff * 0.5 : null);
+                            return estCost !== null && estCost > 0 ? formatCurrency(estCost) : '—';
+                          })()}
+                        </TableCell>
+                      )}
                       {!isVendor && (
                         <TableCell className="text-right align-top" style={{ width: '130px' }}>
                           {priceDifference !== null ? (

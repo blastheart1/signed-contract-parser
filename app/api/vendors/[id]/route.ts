@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNotNull, sql, and, isNull } from 'drizzle-orm';
+import { eq, isNotNull, sql, and, isNull, ne } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
@@ -192,6 +192,30 @@ export async function PUT(
       if (duplicate.length > 0) {
         return NextResponse.json(
           { error: 'Vendor with this name already exists' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // If email is being changed to a new non-empty value, ensure no other vendor has it (case-insensitive)
+    const incomingEmailTrimmed = typeof email === 'string' ? email.trim() : (email === null || email === undefined ? undefined : '');
+    const existingEmailNormalized = (existing.email ?? '').trim().toLowerCase();
+    const newEmailNormalized = incomingEmailTrimmed === undefined ? existingEmailNormalized : incomingEmailTrimmed.toLowerCase();
+    if (incomingEmailTrimmed !== undefined && incomingEmailTrimmed !== '' && newEmailNormalized !== existingEmailNormalized) {
+      const [duplicateByEmail] = await db
+        .select({ id: schema.vendors.id })
+        .from(schema.vendors)
+        .where(
+          and(
+            ne(schema.vendors.id, vendorId),
+            isNull(schema.vendors.deletedAt),
+            sql`LOWER(TRIM(${schema.vendors.email})) = ${newEmailNormalized}`
+          )
+        )
+        .limit(1);
+      if (duplicateByEmail) {
+        return NextResponse.json(
+          { error: 'Another vendor already uses this email' },
           { status: 409 }
         );
       }

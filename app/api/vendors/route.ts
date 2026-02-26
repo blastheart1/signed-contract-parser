@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, schema } from '@/lib/db';
-import { eq, isNull, and, isNotNull } from 'drizzle-orm';
+import { eq, isNull, and, isNotNull, sql } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,6 +83,27 @@ export async function POST(request: NextRequest) {
         { error: 'Vendor with this name already exists' },
         { status: 409 }
       );
+    }
+
+    // If email is provided, ensure no other non-deleted vendor has it (case-insensitive)
+    const emailTrimmed = typeof email === 'string' ? email.trim() : '';
+    if (emailTrimmed !== '') {
+      const [duplicateByEmail] = await db
+        .select({ id: schema.vendors.id })
+        .from(schema.vendors)
+        .where(
+          and(
+            isNull(schema.vendors.deletedAt),
+            sql`LOWER(TRIM(${schema.vendors.email})) = LOWER(${emailTrimmed})`
+          )
+        )
+        .limit(1);
+      if (duplicateByEmail) {
+        return NextResponse.json(
+          { error: 'Another vendor already uses this email' },
+          { status: 409 }
+        );
+      }
     }
 
     // Create new vendor

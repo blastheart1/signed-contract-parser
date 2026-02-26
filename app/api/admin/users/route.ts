@@ -3,7 +3,7 @@ import { db, schema } from '@/lib/db';
 import { getSession } from '@/lib/auth/session';
 import { isAdmin } from '@/lib/auth/permissions';
 import { hashPassword } from '@/lib/auth/session';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,9 +72,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     let { username, password, email, role, status, salesRepName } = body;
 
+    const emailTrimmed = typeof email === 'string' ? email.trim() : '';
+
+    // Vendor role: email is required and must match an existing vendor in the Vendor List
+    if (role === 'vendor') {
+      if (!emailTrimmed) {
+        return NextResponse.json(
+          { error: 'Email is required for vendor users' },
+          { status: 400 }
+        );
+      }
+      const [vendorByEmail] = await db
+        .select()
+        .from(schema.vendors)
+        .where(
+          and(
+            isNull(schema.vendors.deletedAt),
+            sql`LOWER(TRIM(${schema.vendors.email})) = LOWER(${emailTrimmed})`
+          )
+        )
+        .limit(1);
+      if (!vendorByEmail) {
+        return NextResponse.json(
+          { error: 'Email must match an existing vendor in the Vendor List' },
+          { status: 400 }
+        );
+      }
+    }
+
     // For vendor users, use email as username by default if username is not provided
-    if (role === 'vendor' && !username && email) {
-      username = email;
+    if (role === 'vendor' && !username && emailTrimmed) {
+      username = emailTrimmed;
     }
 
     if (!username || !password) {
@@ -107,7 +135,7 @@ export async function POST(request: NextRequest) {
       .values({
         username,
         passwordHash,
-        email: email || null,
+        email: role === 'vendor' ? emailTrimmed : (email || null),
         role: role || null,
         status: status || 'pending',
         salesRepName: salesRepName || null,

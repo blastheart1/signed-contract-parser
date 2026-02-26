@@ -98,6 +98,12 @@ export default function EditUserPage() {
     setSaving(true);
 
     try {
+      if (formData.role === 'vendor' && !formData.email?.trim()) {
+        setError('Email is required for vendor users');
+        setSaving(false);
+        return;
+      }
+
       const url = userId === 'new' ? '/api/admin/users' : `/api/admin/users/${userId}`;
       const method = userId === 'new' ? 'POST' : 'PATCH';
 
@@ -244,14 +250,18 @@ export default function EditUserPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{formData.role === 'vendor' ? 'Email *' : 'Email'}</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="user@example.com"
+                required={formData.role === 'vendor'}
               />
+              {formData.role === 'vendor' && (
+                <p className="text-sm text-muted-foreground">Must match the vendor&apos;s email in the Vendor List.</p>
+              )}
             </div>
 
             <div className="space-y-2">
