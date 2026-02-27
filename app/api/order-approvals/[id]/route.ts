@@ -39,6 +39,7 @@ export async function GET(
         dateCreated: schema.orderApprovals.dateCreated,
         sentAt: schema.orderApprovals.sentAt,
         createdBy: schema.orderApprovals.createdBy,
+        createdByEmail: schema.users.email,
         updatedAt: schema.orderApprovals.updatedAt,
         deletedAt: schema.orderApprovals.deletedAt,
       })
@@ -46,6 +47,7 @@ export async function GET(
       .leftJoin(schema.vendors, eq(schema.orderApprovals.vendorId, schema.vendors.id))
       .leftJoin(schema.customers, eq(schema.orderApprovals.customerId, schema.customers.dbxCustomerId))
       .leftJoin(schema.orders, eq(schema.orderApprovals.orderId, schema.orders.id))
+      .leftJoin(schema.users, eq(schema.orderApprovals.createdBy, schema.users.id))
       .where(eq(schema.orderApprovals.id, approvalId))
       .limit(1);
 

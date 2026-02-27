@@ -124,7 +124,7 @@ function renderOrderApprovalHtml(data: {
               <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Customer Name:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
                 data.customerName
               )}</td></tr>
-              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Project Manager:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Prepared by / Project Manager:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
                 data.projectManagerEmail
               )}</td></tr>
               <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Vendor Contact Person / Name:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(

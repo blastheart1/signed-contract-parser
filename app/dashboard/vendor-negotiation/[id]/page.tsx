@@ -28,6 +28,7 @@ interface OrderApproval {
   referenceNo: string;
   vendorId: string;
   vendorName: string | null;
+  vendorEmail?: string | null;
   customerId: string;
   customerName: string | null;
   orderId: string;
@@ -37,6 +38,7 @@ interface OrderApproval {
   vendorApprovedAt: string | null;
   dateCreated: string;
   sentAt: string | null;
+  createdByEmail?: string | null;
   selectedItems: Array<{
     id: string;
     orderItemId: string;
@@ -583,11 +585,35 @@ export default function OrderApprovalDetailPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle>{approval.customerName || '—'}</CardTitle>
-            <CardDescription>
-              Vendor: {approval.vendorName || '—'}
-            </CardDescription>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              <span className="font-medium text-foreground">Customer Name:</span>{' '}
+              {approval.customerName || '—'}
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Order Approval Prepared By:</span>{' '}
+              {approval.createdByEmail || '—'}
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Vendor:</span>{' '}
+              {approval.vendorName || '—'}
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Reference:</span>{' '}
+              <span className="font-mono">{approval.referenceNo}</span>
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Date Created:</span>{' '}
+              {approval.dateCreated
+                ? new Date(approval.dateCreated).toLocaleDateString()
+                : '—'}
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Vendor Notified on:</span>{' '}
+              {approval.sentAt
+                ? new Date(approval.sentAt).toLocaleDateString()
+                : '—'}
+            </p>
           </div>
           {showTestSendButton && (
             <Button
@@ -601,27 +627,6 @@ export default function OrderApprovalDetailPage() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Reference</p>
-            <p className="font-medium font-mono">{approval.referenceNo}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Date Created</p>
-              <p className="font-medium">
-                {new Date(approval.dateCreated).toLocaleDateString()}
-              </p>
-            </div>
-            {approval.sentAt && (
-              <div>
-                <p className="text-sm text-muted-foreground">Sent At</p>
-                <p className="font-medium">
-                  {new Date(approval.sentAt).toLocaleDateString()}
-                </p>
-              </div>
-            )}
-          </div>
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
