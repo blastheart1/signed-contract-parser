@@ -285,7 +285,10 @@ export default function OrderApprovalDetailPage() {
               vendorName1: dbItem.vendorName1 || undefined,
               vendorPercentage: dbItem.vendorPercentage ? parseFloat(String(dbItem.vendorPercentage)) : undefined,
               totalWorkAssignedToVendor: dbItem.totalWorkAssignedToVendor ? parseFloat(String(dbItem.totalWorkAssignedToVendor)) : undefined,
-              estimatedVendorCost: dbItem.estimatedVendorCost ? parseFloat(String(dbItem.estimatedVendorCost)) : undefined,
+              // Non-vendor: Est. Vendor Cost = 50% of customer order item AMOUNT (read-only, always in sync with customer order)
+              estimatedVendorCost: currentUserIsVendor
+                ? (dbItem.estimatedVendorCost ? parseFloat(String(dbItem.estimatedVendorCost)) : undefined)
+                : originalAmount * 0.5,
               totalAmountWorkCompleted: dbItem.totalAmountWorkCompleted ? parseFloat(String(dbItem.totalAmountWorkCompleted)) : undefined,
               vendorBillingToDate: dbItem.vendorBillingToDate ? parseFloat(String(dbItem.vendorBillingToDate)) : undefined,
               vendorSavingsDeficit: dbItem.vendorSavingsDeficit ? parseFloat(String(dbItem.vendorSavingsDeficit)) : undefined,
