@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Send, CheckCircle, XCircle, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, XCircle, ChevronLeft, ChevronRight, FlaskConical, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,20 @@ interface OrderApproval {
     orderItemId: string;
     orderItem: any;
   }>;
+}
+
+/** Split by comma and/or space, trim, drop empty. */
+function parseEmailAddresses(value: string): string[] {
+  if (!value || typeof value !== 'string') return [];
+  return value
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmail(email: string): boolean {
+  return EMAIL_REGEX.test(email);
 }
 
 function formatInLATime(date: string | Date | null | undefined): string {
@@ -110,6 +124,8 @@ export default function OrderApprovalDetailPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [sendTo, setSendTo] = useState('');
+  const [cc, setCc] = useState('');
   const [stageChangeDialogOpen, setStageChangeDialogOpen] = useState(false);
   const [newStage, setNewStage] = useState<string | null>(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -474,10 +490,25 @@ export default function OrderApprovalDetailPage() {
   const currentApprovalId = Array.isArray(params.id) ? params.id[0] : params.id;
   const showTestSendButton = !isVendor;
 
+  // Parse and validate Send to / CC (comma and space separated)
+  const sendToParsed = parseEmailAddresses(sendTo);
+  const ccParsed = parseEmailAddresses(cc);
+  const sendToList =
+    sendToParsed.length > 0
+      ? sendToParsed
+      : approval?.vendorEmail
+        ? [approval.vendorEmail]
+        : [];
+  const allAddresses = [...sendToList, ...ccParsed];
+  const invalidEmails = allAddresses.filter((e) => !isValidEmail(e));
+  const emailValidationOk = sendToList.length > 0 && invalidEmails.length === 0;
+
   const handleOpenEmailPreview = async () => {
     if (!approval) return;
     if (previewLoading) return;
 
+    setSendTo(approval.vendorEmail ?? '');
+    setCc('');
     setPreviewDialogOpen(true);
     setPreviewLoading(true);
     setPreviewHtml(null);
@@ -522,10 +553,34 @@ export default function OrderApprovalDetailPage() {
       return;
     }
 
+    if (!emailValidationOk) {
+      if (sendToList.length === 0) {
+        toast({
+          title: 'Invalid recipients',
+          description: 'Please provide at least one valid recipient email in Send to (comma or space separated).',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Invalid email address',
+          description: `Invalid: ${invalidEmails.join(', ')}. Fix or remove before sending.`,
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
     setTestSending(true);
     try {
       const response = await fetch(`/api/order-approvals/${approval.id}/test-send-webhook`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sendTo: sendToList.join(', '),
+          cc: ccParsed.join(', '),
+        }),
       });
       const data = await response.json();
 
@@ -585,34 +640,38 @@ export default function OrderApprovalDetailPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div className="space-y-1 text-sm text-muted-foreground">
+          <div className="space-y-1 text-[17px] text-muted-foreground">
             <p>
               <span className="font-medium text-foreground">Customer Name:</span>{' '}
-              {approval.customerName || '—'}
+              <span className="text-[#232F47]">{approval.customerName || '—'}</span>
             </p>
             <p>
               <span className="font-medium text-foreground">Order Approval Prepared By:</span>{' '}
-              {approval.createdByEmail || '—'}
+              <span className="text-[#232F47]">{approval.createdByEmail || '—'}</span>
             </p>
             <p>
               <span className="font-medium text-foreground">Vendor:</span>{' '}
-              {approval.vendorName || '—'}
+              <span className="text-[#232F47]">{approval.vendorName || '—'}</span>
             </p>
             <p>
               <span className="font-medium text-foreground">Reference:</span>{' '}
-              <span className="font-mono">{approval.referenceNo}</span>
+              <span className="font-mono text-[#232F47]">{approval.referenceNo}</span>
             </p>
             <p>
               <span className="font-medium text-foreground">Date Created:</span>{' '}
-              {approval.dateCreated
-                ? new Date(approval.dateCreated).toLocaleDateString()
-                : '—'}
+              <span className="text-[#232F47]">
+                {approval.dateCreated
+                  ? new Date(approval.dateCreated).toLocaleDateString()
+                  : '—'}
+              </span>
             </p>
             <p>
               <span className="font-medium text-foreground">Vendor Notified on:</span>{' '}
-              {approval.sentAt
-                ? new Date(approval.sentAt).toLocaleDateString()
-                : '—'}
+              <span className="text-[#232F47]">
+                {approval.sentAt
+                  ? new Date(approval.sentAt).toLocaleDateString()
+                  : '—'}
+              </span>
             </p>
           </div>
           {showTestSendButton && (
@@ -621,8 +680,8 @@ export default function OrderApprovalDetailPage() {
               onClick={handleOpenEmailPreview}
               disabled={saving || testSending}
             >
-              <FlaskConical className="h-4 w-4 mr-2" />
-              {testSending ? 'Sending Test...' : 'Preview & Test Email (Zapier)'}
+              <Mail className="h-4 w-4 mr-2" />
+              {testSending ? 'Sending...' : 'Preview and Send Email'}
             </Button>
           )}
         </CardHeader>
@@ -630,7 +689,7 @@ export default function OrderApprovalDetailPage() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">PM Approved:</span>
+              <span className="text-[17px] text-muted-foreground">PM Approved:</span>
               {approval.pmApproved ? (
                 <CheckCircle className="h-5 w-5 text-green-500" />
               ) : (
@@ -638,11 +697,11 @@ export default function OrderApprovalDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Vendor Approved:</span>
+              <span className="text-[17px] text-muted-foreground">Vendor Approved:</span>
               {approval.vendorApproved ? (
                 <span className="flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-green-500" />
-                  <span className="text-sm">
+                  <span className="text-[17px] text-[#232F47]">
                     (Vendor Approval Timestamp: {formatInLATime(approval.vendorApprovedAt)})
                   </span>
                 </span>
@@ -857,6 +916,48 @@ export default function OrderApprovalDetailPage() {
               Review the generated email. If everything looks correct, confirm to send a test email payload.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="mt-2 space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">
+                Send to
+              </label>
+              <input
+                type="text"
+                className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                placeholder="vendor@example.com, other@example.com"
+                value={sendTo}
+                onChange={(e) => setSendTo(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Separate multiple emails with comma or space.
+              </p>
+              {allAddresses.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Recognized: {sendToList.length} to, {ccParsed.length} cc ({allAddresses.length} total).
+                </p>
+              )}
+              {invalidEmails.length > 0 && (
+                <p className="text-xs text-destructive font-medium">
+                  Invalid email(s): {invalidEmails.join(', ')}. Fix or remove to proceed.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">
+                CC
+              </label>
+              <input
+                type="text"
+                className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                placeholder="cc1@example.com, cc2@example.com"
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Separate multiple emails with comma or space.
+              </p>
+            </div>
+          </div>
           <div className="mt-4 h-[480px] border rounded bg-muted overflow-hidden">
             {previewLoading ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -878,9 +979,9 @@ export default function OrderApprovalDetailPage() {
             <AlertDialogCancel disabled={testSending || previewLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleTestSendWebhook}
-              disabled={testSending || previewLoading || !previewHtml}
+              disabled={testSending || previewLoading || !previewHtml || !emailValidationOk}
             >
-              {testSending ? 'Sending Test...' : 'Send Test Email'}
+              {testSending ? 'Sending...' : 'Preview and Send Email'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

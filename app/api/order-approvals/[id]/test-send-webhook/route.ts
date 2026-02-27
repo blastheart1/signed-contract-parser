@@ -46,6 +46,21 @@ export async function POST(
 
     const approvalId = params.id;
 
+    let sendTo: string | undefined;
+    let cc: string | undefined;
+
+    try {
+      const body = await request.json();
+      if (body && typeof body.sendTo === 'string') {
+        sendTo = body.sendTo;
+      }
+      if (body && typeof body.cc === 'string') {
+        cc = body.cc;
+      }
+    } catch {
+      // If body can't be parsed, treat as no overrides provided
+    }
+
     if (isInCooldown(approvalId)) {
       return NextResponse.json(
         { error: 'Please wait a moment before sending again to avoid duplicate webhooks.' },
@@ -68,13 +83,19 @@ export async function POST(
 
     const webhookUrl = HARD_CODED_TEST_WEBHOOK_URL;
 
+    const webhookPayload = {
+      ...payload,
+      ...(sendTo ? { sendTo } : {}),
+      ...(cc ? { cc } : {}),
+    };
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(webhookPayload),
       signal: controller.signal,
     });
 

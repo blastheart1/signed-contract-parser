@@ -55,6 +55,7 @@ function renderOrderApprovalHtml(data: {
   approvalTimestamp: string;
   consentReminder: string;
   items: Array<{ productService: string; qty: number; rate: number; amount: number }>;
+  orderApprovalLink?: string;
 }): string {
   const rowsHtml = data.items
     .map((item, index) => {
@@ -77,6 +78,26 @@ function renderOrderApprovalHtml(data: {
       `;
     })
     .join('');
+
+  const referenceValueHtml = data.orderApprovalLink
+    ? `<a href="${escapeHtml(data.orderApprovalLink)}" style="color:#232F47; text-decoration:underline;">${escapeHtml(
+        data.referenceNo
+      )}</a>`
+    : escapeHtml(data.referenceNo);
+
+  const viewOrderApprovalRowHtml = data.orderApprovalLink
+    ? `
+        <tr>
+          <td style="padding:16px 35px; text-align:center;">
+            <a href="${escapeHtml(
+              data.orderApprovalLink
+            )}" style="display:inline-block; padding:10px 16px; border-radius:4px; background-color:#232F47; color:#ffffff; font-family:Arial,sans-serif; font-size:13px; text-decoration:none;">
+              View Order Approval
+            </a>
+          </td>
+        </tr>
+      `
+    : '';
 
   return `
 <!DOCTYPE html>
@@ -118,9 +139,7 @@ function renderOrderApprovalHtml(data: {
         <tr>
           <td style="padding:0 35px 20px;">
             <table width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;">
-              <tr><td style="padding:6px 0; width:210px; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Reference No:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
-                data.referenceNo
-              )}</td></tr>
+              <tr><td style="padding:6px 0; width:210px; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Reference No:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${referenceValueHtml}</td></tr>
               <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Customer Name:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
                 data.customerName
               )}</td></tr>
@@ -174,6 +193,7 @@ function renderOrderApprovalHtml(data: {
             </table>
           </td>
         </tr>
+        ${viewOrderApprovalRowHtml}
         <tr>
           <td style="padding:28px 30px; background:#232F47; color:#ffffff; font-family:Arial,sans-serif; font-size:13px; line-height:22px; text-align:center;">
             This is an automated copy of the approved order. Retain for your records.
@@ -254,6 +274,11 @@ export async function buildOrderApprovalEmailPayload(approvalId: string): Promis
   const vendorPhone = approval.vendorPhone || '—';
   const vendorEmail = approval.vendorEmail || '';
 
+  // Base URL for order approval links (Vercel project)
+  const appBaseUrl = 'https://signed-contract-parser.vercel.app';
+  const normalizedBaseUrl = appBaseUrl.replace(/\/+$/, '');
+  const orderApprovalLink = `${normalizedBaseUrl}/dashboard/vendor-negotiation/${approval.id}`;
+
   const htmlEmail = renderOrderApprovalHtml({
     referenceNo,
     customerName,
@@ -264,6 +289,7 @@ export async function buildOrderApprovalEmailPayload(approvalId: string): Promis
     approvalTimestamp,
     consentReminder: CONSENT_REMINDER,
     items,
+    orderApprovalLink,
   });
 
   const approvedAt =
