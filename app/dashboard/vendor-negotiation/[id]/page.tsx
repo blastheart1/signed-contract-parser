@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Send, CheckCircle, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, XCircle, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -84,6 +84,8 @@ const VENDOR_APPROVAL_DISCLAIMER = {
   checkboxLabel: 'I acknowledge and agree to the terms above.',
 };
 
+const TEST_APPROVAL_ID = '3640b3f3-e813-44a1-ac9c-17e4ae838a32';
+
 export default function OrderApprovalDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -102,6 +104,10 @@ export default function OrderApprovalDetailPage() {
   }, [isEditMode, approval?.stage]);
   // #endregion
   const [saving, setSaving] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [stageChangeDialogOpen, setStageChangeDialogOpen] = useState(false);
   const [newStage, setNewStage] = useState<string | null>(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -463,6 +469,88 @@ export default function OrderApprovalDetailPage() {
   const currentStageIndex = approval ? STAGE_ORDER.indexOf(approval.stage) : -1;
   const canGoBack = currentStageIndex > 0;
   const canGoForward = currentStageIndex < STAGE_ORDER.length - 1;
+  const currentApprovalId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const showTestSendButton = !isVendor;
+
+  const handleOpenEmailPreview = async () => {
+    if (!approval) return;
+    if (previewLoading) return;
+
+    setPreviewDialogOpen(true);
+    setPreviewLoading(true);
+    setPreviewHtml(null);
+
+    try {
+      const response = await fetch(`/api/order-approvals/${approval.id}/preview-email`);
+      const data = await response.json();
+
+      if (response.ok && data.success && data.data?.htmlEmail) {
+        setPreviewHtml(data.data.htmlEmail as string);
+      } else {
+        setPreviewDialogOpen(false);
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to generate email preview',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error generating email preview:', error);
+      setPreviewDialogOpen(false);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate email preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleTestSendWebhook = async () => {
+    if (!approval) return;
+    if (testSending) return; // Prevent duplicate triggers before state updates
+
+    if (!previewHtml) {
+      toast({
+        title: 'Error',
+        description: 'Generate and review the email preview before sending a test email.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setTestSending(true);
+    try {
+      const response = await fetch(`/api/order-approvals/${approval.id}/test-send-webhook`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: 'Test webhook sent',
+          description: 'Sample HTML payload was sent to Zapier test webhook.',
+        });
+        setPreviewDialogOpen(false);
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to send test webhook',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error sending test webhook:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to send test webhook',
+        variant: 'destructive',
+      });
+    } finally {
+      setTestSending(false);
+    }
+  };
 
 
   if (loading) {
@@ -494,11 +582,23 @@ export default function OrderApprovalDetailPage() {
       </Button>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{approval.customerName || '—'}</CardTitle>
-          <CardDescription>
-            Vendor: {approval.vendorName || '—'}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>{approval.customerName || '—'}</CardTitle>
+            <CardDescription>
+              Vendor: {approval.vendorName || '—'}
+            </CardDescription>
+          </div>
+          {showTestSendButton && (
+            <Button
+              variant="outline"
+              onClick={handleOpenEmailPreview}
+              disabled={saving || testSending}
+            >
+              <FlaskConical className="h-4 w-4 mr-2" />
+              {testSending ? 'Sending Test...' : 'Preview & Test Email (Zapier)'}
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -739,6 +839,43 @@ export default function OrderApprovalDetailPage() {
                     : (approval.pmApproved ? 'Retract' : 'Approve')
                   )
               }
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <AlertDialogContent className="max-w-4xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Preview order approval email</AlertDialogTitle>
+            <AlertDialogDescription>
+              Review the generated email. If everything looks correct, confirm to send a test email payload.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="mt-4 h-[480px] border rounded bg-muted overflow-hidden">
+            {previewLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Generating preview...
+              </div>
+            ) : previewHtml ? (
+              <iframe
+                title="Order approval email preview"
+                srcDoc={previewHtml}
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-destructive">
+                Failed to load preview.
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={testSending || previewLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleTestSendWebhook}
+              disabled={testSending || previewLoading || !previewHtml}
+            >
+              {testSending ? 'Sending Test...' : 'Send Test Email'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
