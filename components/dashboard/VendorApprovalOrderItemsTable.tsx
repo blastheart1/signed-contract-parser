@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Edit2, Save, X, Loader2, Eye, ChevronDown, Zap } from 'lucide-react';
+import { Edit2, Save, X, Loader2, Eye, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,8 @@ export default function VendorApprovalOrderItemsTable({
   const [editedItems, setEditedItems] = useState<Map<string, ItemWithId>>(new Map());
   // Map of orderItemId -> orderApprovalItemId for saving qty/rates
   const [orderApprovalItemIdMap, setOrderApprovalItemIdMap] = useState<Map<string, string>>(new Map());
+  // Mobile card: which item's product/service text is expanded
+  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
 
   // Convert items to have IDs
   const itemsWithIds = useMemo(() => {
@@ -535,27 +537,27 @@ export default function VendorApprovalOrderItemsTable({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
+      <CardHeader className="px-4 md:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
           <div>
-            <CardTitle>Order Items</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-lg sm:text-xl">Order Items</CardTitle>
+            <CardDescription className="text-sm">
               {isEditMode
                 ? 'Select items to include in this approval'
                 : `Showing ${itemCount} selected item(s)`}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative" ref={dropdownRef}>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="gap-2"
+                className="gap-1.5 text-xs sm:text-sm md:gap-2"
               >
-                <Eye className="h-4 w-4" />
+                <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Show/Hide Headers
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-full bg-background border rounded-md shadow-lg z-50 p-2">
@@ -671,9 +673,162 @@ export default function VendorApprovalOrderItemsTable({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="rounded-md border max-h-[600px] overflow-y-auto">
-          <table className="w-full caption-bottom text-sm border-separate border-spacing-0" style={{ width: '100%', tableLayout: 'auto' }}>
+      <CardContent className="px-4 md:px-6">
+        {/* Mobile: card list (5+ columns per design instruction) */}
+        <div className="md:hidden space-y-3 max-h-[600px] overflow-y-auto">
+          {displayItems.map((item, index) => {
+            if (item.type === 'maincategory') {
+              return (
+                <div key={item.id} className="font-bold text-base py-2 bg-primary/20 dark:bg-primary/30 rounded px-2">
+                  {item.productService}
+                </div>
+              );
+            }
+            if (item.type === 'subcategory') {
+              return (
+                <div key={item.id} className="font-semibold text-sm pl-4 py-1.5 bg-primary/10 dark:bg-primary/20 rounded">
+                  {item.productService}
+                </div>
+              );
+            }
+            if (item.type !== 'item') return null;
+
+            const editedItem = editedItems.get(item.id);
+            const editedQty = editedItem?.qty !== undefined ? editedItem.qty : item.qty;
+            const editedRate = editedItem?.rate !== undefined ? editedItem.rate : item.rate;
+            const displayQty = typeof editedQty === 'number'
+              ? editedQty
+              : (editedQty !== null && editedQty !== undefined && editedQty !== ''
+                  ? parseFloat(String(editedQty)) || 0
+                  : (typeof item.qty === 'number' ? item.qty : (item.qty ? parseFloat(String(item.qty)) || 0 : 0)));
+            const displayRate = typeof editedRate === 'number'
+              ? editedRate
+              : (editedRate !== null && editedRate !== undefined && editedRate !== ''
+                  ? parseFloat(String(editedRate)) || 0
+                  : (typeof item.rate === 'number' ? item.rate : (item.rate ? parseFloat(String(item.rate)) || 0 : 0)));
+            const snapshotAmount = typeof item.amount === 'number'
+              ? item.amount
+              : (item.amount ? parseFloat(String(item.amount)) || 0 : 0);
+            const hasValidRate = displayRate !== null && displayRate !== undefined && displayRate !== 0 && !isNaN(displayRate);
+            const computedAmount = hasValidRate && displayQty ? displayQty * displayRate : null;
+            const snapshotAmountForDiff = computedAmount !== null ? computedAmount : snapshotAmount;
+            const originalAmount = item.originalAmount !== undefined && item.originalAmount !== null
+              ? (typeof item.originalAmount === 'number' ? item.originalAmount : parseFloat(String(item.originalAmount)) || 0)
+              : 0;
+            const originalAmount50Percent = originalAmount * 0.5;
+            const priceDifference = !isVendor && originalAmount > 0
+              ? originalAmount50Percent - snapshotAmountForDiff
+              : null;
+            const isSelected = selectedItemIds.has(item.id);
+
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  'rounded-lg border p-4 space-y-2 text-sm',
+                  index % 2 === 0 ? 'bg-muted/50 dark:bg-muted/30' : 'bg-background',
+                  isSelected && isEditMode ? 'ring-2 ring-primary' : ''
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  {isEditMode && canEdit && !isQtyEditMode && !isRateEditMode && (
+                    <span className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center -m-2 p-2">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => handleToggleItem(item.id)}
+                        className="h-5 w-5"
+                      />
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={cn(
+                      'font-medium',
+                      expandedProductId !== item.id && (item.productService?.length ?? 0) > 60 && 'line-clamp-2'
+                    )}>
+                      {item.productService || '—'}
+                    </p>
+                    {(item.productService?.length ?? 0) > 60 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-1 min-h-[44px] h-auto py-2 text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProductId(expandedProductId === item.id ? null : item.id);
+                        }}
+                      >
+                        {expandedProductId === item.id ? (
+                          <>Show less <ChevronUp className="h-4 w-4 ml-1 inline" /></>
+                        ) : (
+                          <>Show more <ChevronDown className="h-4 w-4 ml-1 inline" /></>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
+                  <span>QTY</span>
+                  <span className="text-right">
+                    {isQtyEditMode ? (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editedQty ?? ''}
+                        onChange={(e) => handleQtyChange(item.id, e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                        className="h-9 w-full text-right text-sm"
+                      />
+                    ) : (
+                      displayQty ? formatNumber(displayQty) : '—'
+                    )}
+                  </span>
+                  <span>RATE</span>
+                  <span className="text-right">
+                    {isRateEditMode ? (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editedRate ?? ''}
+                        onChange={(e) => handleRateChange(item.id, e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
+                        className="h-9 w-full text-right text-sm"
+                      />
+                    ) : (
+                      displayRate ? formatCurrency(displayRate) : '—'
+                    )}
+                  </span>
+                  <span>AMOUNT</span>
+                  <span className="text-right text-foreground">
+                    {computedAmount !== null && computedAmount > 0 ? formatCurrency(computedAmount) : '—'}
+                  </span>
+                  {!isVendor && (
+                    <>
+                      <span>Est. Vendor Cost</span>
+                      <span className="text-right text-foreground">
+                        {(() => {
+                          const estCost = item.estimatedVendorCost !== undefined && item.estimatedVendorCost !== null && item.estimatedVendorCost !== ''
+                            ? (typeof item.estimatedVendorCost === 'number' ? item.estimatedVendorCost : parseFloat(String(item.estimatedVendorCost)) || 0)
+                            : (snapshotAmountForDiff > 0 ? snapshotAmountForDiff * 0.5 : null);
+                          return estCost !== null && estCost > 0 ? formatCurrency(estCost) : '—';
+                        })()}
+                      </span>
+                      <span>Price Diff.</span>
+                      <span className="text-right">
+                        {priceDifference !== null ? (
+                          <span className={priceDifference >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            {priceDifference >= 0 ? '+' : ''}{formatCurrency(priceDifference)}
+                          </span>
+                        ) : '—'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: table */}
+        <div className="hidden md:block rounded-md border max-h-[600px] overflow-y-auto">
+          <table className="w-full caption-bottom text-sm border-separate border-spacing-0 sm:text-base" style={{ width: '100%', tableLayout: 'auto' }}>
             <TableHeader>
               <TableRow>
                 {isEditMode && canEdit && !isQtyEditMode && !isRateEditMode && (

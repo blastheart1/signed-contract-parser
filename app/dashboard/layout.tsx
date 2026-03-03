@@ -19,6 +19,7 @@ export default function DashboardLayout({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     checkSession();
@@ -42,6 +43,14 @@ export default function DashboardLayout({
       setLoading(false);
     }
   };
+
+  // Mobile: full-width main content (sidebar is drawer)
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Restrict vendor users to vendor-negotiation only (list and detail pages)
   useEffect(() => {
@@ -95,6 +104,7 @@ export default function DashboardLayout({
   }
 
   const sidebarWidth = sidebarCollapsed ? 80 : 256;
+  const mainMarginLeft = isMobile ? 0 : sidebarWidth;
 
   return (
     <div className="min-h-screen bg-background">
@@ -106,11 +116,11 @@ export default function DashboardLayout({
         onToggle={setSidebarCollapsed}
       />
 
-      {/* Main Content */}
+      {/* Main Content - full width on mobile */}
       <motion.main
         initial={false}
         animate={{
-          marginLeft: `${sidebarWidth}px`,
+          marginLeft: `${mainMarginLeft}px`,
         }}
         transition={{ duration: 0.2, ease: 'easeInOut' }}
         className="min-h-screen"
@@ -119,7 +129,7 @@ export default function DashboardLayout({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="p-8"
+          className="p-4 sm:p-6 lg:p-8"
         >
           {children}
         </motion.div>

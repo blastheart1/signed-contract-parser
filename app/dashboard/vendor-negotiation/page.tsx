@@ -305,17 +305,17 @@ export default function VendorNegotiationPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Vendor Negotiation</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold sm:text-3xl">Vendor Negotiation</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Manage order approvals and vendor negotiations
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-2">
           {user?.role !== 'vendor' && !showTrash && (
-            <Button onClick={() => setCreateDialogOpen(true)}>
+            <Button onClick={() => setCreateDialogOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
               <Plus className="h-4 w-4 mr-2" />
               Create Order Approval
             </Button>
@@ -325,6 +325,7 @@ export default function VendorNegotiationPage() {
               variant="outline"
               size="sm"
               onClick={() => setShowTrash(!showTrash)}
+              className="flex-1 sm:flex-none min-h-[44px]"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               {showTrash ? 'Hide Trash' : 'Show Trash'}
@@ -335,6 +336,7 @@ export default function VendorNegotiationPage() {
             size="sm"
             onClick={fetchApprovals}
             disabled={loading}
+            className="flex-1 sm:flex-none min-h-[44px]"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -343,16 +345,16 @@ export default function VendorNegotiationPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="px-4 md:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Order Approvals</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-lg sm:text-xl">Order Approvals</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
                 {pagination.total} approval{pagination.total !== 1 ? 's' : ''}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative w-64">
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by reference or vendor..."
@@ -364,7 +366,7 @@ export default function VendorNegotiationPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 md:px-6">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -390,7 +392,98 @@ export default function VendorNegotiationPage() {
             </div>
           ) : (
             <>
-              <div className="rounded-md border">
+              {/* Mobile: card list (6 columns → card list per design instruction) */}
+              <div className="md:hidden space-y-3">
+                {approvals.map((approval) => (
+                  <div
+                    key={approval.id}
+                    onClick={() => router.push(`/dashboard/vendor-negotiation/${approval.id}`)}
+                    className="rounded-lg border bg-card p-4 cursor-pointer hover:bg-green-200 dark:hover:bg-green-800/40 transition-colors active:opacity-90 min-h-[44px]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <span className="font-mono text-sm font-medium truncate max-w-[200px] sm:max-w-none">
+                        {approval.referenceNo}
+                      </span>
+                      <Badge
+                        className={`flex-shrink-0 ${STAGE_COLORS[approval.stage] || 'bg-gray-500'}`}
+                      >
+                        {STAGE_LABELS[approval.stage] || approval.stage}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p><span className="text-foreground font-medium">Vendor:</span>{' '}
+                        {approval.vendorName ? (
+                          user?.role === 'vendor' ? (
+                            <span className="truncate max-w-[200px] sm:max-w-none inline-block align-bottom">{approval.vendorName}</span>
+                          ) : (
+                            <Link
+                              href={`/dashboard/vendors?vendorId=${approval.vendorId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400 truncate max-w-[200px] sm:max-w-none inline-block align-bottom"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {approval.vendorName}
+                            </Link>
+                          )
+                        ) : '—'}
+                      </p>
+                      <p><span className="text-foreground font-medium">Customer:</span>{' '}
+                        {approval.customerName ? (
+                          user?.role === 'vendor' ? (
+                            <span className="truncate max-w-[200px] sm:max-w-none inline-block align-bottom">{approval.customerName}</span>
+                          ) : (
+                            <Link
+                              href={`/dashboard/customers/${approval.customerId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400 truncate max-w-[200px] sm:max-w-none inline-block align-bottom"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {approval.customerName}
+                            </Link>
+                          )
+                        ) : '—'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(approval.dateCreated).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/dashboard/vendor-negotiation/${approval.id}`);
+                        }}
+                        className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0"
+                        aria-label="View"
+                      >
+                        <Eye className="h-5 w-5" />
+                      </Button>
+                      {!approval.deletedAt && user?.role !== 'vendor' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setApprovalToDelete(approval.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                          className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 text-destructive"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden md:block rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -506,7 +599,7 @@ export default function VendorNegotiationPage() {
                                 <TooltipContent>View</TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
-                            {!approval.deletedAt && (
+                            {!approval.deletedAt && user?.role !== 'vendor' && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -534,8 +627,8 @@ export default function VendorNegotiationPage() {
               </div>
 
               {pagination.totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-muted-foreground">Items per page:</span>
                     <Select
                       value={pageSize.toString()}
@@ -573,19 +666,19 @@ export default function VendorNegotiationPage() {
       </Card>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="mx-4 sm:mx-0">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Order Approval</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete this order approval? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={deleting} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
@@ -594,7 +687,7 @@ export default function VendorNegotiationPage() {
       </AlertDialog>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md mx-4 sm:mx-0">
           <DialogHeader>
             <DialogTitle>Create Order Approval</DialogTitle>
             <DialogDescription>
@@ -636,7 +729,7 @@ export default function VendorNegotiationPage() {
               </Select>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button
               variant="outline"
               onClick={() => {
@@ -645,10 +738,11 @@ export default function VendorNegotiationPage() {
                 setSelectedCustomer('');
               }}
               disabled={creating}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
-            <Button onClick={handleCreateApproval} disabled={creating || !selectedVendor || !selectedCustomer}>
+            <Button onClick={handleCreateApproval} disabled={creating || !selectedVendor || !selectedCustomer} className="w-full sm:w-auto">
               {creating ? 'Creating...' : 'Create'}
             </Button>
           </DialogFooter>

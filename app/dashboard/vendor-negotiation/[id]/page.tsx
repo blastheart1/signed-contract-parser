@@ -758,8 +758,8 @@ export default function OrderApprovalDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" size="sm" asChild>
+    <div className="space-y-4 sm:space-y-6">
+      <Button variant="outline" size="sm" asChild className="min-h-[44px]">
         <Link href="/dashboard/vendor-negotiation">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
@@ -767,8 +767,8 @@ export default function OrderApprovalDetailPage() {
       </Button>
 
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div className="space-y-1 text-[17px] text-muted-foreground">
+        <CardHeader className="flex flex-col gap-4 px-4 md:px-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1 text-sm text-muted-foreground sm:text-base">
             <p>
               <span className="font-medium text-foreground">Customer Name:</span>{' '}
               <span className="text-[#232F47]">{approval.customerName || '—'}</span>
@@ -803,12 +803,13 @@ export default function OrderApprovalDetailPage() {
             </p>
           </div>
           {(showSendForNegotiation || showTestSendButton) && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap gap-2">
               {showSendForNegotiation && (
                 <Button
                   variant="outline"
                   onClick={handleOpenNegotiationPreview}
                   disabled={saving || sendingNegotiation}
+                  className="flex-1 sm:flex-none min-h-[44px]"
                 >
                   <Mail className="h-4 w-4 mr-2" />
                   {sendingNegotiation ? 'Sending...' : 'Send for Negotiation'}
@@ -819,6 +820,7 @@ export default function OrderApprovalDetailPage() {
                   variant="outline"
                   onClick={handleOpenEmailPreview}
                   disabled={saving || testSending}
+                  className="flex-1 sm:flex-none min-h-[44px]"
                 >
                   <Mail className="h-4 w-4 mr-2" />
                   {testSending ? 'Sending...' : 'Preview and Send Email'}
@@ -827,35 +829,43 @@ export default function OrderApprovalDetailPage() {
             </div>
           )}
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 px-4 md:px-6">
 
-          <div className="flex items-center gap-4">
+          {/* Mobile: PM and Vendor side-by-side; timestamp on own row. Desktop: timestamp stays next to Vendor. */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 md:flex md:flex-wrap md:items-center md:gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-[17px] text-muted-foreground">PM Approved:</span>
+              <span className="text-sm text-muted-foreground sm:text-base">PM Approved:</span>
               {approval.pmApproved ? (
-                <CheckCircle className="h-5 w-5 text-green-500" />
+                <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
               ) : (
-                <XCircle className="h-5 w-5 text-gray-400" />
+                <XCircle className="h-5 w-5 text-gray-400 shrink-0" />
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[17px] text-muted-foreground">Vendor Approved:</span>
-              {approval.vendorApproved ? (
-                <span className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                  <span className="text-[17px] text-[#232F47]">
-                    (Vendor Approval Timestamp: {formatInLATime(approval.vendorApprovedAt)})
-                  </span>
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground sm:text-base">Vendor Approved:</span>
+                {approval.vendorApproved ? (
+                  <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-gray-400 shrink-0" />
+                )}
+              </div>
+              {approval.vendorApproved && (
+                <span className="hidden text-sm text-[#232F47] md:inline sm:text-base">
+                  Vendor Approval Timestamp: {formatInLATime(approval.vendorApprovedAt)}
                 </span>
-              ) : (
-                <XCircle className="h-5 w-5 text-gray-400" />
               )}
             </div>
           </div>
+          {approval.vendorApproved && (
+            <p className="text-sm text-[#232F47] sm:text-base md:hidden">
+              Vendor Approval Timestamp: {formatInLATime(approval.vendorApprovedAt)}
+            </p>
+          )}
 
           <div className="pt-4 border-t">
-            <p className="text-sm font-medium mb-3">Stage:</p>
-            <div className="flex items-center gap-2">
+            <p className="text-lg font-medium mb-3 sm:text-xl">Stage:</p>
+            <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
               {STAGE_ORDER.map((stage, index) => {
                 const isCurrent = approval.stage === stage;
                 const isCompleted = index < currentStageIndex;
@@ -883,7 +893,9 @@ export default function OrderApprovalDetailPage() {
                       }}
                       disabled={!isClickable}
                       className={`
-                        min-w-[100px] text-center flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                        min-w-[60px] min-h-[28px] px-2 py-1 text-xs rounded-md font-medium transition-colors
+                        sm:min-w-[100px] sm:min-h-[44px] sm:px-3 sm:py-1.5 sm:text-sm
+                        text-center flex items-center justify-center
                         ${isCurrent 
                           ? `${STAGE_COLORS[stage] || 'bg-gray-500'} text-white cursor-default` 
                           : isCompleted
@@ -938,40 +950,44 @@ export default function OrderApprovalDetailPage() {
                 </div>
               )}
 
-              {!isVendor && (
-                <Button
-                  onClick={() => setApprovalDialogOpen(true)}
-                  disabled={saving}
-                  variant="outline"
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {approval.pmApproved ? 'Retract Approval (PM)' : 'Approve (PM)'}
-                </Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {!isVendor && (
+                  <Button
+                    onClick={() => setApprovalDialogOpen(true)}
+                    disabled={saving}
+                    variant="outline"
+                    className="min-h-[44px] flex-1 min-w-0 md:flex-none"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    {approval.pmApproved ? 'Retract Approval (PM)' : 'Approve (PM)'}
+                  </Button>
+                )}
 
-              {isVendor && (
-                <Button
-                  onClick={() => setApprovalDialogOpen(true)}
-                  disabled={saving || (!approval.vendorApproved && !disclaimerAccepted)}
-                  variant="outline"
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {approval.vendorApproved ? 'Retract Approval (Vendor)' : 'Approve (Vendor)'}
-                </Button>
-              )}
+                {isVendor && (
+                  <Button
+                    onClick={() => setApprovalDialogOpen(true)}
+                    disabled={saving || (!approval.vendorApproved && !disclaimerAccepted)}
+                    variant="outline"
+                    className="min-h-[44px] flex-1 min-w-0 md:flex-none"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    {approval.vendorApproved ? 'Retract Approval (Vendor)' : 'Approve (Vendor)'}
+                  </Button>
+                )}
 
-              {!isVendor && approval.pmApproved && approval.vendorApproved && (
-                <Button
-                  onClick={() => {
-                    setNewStage('approved');
-                    setStageChangeDialogOpen(true);
-                  }}
-                  disabled={saving}
-                  className="ml-2"
-                >
-                  Move to Approved
-                </Button>
-              )}
+                {!isVendor && approval.pmApproved && approval.vendorApproved && (
+                  <Button
+                    onClick={() => {
+                      setNewStage('approved');
+                      setStageChangeDialogOpen(true);
+                    }}
+                    disabled={saving}
+                    className="min-h-[44px] flex-1 min-w-0 md:flex-none"
+                  >
+                    Move to Approved
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
@@ -992,7 +1008,7 @@ export default function OrderApprovalDetailPage() {
       />
 
       <AlertDialog open={stageChangeDialogOpen} onOpenChange={setStageChangeDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="mx-4 sm:mx-0">
           <AlertDialogHeader>
             <AlertDialogTitle>Change Stage</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1000,11 +1016,12 @@ export default function OrderApprovalDetailPage() {
               <strong>{newStage ? STAGE_LABELS[newStage] : ''}</strong>?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={saving} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => newStage && handleStageChange(newStage)}
               disabled={saving}
+              className="w-full sm:w-auto"
             >
               {saving ? 'Changing...' : 'Change Stage'}
             </AlertDialogAction>
@@ -1013,7 +1030,7 @@ export default function OrderApprovalDetailPage() {
       </AlertDialog>
 
       <AlertDialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="mx-4 sm:mx-0">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isVendor 
@@ -1032,9 +1049,9 @@ export default function OrderApprovalDetailPage() {
               }
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleApprove} disabled={saving}>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={saving} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApprove} disabled={saving} className="w-full sm:w-auto">
               {saving 
                 ? (isVendor 
                     ? (approval.vendorApproved ? 'Updating...' : 'Approving...')
@@ -1051,7 +1068,7 @@ export default function OrderApprovalDetailPage() {
       </AlertDialog>
 
       <AlertDialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <AlertDialogContent className="max-w-4xl">
+        <AlertDialogContent className="max-w-4xl mx-4 sm:mx-0">
           <AlertDialogHeader>
             <AlertDialogTitle>Preview order approval email</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1117,11 +1134,12 @@ export default function OrderApprovalDetailPage() {
               </div>
             )}
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={testSending || previewLoading}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={testSending || previewLoading} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleTestSendWebhook}
               disabled={testSending || previewLoading || !previewHtml || !emailValidationOk}
+              className="w-full sm:w-auto"
             >
               {testSending ? 'Sending...' : 'Preview and Send Email'}
             </AlertDialogAction>
@@ -1130,7 +1148,7 @@ export default function OrderApprovalDetailPage() {
       </AlertDialog>
 
       <AlertDialog open={negotiationDialogOpen} onOpenChange={setNegotiationDialogOpen}>
-        <AlertDialogContent className="max-w-4xl">
+        <AlertDialogContent className="max-w-4xl mx-4 sm:mx-0">
           <AlertDialogHeader>
             <AlertDialogTitle>Send for Negotiation</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1192,11 +1210,12 @@ export default function OrderApprovalDetailPage() {
               </div>
             )}
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={sendingNegotiation || negotiationPreviewLoading}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={sendingNegotiation || negotiationPreviewLoading} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleSendNegotiationWebhook}
               disabled={sendingNegotiation || negotiationPreviewLoading || !negotiationPreviewHtml || !negotiationEmailValidationOk}
+              className="w-full sm:w-auto"
             >
               {sendingNegotiation ? 'Sending...' : 'Send for Negotiation'}
             </AlertDialogAction>

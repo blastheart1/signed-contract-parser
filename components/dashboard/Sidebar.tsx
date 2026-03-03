@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Menu, X, FileText, LogOut, Repeat } from 'lucide-react';
@@ -57,6 +57,8 @@ export default function Sidebar({
   const [isMobile, setIsMobile] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [floatingButtonVisible, setFloatingButtonVisible] = useState(true);
+  const hideButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('1.0.0');
@@ -156,6 +158,39 @@ export default function Sidebar({
       document.body.style.overflow = '';
     };
   }, [mobileOpen, isMobile]);
+
+  const scheduleHideFloatingButton = useCallback(() => {
+    if (hideButtonTimeoutRef.current) clearTimeout(hideButtonTimeoutRef.current);
+    hideButtonTimeoutRef.current = setTimeout(() => setFloatingButtonVisible(false), 1100);
+  }, []);
+
+  // Mobile only: hide floating hamburger after 2s; show at full opacity while scrolling, hide again 2s after scroll stops
+  useEffect(() => {
+    if (!isMobile) return;
+
+    const handleScroll = () => {
+      setFloatingButtonVisible(true);
+      scheduleHideFloatingButton();
+    };
+
+    scheduleHideFloatingButton();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (hideButtonTimeoutRef.current) clearTimeout(hideButtonTimeoutRef.current);
+    };
+  }, [isMobile, scheduleHideFloatingButton]);
+
+  // When sidebar closes on mobile, show floating button again then hide after 2s
+  const prevMobileOpenRef = useRef(mobileOpen);
+  useEffect(() => {
+    if (!isMobile) return;
+    if (prevMobileOpenRef.current && !mobileOpen) {
+      setFloatingButtonVisible(true);
+      scheduleHideFloatingButton();
+    }
+    prevMobileOpenRef.current = mobileOpen;
+  }, [isMobile, mobileOpen, scheduleHideFloatingButton]);
 
   if (!isMounted) {
     return null;
@@ -338,17 +373,20 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Mobile Toggle Button */}
-      {isMobile && showToggle && isMounted && (
+      {/* Mobile Toggle Button - only when sidebar is closed; fades out after 2s, shows while scrolling */}
+      {isMobile && showToggle && isMounted && !mobileOpen && (
         <Button
           data-sidebar-toggle
           variant="ghost"
           size="icon"
           onClick={handleToggle}
-          className="fixed top-4 left-4 z-50 h-10 w-10 bg-card shadow-md"
+          className={cn(
+            'fixed top-4 left-4 z-50 h-10 w-10 bg-card shadow-md transition-opacity duration-300',
+            floatingButtonVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          )}
           aria-label="Toggle sidebar"
         >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          <Menu className="h-5 w-5" />
         </Button>
       )}
       {/* Mobile Overlay */}
