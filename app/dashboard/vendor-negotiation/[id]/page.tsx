@@ -126,6 +126,12 @@ export default function OrderApprovalDetailPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sendTo, setSendTo] = useState('');
   const [cc, setCc] = useState('');
+  const [negotiationDialogOpen, setNegotiationDialogOpen] = useState(false);
+  const [negotiationPreviewHtml, setNegotiationPreviewHtml] = useState<string | null>(null);
+  const [negotiationPreviewLoading, setNegotiationPreviewLoading] = useState(false);
+  const [sendingNegotiation, setSendingNegotiation] = useState(false);
+  const [negotiationSendTo, setNegotiationSendTo] = useState('');
+  const [negotiationCc, setNegotiationCc] = useState('');
   const [stageChangeDialogOpen, setStageChangeDialogOpen] = useState(false);
   const [newStage, setNewStage] = useState<string | null>(null);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -492,6 +498,7 @@ export default function OrderApprovalDetailPage() {
   const canGoForward = currentStageIndex < STAGE_ORDER.length - 1;
   const currentApprovalId = Array.isArray(params.id) ? params.id[0] : params.id;
   const showTestSendButton = !isVendor;
+  const showSendForNegotiation = !isVendor;
 
   // Parse and validate Send to / CC (comma and space separated)
   const sendToParsed = parseEmailAddresses(sendTo);
@@ -505,6 +512,124 @@ export default function OrderApprovalDetailPage() {
   const allAddresses = [...sendToList, ...ccParsed];
   const invalidEmails = allAddresses.filter((e) => !isValidEmail(e));
   const emailValidationOk = sendToList.length > 0 && invalidEmails.length === 0;
+
+  const negotiationSendToParsed = parseEmailAddresses(negotiationSendTo);
+  const negotiationCcParsed = parseEmailAddresses(negotiationCc);
+  const negotiationSendToList =
+    negotiationSendToParsed.length > 0
+      ? negotiationSendToParsed
+      : approval?.vendorEmail
+        ? [approval.vendorEmail]
+        : [];
+  const negotiationAllAddresses = [...negotiationSendToList, ...negotiationCcParsed];
+  const negotiationInvalidEmails = negotiationAllAddresses.filter((e) => !isValidEmail(e));
+  const negotiationEmailValidationOk =
+    negotiationSendToList.length > 0 && negotiationInvalidEmails.length === 0;
+
+  const handleOpenNegotiationPreview = async () => {
+    if (!approval) return;
+    if (negotiationPreviewLoading) return;
+
+    setNegotiationSendTo(approval.vendorEmail ?? '');
+    setNegotiationCc('');
+    setNegotiationDialogOpen(true);
+    setNegotiationPreviewLoading(true);
+    setNegotiationPreviewHtml(null);
+
+    try {
+      const response = await fetch(`/api/order-approvals/${approval.id}/preview-negotiation-email`);
+      const data = await response.json();
+
+      if (response.ok && data.success && data.data?.htmlEmail) {
+        setNegotiationPreviewHtml(data.data.htmlEmail as string);
+      } else {
+        setNegotiationDialogOpen(false);
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to generate negotiation email preview',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error generating negotiation email preview:', error);
+      setNegotiationDialogOpen(false);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate negotiation email preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setNegotiationPreviewLoading(false);
+    }
+  };
+
+  const handleSendNegotiationWebhook = async () => {
+    if (!approval) return;
+    if (sendingNegotiation) return;
+
+    if (!negotiationPreviewHtml) {
+      toast({
+        title: 'Error',
+        description: 'Generate and review the email preview before sending.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!negotiationEmailValidationOk) {
+      if (negotiationSendToList.length === 0) {
+        toast({
+          title: 'Invalid recipients',
+          description: 'Please provide at least one valid recipient email in Send to (comma or space separated).',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Invalid email address',
+          description: `Invalid: ${negotiationInvalidEmails.join(', ')}. Fix or remove before sending.`,
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
+    setSendingNegotiation(true);
+    try {
+      const response = await fetch(`/api/order-approvals/${approval.id}/send-negotiation-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sendTo: negotiationSendToList.join(', '),
+          cc: negotiationCcParsed.join(', '),
+        }),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: 'Negotiation email sent',
+          description: 'Vendor has been notified and approval moved to Negotiating.',
+        });
+        setNegotiationDialogOpen(false);
+        fetchApproval();
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to send negotiation email',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error sending negotiation webhook:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to send negotiation email',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingNegotiation(false);
+    }
+  };
 
   const handleOpenEmailPreview = async () => {
     if (!approval) return;
@@ -677,15 +802,29 @@ export default function OrderApprovalDetailPage() {
               </span>
             </p>
           </div>
-          {showTestSendButton && (
-            <Button
-              variant="outline"
-              onClick={handleOpenEmailPreview}
-              disabled={saving || testSending}
-            >
-              <Mail className="h-4 w-4 mr-2" />
-              {testSending ? 'Sending...' : 'Preview and Send Email'}
-            </Button>
+          {(showSendForNegotiation || showTestSendButton) && (
+            <div className="flex items-center gap-2">
+              {showSendForNegotiation && (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenNegotiationPreview}
+                  disabled={saving || sendingNegotiation}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  {sendingNegotiation ? 'Sending...' : 'Send for Negotiation'}
+                </Button>
+              )}
+              {showTestSendButton && (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenEmailPreview}
+                  disabled={saving || testSending}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  {testSending ? 'Sending...' : 'Preview and Send Email'}
+                </Button>
+              )}
+            </div>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -985,6 +1124,81 @@ export default function OrderApprovalDetailPage() {
               disabled={testSending || previewLoading || !previewHtml || !emailValidationOk}
             >
               {testSending ? 'Sending...' : 'Preview and Send Email'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={negotiationDialogOpen} onOpenChange={setNegotiationDialogOpen}>
+        <AlertDialogContent className="max-w-4xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send for Negotiation</AlertDialogTitle>
+            <AlertDialogDescription>
+              This email asks the vendor to review line items and set their RATE. Review the preview, then send to notify the vendor. The approval will move to Negotiating.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="mt-2 space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">Send to</label>
+              <input
+                type="text"
+                className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                placeholder="vendor@example.com, other@example.com"
+                value={negotiationSendTo}
+                onChange={(e) => setNegotiationSendTo(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Separate multiple emails with comma or space.
+              </p>
+              {negotiationAllAddresses.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Recognized: {negotiationSendToList.length} to, {negotiationCcParsed.length} cc ({negotiationAllAddresses.length} total).
+                </p>
+              )}
+              {negotiationInvalidEmails.length > 0 && (
+                <p className="text-xs text-destructive font-medium">
+                  Invalid email(s): {negotiationInvalidEmails.join(', ')}. Fix or remove to proceed.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">CC</label>
+              <input
+                type="text"
+                className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                placeholder="cc1@example.com, cc2@example.com"
+                value={negotiationCc}
+                onChange={(e) => setNegotiationCc(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Separate multiple emails with comma or space.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 h-[480px] border rounded bg-muted overflow-hidden">
+            {negotiationPreviewLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Generating preview...
+              </div>
+            ) : negotiationPreviewHtml ? (
+              <iframe
+                title="Negotiation email preview"
+                srcDoc={negotiationPreviewHtml}
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-destructive">
+                Failed to load preview.
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sendingNegotiation || negotiationPreviewLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSendNegotiationWebhook}
+              disabled={sendingNegotiation || negotiationPreviewLoading || !negotiationPreviewHtml || !negotiationEmailValidationOk}
+            >
+              {sendingNegotiation ? 'Sending...' : 'Send for Negotiation'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

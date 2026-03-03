@@ -11,6 +11,18 @@ import { and, eq, isNull } from 'drizzle-orm';
 const CONSENT_REMINDER =
   'When you approved this order, you acknowledged and agreed that your approval decision, your organization name, and the approval timestamp are permanently recorded; that this approval is a binding business, legal, and compliance record; that you had reviewed the product/service descriptions, quantities, rates, and amounts; and that you were authorized to approve on behalf of your organization.';
 
+const CONSENT_REMINDER_NEGOTIATION =
+  'When you approve this order, you will acknowledge and agree that your approval decision, your organization name, and the approval timestamp will be permanently recorded; that this approval is a binding business, legal, and compliance record; that you have reviewed the product/service descriptions, quantities, rates, and amounts; and that you are authorized to approve on behalf of your organization.';
+
+/** Shared mobile-only CSS for both confirmation and negotiation templates (desktop unchanged). */
+const MOBILE_CSS = `
+  @media screen and (max-device-width: 600px), screen and (max-width: 600px) {
+    .deviceWidth { width: 100% !important; min-width: 100% !important; }
+    .mobilePadding { padding-left: 16px !important; padding-right: 16px !important; }
+    .emailTitle { font-size: 22px !important; line-height: 28px !important; }
+  }
+`;
+
 export type OrderApprovalEmailPayload = {
   htmlEmail: string;
   subject: string;
@@ -105,11 +117,7 @@ function renderOrderApprovalHtml(data: {
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-<style type="text/css">
-  @media screen and (max-device-width: 600px), screen and (max-width: 600px) {
-    .deviceWidth { width: 100% !important; min-width: 100% !important; }
-  }
-</style>
+<style type="text/css">${MOBILE_CSS}</style>
 </head>
 <body bgcolor="#fff" style="margin:0; padding:0; background-color:#fff;">
 <table bgcolor="#fff" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%; min-width:100%; table-layout:fixed; margin:0 auto;">
@@ -206,6 +214,255 @@ function renderOrderApprovalHtml(data: {
 </body>
 </html>
   `.trim();
+}
+
+export type OrderApprovalNegotiationEmailPayload = {
+  htmlEmail: string;
+  subject: string;
+  referenceNo: string;
+  approvalId: string;
+  vendorEmail: string;
+  emailType: 'negotiation';
+  triggerSource: 'manual_button';
+};
+
+function renderOrderApprovalNegotiationHtml(data: {
+  referenceNo: string;
+  customerName: string;
+  projectManagerEmail: string;
+  vendorContact: string;
+  vendorPhone: string;
+  vendorEmail: string;
+  consentReminder: string;
+  instructionalText: string;
+  items: Array<{ productService: string; qty: number; rate: number; amount: number }>;
+  orderApprovalLink?: string;
+}): string {
+  const rowsHtml = data.items
+    .map((item, index) => {
+      const background = index % 2 === 1 ? 'background-color:#f9f9f9;' : '';
+      return `
+        <tr style="${background}">
+          <td style="border:1px solid #dddddd; padding:10px 8px; font-family:Arial,sans-serif; font-size:13px; color:#232F47; max-width:260px; word-wrap:break-word; overflow-wrap:break-word;">${escapeHtml(
+            item.productService
+          )}</td>
+          <td style="border:1px solid #dddddd; padding:10px 8px; text-align:right; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+            formatQty(item.qty)
+          )}</td>
+          <td style="border:1px solid #dddddd; padding:10px 8px; text-align:left; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">Please set rate</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const referenceValueHtml = data.orderApprovalLink
+    ? `<a href="${escapeHtml(data.orderApprovalLink)}" style="color:#232F47; text-decoration:underline;">${escapeHtml(
+        data.referenceNo
+      )}</a>`
+    : escapeHtml(data.referenceNo);
+
+  const viewOrderApprovalRowHtml = data.orderApprovalLink
+    ? `
+        <tr>
+          <td style="padding:16px 35px; text-align:center;">
+            <a href="${escapeHtml(
+              data.orderApprovalLink
+            )}" style="display:inline-block; padding:10px 16px; border-radius:4px; background-color:#232F47; color:#ffffff; font-family:Arial,sans-serif; font-size:13px; text-decoration:none;">
+              View items and set rates
+            </a>
+          </td>
+        </tr>
+      `
+    : '';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+<style type="text/css">${MOBILE_CSS}</style>
+</head>
+<body bgcolor="#fff" style="margin:0; padding:0; background-color:#fff;">
+<table bgcolor="#fff" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%; min-width:100%; table-layout:fixed; margin:0 auto;">
+  <tr>
+    <td align="center">
+      <table width="600" class="deviceWidth" bgcolor="#fff" align="center" border="0" cellpadding="0" cellspacing="0" style="table-layout:fixed; margin:0 auto; width:600px; min-width:600px;">
+        <tr>
+          <td valign="top" style="background-color:#fff; padding-left:30px; padding-right:30px; padding-top:26px; padding-bottom:12px; text-align:center;">
+            <img src="https://login.prodbx.com/go/view/?16250.426.20231214133638.4aZvXA" width="347" height="90" style="width:347px; max-width:100%; height:auto; border:0; vertical-align:top;" alt="Calimingo Pools">
+          </td>
+        </tr>
+        <tr>
+          <td valign="top" style="background-color:#fff; padding-left:30px; padding-right:30px; padding-top:10px; padding-bottom:20px; text-align:center;">
+            <img src="https://login.prodbx.com/go/view/?24552.426.20240705133643.Hrs6MC" width="540" height="123" style="width:100%; height:auto; border:0; vertical-align:top;" alt="Calimingo Header">
+          </td>
+        </tr>
+        <tr>
+          <td class="emailTitle mobilePadding" style="padding:0 35px 8px; font-family:Arial,sans-serif; font-size:28px; line-height:34px; color:#D79A29;">
+            Order Approval – Action Required
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 20px; font-family:Arial,sans-serif; font-size:13px; line-height:22px; color:#232F47;">
+            An order approval has been created for the selected line items below. Please open the link, review the items, and set the RATE for each line. Amount will be calculated automatically (QTY × RATE).
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 20px;">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;">
+              <tr><td style="padding:6px 0; width:210px; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Reference No:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${referenceValueHtml}</td></tr>
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Customer Name:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+    data.customerName
+  )}</td></tr>
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Prepared by / Project Manager:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+    data.projectManagerEmail
+  )}</td></tr>
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Vendor Contact Person / Name:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+    data.vendorContact
+  )}</td></tr>
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Vendor Contact Number:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+    data.vendorPhone
+  )}</td></tr>
+              <tr><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; color:#232F47;">Vendor Email:</td><td style="padding:6px 0; font-family:Arial,sans-serif; font-size:13px; color:#232F47;">${escapeHtml(
+    data.vendorEmail
+  )}</td></tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 16px; font-family:Arial,sans-serif; font-size:13px; line-height:22px; color:#232F47;">
+            ${escapeHtml(data.instructionalText)}
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 12px; font-family:Arial,sans-serif; font-size:18px; line-height:24px; color:#D79A29;">
+            Acknowledgement and consent
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 24px; font-family:Arial,sans-serif; font-size:13px; line-height:22px; color:#232F47;">
+            ${escapeHtml(data.consentReminder)}
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:8px 35px 12px; font-family:Arial,sans-serif; font-size:18px; line-height:24px; color:#D79A29;">
+            Order Items
+          </td>
+        </tr>
+        <tr>
+          <td class="mobilePadding" style="padding:0 35px 32px;">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%; border-collapse:collapse; table-layout:fixed;">
+              <thead>
+                <tr style="background:#232F47;">
+                  <th style="border:1px solid #232F47; padding:10px 8px; text-align:left; color:#fff; width:55%; max-width:320px; word-wrap:break-word; overflow-wrap:break-word; font-family:Arial,sans-serif; font-size:13px;">PRODUCT/SERVICE</th>
+                  <th style="border:1px solid #232F47; padding:10px 8px; text-align:right; color:#fff; width:20%; font-family:Arial,sans-serif; font-size:13px;">QTY</th>
+                  <th style="border:1px solid #232F47; padding:10px 8px; text-align:left; color:#fff; width:25%; font-family:Arial,sans-serif; font-size:13px;">RATE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        ${viewOrderApprovalRowHtml}
+        <tr>
+          <td style="padding:28px 30px; background:#232F47; color:#ffffff; font-family:Arial,sans-serif; font-size:13px; line-height:22px; text-align:center;">
+            This is an automated notice. Please set your rates and complete the approval as requested.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+  `.trim();
+}
+
+export async function buildOrderApprovalNegotiationEmailPayload(
+  approvalId: string
+): Promise<OrderApprovalNegotiationEmailPayload | null> {
+  const [approval] = await db
+    .select({
+      id: schema.orderApprovals.id,
+      referenceNo: schema.orderApprovals.referenceNo,
+      customerName: schema.customers.clientName,
+      vendorName: schema.vendors.name,
+      vendorPhone: schema.vendors.phone,
+      vendorEmail: schema.vendors.email,
+      vendorContactPerson: schema.vendors.contactPerson,
+      projectManagerEmail: schema.users.email,
+    })
+    .from(schema.orderApprovals)
+    .leftJoin(schema.customers, eq(schema.orderApprovals.customerId, schema.customers.dbxCustomerId))
+    .leftJoin(schema.vendors, eq(schema.orderApprovals.vendorId, schema.vendors.id))
+    .leftJoin(schema.users, eq(schema.orderApprovals.createdBy, schema.users.id))
+    .where(and(eq(schema.orderApprovals.id, approvalId), isNull(schema.orderApprovals.deletedAt)))
+    .limit(1);
+
+  if (!approval) return null;
+
+  const approvalItems = await db
+    .select({
+      productService: schema.orderApprovalItems.productService,
+      qty: schema.orderApprovalItems.qty,
+      rate: schema.orderApprovalItems.rate,
+      amount: schema.orderApprovalItems.amount,
+    })
+    .from(schema.orderApprovalItems)
+    .where(eq(schema.orderApprovalItems.orderApprovalId, approvalId));
+
+  const items = approvalItems.length
+    ? approvalItems.map((item) => {
+        const qty = Number(item.qty ?? 0);
+        const rate = Number(item.rate ?? 0);
+        const amount = Number(item.amount ?? (qty * rate));
+        return {
+          productService: item.productService?.trim() || 'Untitled Item',
+          qty: Number.isFinite(qty) ? qty : 0,
+          rate: Number.isFinite(rate) ? rate : 0,
+          amount: Number.isFinite(amount) ? amount : 0,
+        };
+      })
+    : [];
+
+  const referenceNo = approval.referenceNo || '—';
+  const customerName = approval.customerName || '—';
+  const projectManagerEmail = approval.projectManagerEmail || '—';
+  const vendorName = approval.vendorName || '—';
+  const vendorContactPerson = approval.vendorContactPerson || '—';
+  const vendorPhone = approval.vendorPhone || '—';
+  const vendorEmail = approval.vendorEmail || '';
+
+  const appBaseUrl = 'https://signed-contract-parser.vercel.app';
+  const normalizedBaseUrl = appBaseUrl.replace(/\/+$/, '');
+  const orderApprovalLink = `${normalizedBaseUrl}/dashboard/vendor-negotiation/${approval.id}`;
+
+  const htmlEmail = renderOrderApprovalNegotiationHtml({
+    referenceNo,
+    customerName,
+    projectManagerEmail,
+    vendorContact: `${vendorContactPerson} / ${vendorName}`,
+    vendorPhone,
+    vendorEmail,
+    consentReminder: CONSENT_REMINDER_NEGOTIATION,
+    instructionalText:
+      'Please review the line items and input your rate that both parties can review. You may provide your approval after.',
+    items,
+    orderApprovalLink,
+  });
+
+  return {
+    htmlEmail,
+    subject: `Order Approval – Action Required: Set Your Rates – ${referenceNo}`,
+    referenceNo,
+    approvalId: approval.id,
+    vendorEmail,
+    emailType: 'negotiation',
+    triggerSource: 'manual_button',
+  };
 }
 
 export async function buildOrderApprovalEmailPayload(approvalId: string): Promise<OrderApprovalEmailPayload | null> {
