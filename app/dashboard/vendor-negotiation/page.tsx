@@ -405,7 +405,7 @@ export default function VendorNegotiationPage() {
                         {approval.referenceNo}
                       </span>
                       <Badge
-                        className={`flex-shrink-0 ${STAGE_COLORS[approval.stage] || 'bg-gray-500'}`}
+                        className={`flex-shrink-0 w-[6.5rem] min-w-[6.5rem] justify-center text-center md:w-auto md:min-w-0 ${STAGE_COLORS[approval.stage] || 'bg-gray-500'}`}
                       >
                         {STAGE_LABELS[approval.stage] || approval.stage}
                       </Badge>
@@ -445,8 +445,8 @@ export default function VendorNegotiationPage() {
                           )
                         ) : '—'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(approval.dateCreated).toLocaleDateString()}
+                      <p><span className="text-foreground font-medium">Date Created:</span>{' '}
+                        <span className="text-muted-foreground">{new Date(approval.dateCreated).toLocaleDateString()}</span>
                       </p>
                     </div>
                     <div className="mt-3 flex items-center justify-end gap-2">
