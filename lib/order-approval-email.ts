@@ -12,7 +12,7 @@ const CONSENT_REMINDER =
   'When you approved this order, you acknowledged and agreed that your approval decision, your organization name, and the approval timestamp are permanently recorded; that this approval is a binding business, legal, and compliance record; that you had reviewed the product/service descriptions, quantities, rates, and amounts; and that you were authorized to approve on behalf of your organization.';
 
 const CONSENT_REMINDER_NEGOTIATION =
-  'When you approve this order, you will acknowledge and agree that your approval decision, your organization name, and the approval timestamp will be permanently recorded; that this approval is a binding business, legal, and compliance record; that you have reviewed the product/service descriptions, quantities, rates, and amounts; and that you are authorized to approve on behalf of your organization.';
+  'This step is strictly for rate submission and does not constitute approval. Your submitted rates will be used for internal evaluation and will undergo Project Manager review. Work will only proceed once formal approval and authorization are issued after the review is completed.';
 
 /** Shared mobile-only CSS for both confirmation and negotiation templates (desktop unchanged). */
 const MOBILE_CSS = `
@@ -305,7 +305,8 @@ function renderOrderApprovalNegotiationHtml(data: {
         </tr>
         <tr>
           <td class="mobilePadding" style="padding:0 35px 20px; font-family:Arial,sans-serif; font-size:13px; line-height:22px; color:#232F47;">
-            An order approval has been created for the selected line items below. Please open the link, review the items, and set the RATE for each line. Amount will be calculated automatically (QTY × RATE).
+            An order approval has been created for the selected line items below. Please open the link provided in the system, review the details, and enter your proposed rate for each line item, inclusive of both labor and material costs. The system will automatically calculate the amount based on the formula (QTY × RATE).
+
           </td>
         </tr>
         <tr>
@@ -337,7 +338,7 @@ function renderOrderApprovalNegotiationHtml(data: {
         </tr>
         <tr>
           <td class="mobilePadding" style="padding:0 35px 12px; font-family:Arial,sans-serif; font-size:18px; line-height:24px; color:#D79A29;">
-            Acknowledgement and consent
+            Review and Approval Notice
           </td>
         </tr>
         <tr>
