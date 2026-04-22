@@ -257,6 +257,229 @@ export const referenceNumberSequence = pgTable('reference_number_sequence', {
   yearIdx: index('reference_number_sequence_year_idx').on(table.year),
 }));
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ATLAS — Onboarding & Offboarding Platform
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const atlasWorkflowStatusEnum = pgEnum('atlas_workflow_status', [
+  'pending', 'in-progress', 'blocked', 'completed', 'failed',
+]);
+
+export const atlasWorkflowTypeEnum = pgEnum('atlas_workflow_type', [
+  'onboarding', 'offboarding',
+]);
+
+export const atlasSystemStatusEnum = pgEnum('atlas_system_status', [
+  'provisioned', 'invited', 'pending', 'failed',
+  'suspend-pending', 'revoked', 'archived',
+]);
+
+export const atlasStepStatusEnum = pgEnum('atlas_step_status', [
+  'queued', 'active', 'done', 'blocked', 'skipped', 'failed',
+]);
+
+export const atlasRoleEnum = pgEnum('atlas_role', [
+  'hr_admin', 'it_admin', 'ops_admin', 'finance', 'manager', 'viewer',
+]);
+
+// atlas_employees — core person record
+export const atlasEmployees = pgTable('atlas_employees', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeCode: varchar('employee_code', { length: 20 }).notNull().unique(), // e.g. E-2481
+  firstName: varchar('first_name', { length: 255 }).notNull(),
+  lastName: varchar('last_name', { length: 255 }).notNull(),
+  personalEmail: varchar('personal_email', { length: 255 }),
+  companyEmail: varchar('company_email', { length: 255 }),
+  phone: varchar('phone', { length: 50 }),
+  position: varchar('position', { length: 255 }),
+  department: varchar('department', { length: 100 }),
+  location: varchar('location', { length: 255 }),
+  employmentType: varchar('employment_type', { length: 50 }).default('full-time'),
+  managerId: uuid('manager_id'), // self-ref, no FK to avoid migration ordering issues
+  managerName: varchar('manager_name', { length: 255 }), // denormalised for display
+  startDate: timestamp('start_date'),
+  endDate: timestamp('end_date'),
+  accessPreset: varchar('access_preset', { length: 50 }), // e.g. SVC_TECH_L1
+  salaryEncrypted: text('salary_encrypted'), // AES-encrypted; never plain-text
+  compVisibility: varchar('comp_visibility', { length: 30 }).default('restricted'),
+  deletedAt: timestamp('deleted_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  createdBy: uuid('created_by').references(() => users.id),
+}, (t) => ({
+  codeIdx: index('atlas_employees_code_idx').on(t.employeeCode),
+  deptIdx: index('atlas_employees_dept_idx').on(t.department),
+}));
+
+// atlas_workflow_runs — one run per onboarding/offboarding event
+export const atlasWorkflowRuns = pgTable('atlas_workflow_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runCode: varchar('run_code', { length: 30 }).notNull().unique(), // e.g. RUN-2026-0481
+  employeeId: uuid('employee_id').notNull().references(() => atlasEmployees.id),
+  type: atlasWorkflowTypeEnum('type').notNull(),
+  status: atlasWorkflowStatusEnum('status').notNull().default('pending'),
+  ownerId: uuid('owner_id').references(() => users.id),
+  ownerLabel: varchar('owner_label', { length: 100 }), // denormalised display ("HR — Lena Park")
+  riskNote: text('risk_note'),
+  payload: jsonb('payload'), // full input snapshot at run start
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  cancelledAt: timestamp('cancelled_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  employeeIdx: index('atlas_runs_employee_id_idx').on(t.employeeId),
+  statusIdx: index('atlas_runs_status_idx').on(t.status),
+  typeIdx: index('atlas_runs_type_idx').on(t.type),
+}));
+
+// atlas_workflow_steps — individual steps within a run
+export const atlasWorkflowSteps = pgTable('atlas_workflow_steps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => atlasWorkflowRuns.id, { onDelete: 'cascade' }),
+  stepKey: varchar('step_key', { length: 100 }).notNull(), // e.g. google.workspace.create_user
+  phase: varchar('phase', { length: 50 }), // Pre-boarding | Orientation | Enablement
+  title: varchar('title', { length: 255 }).notNull(),
+  status: atlasStepStatusEnum('status').notNull().default('queued'),
+  isManual: boolean('is_manual').notNull().default(false), // pauses for human review
+  retryCount: integer('retry_count').notNull().default(0),
+  inputPayload: jsonb('input_payload'),
+  resultPayload: jsonb('result_payload'),
+  errorMessage: text('error_message'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  runIdx: index('atlas_steps_run_id_idx').on(t.runId),
+  statusIdx: index('atlas_steps_status_idx').on(t.status),
+}));
+
+// atlas_access_accounts — per-system provisioning state for an employee
+export const atlasAccessAccounts = pgTable('atlas_access_accounts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => atlasEmployees.id),
+  system: varchar('system', { length: 50 }).notNull(), // gmail | trello | trainual | dropbox | billcom | quickbooks | fleet
+  status: atlasSystemStatusEnum('status'),
+  externalId: varchar('external_id', { length: 255 }), // provider-side user/member ID
+  lastSyncedAt: timestamp('last_synced_at'),
+  provisionedAt: timestamp('provisioned_at'),
+  revokedAt: timestamp('revoked_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  employeeSystemUnique: unique().on(t.employeeId, t.system),
+  employeeIdx: index('atlas_access_employee_id_idx').on(t.employeeId),
+}));
+
+// atlas_integration_events — raw event log from provider API calls
+export const atlasIntegrationEvents = pgTable('atlas_integration_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').references(() => atlasWorkflowRuns.id),
+  stepId: uuid('step_id').references(() => atlasWorkflowSteps.id),
+  provider: varchar('provider', { length: 50 }).notNull(), // google | trello | trainual
+  eventType: varchar('event_type', { length: 100 }).notNull(), // create_user | invite_member | assign_plan
+  status: varchar('status', { length: 20 }).notNull(), // ok | warn | error
+  httpStatus: integer('http_status'),
+  requestPayload: jsonb('request_payload'),
+  responsePayload: jsonb('response_payload'),
+  errorMessage: text('error_message'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  runIdx: index('atlas_int_events_run_id_idx').on(t.runId),
+  providerIdx: index('atlas_int_events_provider_idx').on(t.provider),
+  createdAtIdx: index('atlas_int_events_created_at_idx').on(t.createdAt),
+}));
+
+// atlas_audit_logs — immutable append-only record of every action
+export const atlasAuditLogs = pgTable('atlas_audit_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actor: varchar('actor', { length: 255 }).notNull(), // "HR:Lena Park" or "System"
+  actorId: uuid('actor_id').references(() => users.id),
+  action: varchar('action', { length: 100 }).notNull(), // e.g. intake.submit | email.approve | run.cancel
+  entityType: varchar('entity_type', { length: 50 }), // employee | run | step | access_account
+  entityId: uuid('entity_id'),
+  detail: jsonb('detail'), // arbitrary context blob
+  ipAddress: varchar('ip_address', { length: 45 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  actorIdIdx: index('atlas_audit_actor_id_idx').on(t.actorId),
+  entityIdx: index('atlas_audit_entity_idx').on(t.entityType, t.entityId),
+  createdAtIdx: index('atlas_audit_created_at_idx').on(t.createdAt),
+}));
+
+// atlas_email_deliveries — tracks every email sent through the Atlas
+export const atlasEmailDeliveries = pgTable('atlas_email_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').references(() => atlasWorkflowRuns.id),
+  employeeId: uuid('employee_id').references(() => atlasEmployees.id),
+  templateKey: varchar('template_key', { length: 100 }).notNull(), // welcome_v3 | access_info_v2
+  toAddress: varchar('to_address', { length: 255 }).notNull(),
+  subject: varchar('subject', { length: 500 }),
+  status: varchar('status', { length: 30 }).notNull().default('draft'), // draft | awaiting_approval | scheduled | sent | failed
+  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedAt: timestamp('approved_at'),
+  scheduledAt: timestamp('scheduled_at'),
+  sentAt: timestamp('sent_at'),
+  providerMessageId: varchar('provider_message_id', { length: 255 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  runIdx: index('atlas_email_run_id_idx').on(t.runId),
+  employeeIdx: index('atlas_email_employee_id_idx').on(t.employeeId),
+  statusIdx: index('atlas_email_status_idx').on(t.status),
+}));
+
+// atlas_role_templates — HR-managed access presets (Access Matrix rows)
+export const atlasRoleTemplates = pgTable('atlas_role_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  presetCode: varchar('preset_code', { length: 50 }).notNull().unique(), // SVC_TECH_L1
+  label: varchar('label', { length: 255 }).notNull(),
+  department: varchar('department', { length: 100 }),
+  entitlements: jsonb('entitlements').notNull(), // { gmail: true, trello: true, ... }
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  codeIdx: index('atlas_role_templates_code_idx').on(t.presetCode),
+}));
+
+// atlas_notes — internal notes on an employee record
+export const atlasNotes = pgTable('atlas_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => atlasEmployees.id),
+  runId: uuid('run_id').references(() => atlasWorkflowRuns.id),
+  authorId: uuid('author_id').references(() => users.id),
+  authorLabel: varchar('author_label', { length: 100 }),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  employeeIdx: index('atlas_notes_employee_id_idx').on(t.employeeId),
+}));
+
+// Atlas type exports
+export type AtlasEmployee = typeof atlasEmployees.$inferSelect;
+export type NewAtlasEmployee = typeof atlasEmployees.$inferInsert;
+export type AtlasWorkflowRun = typeof atlasWorkflowRuns.$inferSelect;
+export type NewAtlasWorkflowRun = typeof atlasWorkflowRuns.$inferInsert;
+export type AtlasWorkflowStep = typeof atlasWorkflowSteps.$inferSelect;
+export type NewAtlasWorkflowStep = typeof atlasWorkflowSteps.$inferInsert;
+export type AtlasAccessAccount = typeof atlasAccessAccounts.$inferSelect;
+export type NewAtlasAccessAccount = typeof atlasAccessAccounts.$inferInsert;
+export type AtlasIntegrationEvent = typeof atlasIntegrationEvents.$inferSelect;
+export type NewAtlasIntegrationEvent = typeof atlasIntegrationEvents.$inferInsert;
+export type AtlasAuditLog = typeof atlasAuditLogs.$inferSelect;
+export type NewAtlasAuditLog = typeof atlasAuditLogs.$inferInsert;
+export type AtlasEmailDelivery = typeof atlasEmailDeliveries.$inferSelect;
+export type NewAtlasEmailDelivery = typeof atlasEmailDeliveries.$inferInsert;
+export type AtlasRoleTemplate = typeof atlasRoleTemplates.$inferSelect;
+export type NewAtlasRoleTemplate = typeof atlasRoleTemplates.$inferInsert;
+export type AtlasNote = typeof atlasNotes.$inferSelect;
+export type NewAtlasNote = typeof atlasNotes.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { LogIn, FileSpreadsheet, ArrowLeft, Mail, FileText, Sheet } from 'lucide-react';
+import { LogIn, FileSpreadsheet, ArrowLeft, Mail, FileText, Sheet, Users } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,11 +53,11 @@ export default function Home() {
             </p>
           </div>
 
-          {/* App Selection Grid - Centered since only 1 app */}
-          <div className="w-full max-w-6xl px-4 sm:px-6 lg:px-8 mb-12 z-10 flex justify-center">
-            <div className="w-full max-w-md">
+          {/* App Selection Grid */}
+          <div className="w-full max-w-6xl px-4 sm:px-6 lg:px-8 mb-12 z-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
               {/* Contract Parser App Card */}
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white/95 backdrop-blur-sm"
                 onClick={() => setSelectedApp('contract-parser')}
               >
@@ -102,6 +102,43 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Atlas App Card */}
+              <Link href="/atlas" className="block">
+                <Card className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white/95 backdrop-blur-sm h-full">
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg" style={{ background: 'rgba(35,47,71,0.12)' }}>
+                          <Users className="h-6 w-6" style={{ color: 'rgb(35,47,71)' }} />
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl font-bold" style={{ color: 'rgb(36, 47, 71)' }}>
+                            Atlas
+                          </CardTitle>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">Internal Ops</Badge>
+                            <Badge className="text-white text-xs" style={{ background: 'rgb(35,47,71)' }}>New</Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="text-sm mb-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                      HR onboarding &amp; offboarding operations platform
+                    </CardDescription>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <Badge variant="secondary" className="text-xs">Onboarding</Badge>
+                      <Badge variant="secondary" className="text-xs">Offboarding</Badge>
+                      <Badge variant="secondary" className="text-xs">Workflows</Badge>
+                    </div>
+                    <div className="flex items-center font-semibold text-sm" style={{ color: 'rgb(35,47,71)' }}>
+                      Open Atlas →
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             </div>
           </div>
 

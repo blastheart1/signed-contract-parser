@@ -99,6 +99,13 @@
       "when": 1772142180335,
       "tag": "0013_optimal_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1776874428814,
+      "tag": "0014_odd_spitfire",
+      "breakpoints": true
     }
   ]
 }

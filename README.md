@@ -1,19 +1,45 @@
-# Calimingo Pools - Contract Management System
+# Calimingo Internal Platform
 
-A comprehensive Next.js web application for managing build contracts, parsing EML files, tracking customer orders, managing invoices, and maintaining a complete audit trail of all changes. The system includes user authentication, role-based access control, and a unified dashboard for contract management.
+A Next.js monorepo that ships two internal tools for the Calimingo Pools operations team:
+
+| App | Path | Purpose |
+|---|---|---|
+| **Contract Manager** | `/dashboard` | Parse EML contracts, track orders, manage invoices, audit trail |
+| **Atlas** | `/atlas` | HR onboarding & offboarding — Google Workspace, Trello, Trainual provisioning |
+
+Both apps share the same Neon Postgres database, authentication layer, and deployment pipeline.
 
 ## Table of Contents
 
-- [Features](#features)
+- [Apps](#apps)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
-- [User Management](#user-management)
-- [Contract Management](#contract-management)
+- [Atlas — Onboarding & Offboarding](#atlas--onboarding--offboarding)
+- [Contract Manager](#contract-manager)
 - [Database Schema](#database-schema)
 - [API Endpoints](#api-endpoints)
 - [Deployment](#deployment)
 - [Documentation](#documentation)
 - [Next Steps](#next-steps)
+
+## Apps
+
+### Atlas (`/atlas`)
+
+Internal HR operations platform for managing employee lifecycle across Google Workspace, Trello, and Trainual.
+
+- **Dashboard** — metric band, live queue with filter/search/bulk select, attention panel for blocked/failed workflows
+- **New hire intake** — 4-step form: profile → role & start → access preset → review
+- **Employee detail** — overview, timeline, access accounts, email history, notes (5 tabs)
+- **Workflow runs** — event log, JSON payload inspector, awaiting-human approval panel
+- **Offboarding flow** — system action checklist, dependency resolution, exit summary
+- **Settings** — access preset matrix, orientation template, integrations, email templates, RBAC
+
+### Contract Manager (`/dashboard`)
+
+EML contract parsing, order tracking, invoice management, and full audit trail.
+
+---
 
 ## Features
 
@@ -458,6 +484,53 @@ Navigate to `http://localhost:3000`
 - Suspend/activate users
 - View all users and their activity
 
+## Atlas — Onboarding & Offboarding
+
+### Access preset matrix
+
+Presets define default entitlements per role. Stored in `atlas_role_templates`. The UI at `/atlas/settings` displays the full matrix and lets HR/Admin manage them.
+
+| Preset | Role | Systems |
+|---|---|---|
+| `SVC_TECH_L1` | Service Technician | Google, Dropbox, Trello, Trainual, Fleet |
+| `OPS_LEAD_L2` | Regional Ops Lead | + Bill.com |
+| `CONSTR_FOREMAN` | Construction Foreman | Google, Dropbox, Trello, Trainual, Fleet |
+| `ACCT_L1` | Staff Accountant | Google, Dropbox, Bill.com, QuickBooks, Trainual |
+
+### Workflow engine
+
+Onboarding and offboarding run as step-based pipelines stored in `atlas_workflow_runs` + `atlas_workflow_steps`. Each step is:
+- **Retryable** (3 attempts with exponential backoff before escalating)
+- **Idempotent** (safe to re-run after a failure)
+- **Auditable** — every provider API call is written to `atlas_integration_events`
+
+Manual-review steps pause the run and surface in the dashboard Attention panel.
+
+### Integrations
+
+See **[`docs/atlas-integrations.md`](docs/atlas-integrations.md)** for full setup instructions for:
+- **Google Workspace** — service account + domain-wide delegation, `createUser`, `suspendUser`, `addToGroup`
+- **Trello** — API key/token, board-level member invites, preset board ID mapping
+- **Trainual** — API key, `inviteUser`, `assignSubjects`, `deactivateUser`
+
+Set `INTEGRATION_MODE=mock` in `.env.local` during development to use fixture responses without hitting live APIs.
+
+### Atlas database tables
+
+| Table | Purpose |
+|---|---|
+| `atlas_employees` | Core person record |
+| `atlas_workflow_runs` | One run per onboarding/offboarding event |
+| `atlas_workflow_steps` | Individual steps within a run |
+| `atlas_access_accounts` | Per-system provisioning state per employee |
+| `atlas_integration_events` | Raw provider API call log |
+| `atlas_audit_logs` | Immutable append-only action log |
+| `atlas_email_deliveries` | Every email sent through Atlas |
+| `atlas_role_templates` | Access presets (entitlements by role) |
+| `atlas_notes` | Internal notes on employee records |
+
+---
+
 ## Contract Management
 
 ### Upload & Parse Contract
@@ -684,12 +757,24 @@ Comprehensive documentation is available in the `docs/` directory:
 
 ### Environment Variables
 
-Required:
-- `POSTGRES_URL`: PostgreSQL connection string
+Copy `.env.example` to `.env.local` and fill in all values. Never commit `.env.local`.
 
-Optional:
-- `NODE_ENV`: Environment (development/production)
-- `NEXT_PUBLIC_APP_URL`: Application URL (for redirects)
+**Required (all environments)**:
+- `POSTGRES_URL` — Vercel Postgres (Neon) connection string
+
+**Required for Atlas integrations (staging/production)**:
+- `GOOGLE_ADMIN_CLIENT_EMAIL` — service account email
+- `GOOGLE_ADMIN_PRIVATE_KEY` — service account private key
+- `GOOGLE_ADMIN_SUBJECT` — super-admin email for domain-wide delegation
+- `GOOGLE_WORKSPACE_DOMAIN` — e.g. `calimingo.com`
+- `TRELLO_API_KEY` / `TRELLO_API_TOKEN` / `TRELLO_WORKSPACE_ID`
+- `TRAINUAL_API_KEY` / `TRAINUAL_ACCOUNT_ID`
+
+**Optional**:
+- `NODE_ENV` — `development` | `production`
+- `NEXT_PUBLIC_APP_URL` — application URL for redirects
+- `INTEGRATION_MODE` — set to `mock` locally to bypass live provider APIs
+- `ORDER_APPROVAL_ZAPIER_WEBHOOK_URL` — Zapier webhook for approval emails
 
 ### Template Files
 
@@ -753,7 +838,21 @@ For issues or questions:
 
 ## Changelog
 
-### Version 2.1.0 (Current - Enhanced Admin Panel)
+### Version 3.0.0 (Current — Calimingo Atlas)
+- Added Atlas HR onboarding & offboarding platform at `/atlas`
+- Dashboard with metric band, queue table, attention panel, 14-day incoming view
+- 4-step new hire intake form with access preset resolution and live preview
+- Employee detail page with 5 tabs: overview, timeline, access, communications, notes
+- Workflow run page with event log, payload inspector, and awaiting-human panel
+- Offboarding flow with system action checklist and dependency resolution
+- Settings with access preset matrix, orientation template, integrations, email preview, RBAC
+- 9 new Atlas database tables (employees, workflow runs, steps, access accounts, integration events, audit logs, email deliveries, role templates, notes)
+- Integration adapter architecture for Google Workspace, Trello, and Trainual
+- `docs/atlas-integrations.md` with full setup and code examples for all three providers
+- Expanded `.env.example` with all Atlas integration variables
+- Landing page updated with Atlas app card
+
+### Version 2.1.0 (Enhanced Admin Panel)
 - Redesigned admin panel with sidebar navigation (mobile-responsive)
 - Added admin overview dashboard with quick actions
 - Added pending items section with alert notifications
