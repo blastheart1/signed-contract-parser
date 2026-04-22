@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
@@ -13,6 +13,7 @@ import {
   Shield,
   Bell,
   Search,
+  LogOut,
 } from 'lucide-react';
 import { Avatar } from '@/components/atlas/avatar';
 
@@ -50,33 +51,69 @@ interface NavSection {
   items: NavItem[];
 }
 
-const NAV: NavSection[] = [
-  {
-    label: 'OPERATIONS',
-    items: [
-      { href: '/atlas', label: 'Dashboard', icon: <LayoutDashboard size={15} /> },
-      { href: '/atlas/employees', label: 'Employees', icon: <Users size={15} />, badge: 10 },
-    ],
-  },
-  {
-    label: 'WORKFLOWS',
-    items: [
-      { href: '/atlas/intake', label: 'New Hire', icon: <UserPlus size={15} /> },
-      { href: '/atlas/offboarding/E-2133', label: 'Offboarding', icon: <UserMinus size={15} /> },
-      { href: '/atlas/workflows/E-2481', label: 'Workflow Runs', icon: <PlayCircle size={15} /> },
-    ],
-  },
-  {
-    label: 'MANAGE',
-    items: [
-      { href: '/atlas/settings', label: 'Settings', icon: <Settings size={15} /> },
-      { href: '/atlas/settings#permissions', label: 'Permissions', icon: <Shield size={15} /> },
-    ],
-  },
-];
+interface SessionUser {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+}
+
+function buildNav(employeeCount: number | null): NavSection[] {
+  return [
+    {
+      label: 'OPERATIONS',
+      items: [
+        { href: '/atlas', label: 'Dashboard', icon: <LayoutDashboard size={15} /> },
+        {
+          href: '/atlas/employees',
+          label: 'Employees',
+          icon: <Users size={15} />,
+          ...(employeeCount !== null ? { badge: employeeCount } : {}),
+        },
+      ],
+    },
+    {
+      label: 'WORKFLOWS',
+      items: [
+        { href: '/atlas/intake', label: 'New Hire', icon: <UserPlus size={15} /> },
+        { href: '/atlas/offboarding', label: 'Offboarding', icon: <UserMinus size={15} /> },
+        { href: '/atlas/workflows', label: 'Workflow Runs', icon: <PlayCircle size={15} /> },
+      ],
+    },
+    {
+      label: 'MANAGE',
+      items: [
+        { href: '/atlas/settings', label: 'Settings', icon: <Settings size={15} /> },
+        { href: '/atlas/settings#permissions', label: 'Permissions', icon: <Shield size={15} /> },
+      ],
+    },
+  ];
+}
 
 export default function AtlasLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [employeeCount, setEmployeeCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((r) => r.json())
+      .then((data) => { if (data?.user) setSessionUser(data.user); })
+      .catch(() => {});
+
+    fetch('/api/atlas/employees/count')
+      .then((r) => r.json())
+      .then((data) => { if (typeof data?.count === 'number') setEmployeeCount(data.count); })
+      .catch(() => {});
+  }, []);
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+  }
+
+  const NAV = buildNav(employeeCount);
 
   const isActive = (href: string) => {
     if (href === '/atlas') return pathname === '/atlas';
@@ -235,13 +272,32 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
               gap: 10,
             }}
           >
-            <Avatar name="Lena Park" size="md" bg={C.gold} color="#FFFFFF" />
-            <div>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#FFFFFF', lineHeight: 1.3 }}>
-                Lena Park
+            <Avatar name={sessionUser?.username ?? '?'} size="md" bg={C.gold} color="#FFFFFF" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#FFFFFF', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sessionUser?.username ?? '—'}
               </p>
-              <p style={{ margin: 0, fontSize: 10, color: C.sidebarDim }}>HR Admin</p>
+              <p style={{ margin: 0, fontSize: 10, color: C.sidebarDim, textTransform: 'capitalize' }}>{sessionUser?.role ?? ''}</p>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0.6,
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+            >
+              <LogOut size={14} color={C.sidebarFg} />
+            </button>
           </div>
         </aside>
 

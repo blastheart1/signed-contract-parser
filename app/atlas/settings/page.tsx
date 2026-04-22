@@ -49,13 +49,13 @@ function PanelHeader({ title }: { title: string }) {
 const TABS = ['Access presets', 'Orientation template', 'Integrations', 'Email templates', 'Permissions'];
 
 const INTEGRATIONS = [
-  { name: 'Google Workspace', owner: 'IT—Vic Kaur', status: 'connected' as const, lastSync: '2 min ago' },
-  { name: 'Dropbox Business', owner: 'IT—Vic Kaur', status: 'connected' as const, lastSync: '5 min ago' },
-  { name: 'Trello', owner: 'Admin—Jo Bell', status: 'connected' as const, lastSync: '12 min ago' },
-  { name: 'Bill.com', owner: 'Admin—Jo Bell', status: 'connected' as const, lastSync: '1 hr ago' },
-  { name: 'QuickBooks Online', owner: 'Admin—Jo Bell', status: 'connected' as const, lastSync: '2 hr ago' },
-  { name: 'Trainual', owner: 'HR—Lena Park', status: 'connected' as const, lastSync: '30 min ago' },
-  { name: 'Fleet App', owner: 'IT—Vic Kaur', status: 'error' as const, lastSync: 'Failed 3h ago' },
+  { name: 'Google Workspace', owner: 'IT Team', status: 'connected' as const, lastSync: '2 min ago' },
+  { name: 'Dropbox Business', owner: 'IT Team', status: 'connected' as const, lastSync: '5 min ago' },
+  { name: 'Trello', owner: 'Admin Team', status: 'connected' as const, lastSync: '12 min ago' },
+  { name: 'Bill.com', owner: 'Admin Team', status: 'connected' as const, lastSync: '1 hr ago' },
+  { name: 'QuickBooks Online', owner: 'Admin Team', status: 'connected' as const, lastSync: '2 hr ago' },
+  { name: 'Trainual', owner: 'HR Team', status: 'connected' as const, lastSync: '30 min ago' },
+  { name: 'Fleet App', owner: 'IT Team', status: 'error' as const, lastSync: 'Failed 3h ago' },
 ];
 
 const ORIENTATION_INVITES = [
@@ -75,18 +75,22 @@ const EMAIL_TEMPLATES = [
 ];
 
 const PERMISSIONS = [
-  { role: 'HR', members: ['Lena Park', 'Sloane Petterson'], scope: 'Full access' },
-  { role: 'IT', members: ['Vic Kaur'], scope: 'System provisioning + runs' },
-  { role: 'Admin', members: ['Jo Bell'], scope: 'Settings + templates' },
-  { role: 'Managers', members: ['Derek Hollis', 'Alana Reeves', 'Kate Hollister', 'Eric Vinh'], scope: 'View + approve own reports' },
-  { role: 'Finance', members: ['Kate Hollister'], scope: 'View compensation (restricted)' },
+  { role: 'HR', members: [] as string[], scope: 'Full access' },
+  { role: 'IT', members: [] as string[], scope: 'System provisioning + runs' },
+  { role: 'Admin', members: [] as string[], scope: 'Settings + templates' },
+  { role: 'Manager', members: [] as string[], scope: 'View + approve own reports' },
+  { role: 'Finance', members: [] as string[], scope: 'View compensation (restricted)' },
 ];
+
+interface UserRow { id: number; username: string; role: string; }
+type PermRow = { role: string; members: string[]; scope: string; };
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
   const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
   const [loadingPresets, setLoadingPresets] = useState(true);
+  const [permissions, setPermissions] = useState<PermRow[]>(PERMISSIONS);
 
   useEffect(() => {
     fetch('/api/atlas/role-templates')
@@ -94,6 +98,20 @@ export default function SettingsPage() {
       .then((data: RoleTemplate[]) => setRoleTemplates(data))
       .catch(() => {})
       .finally(() => setLoadingPresets(false));
+
+    fetch('/api/atlas/users')
+      .then((r) => r.json())
+      .then((users: UserRow[]) => {
+        setPermissions(
+          PERMISSIONS.map((p) => ({
+            ...p,
+            members: users
+              .filter((u) => u.role.toLowerCase() === p.role.toLowerCase())
+              .map((u) => u.username),
+          })),
+        );
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -500,7 +518,7 @@ export default function SettingsPage() {
         <Panel>
           <PanelHeader title="Role permissions" />
           <div>
-            {PERMISSIONS.map((perm, i) => (
+            {permissions.map((perm, i) => (
               <div
                 key={perm.role}
                 style={{
@@ -508,7 +526,7 @@ export default function SettingsPage() {
                   alignItems: 'center',
                   gap: 16,
                   padding: '14px 18px',
-                  borderBottom: i < PERMISSIONS.length - 1 ? `1px solid ${C.ink100}` : 'none',
+                  borderBottom: i < permissions.length - 1 ? `1px solid ${C.ink100}` : 'none',
                 }}
               >
                 <div style={{ flex: 1 }}>
