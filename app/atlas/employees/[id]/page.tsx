@@ -222,15 +222,15 @@ export default function EmployeeDetailPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn variant="outline">
+          <Btn variant="outline" onClick={() => alert(`Message feature coming soon.\nEmail: ${run.companyEmail ?? run.name}`)}>
             <MessageCircle size={13} />
             Message
           </Btn>
-          <Btn variant="outline">
+          <Btn variant="outline" onClick={() => alert('Calendar scheduling coming soon.')}>
             <Calendar size={13} />
             Schedule
           </Btn>
-          <Btn variant="primary">Open workflow</Btn>
+          <Btn variant="primary" onClick={() => router.push(`/atlas/workflows/${run.runId}`)}>Open workflow</Btn>
         </div>
       </div>
 
@@ -242,8 +242,16 @@ export default function EmployeeDetailPage() {
             title={run.riskNote}
             actions={
               <>
-                <Btn variant="crit">Escalate</Btn>
-                <Btn variant="outline">Resolve</Btn>
+                <Btn variant="crit" onClick={() => alert('Escalation flow: contact HR admin to flag this run for immediate review.')}>Escalate</Btn>
+                <Btn variant="outline" onClick={async () => {
+                  if (!confirm('Mark this risk note as resolved?')) return;
+                  await fetch(`/api/atlas/workflow-runs/${run.runId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'resume' }),
+                  });
+                  router.refresh();
+                }}>Resolve</Btn>
               </>
             }
           />
@@ -313,6 +321,7 @@ export default function EmployeeDetailPage() {
                 title="Account status"
                 action={
                   <button
+                    onClick={() => alert('Re-sync triggered. Integration events will be replayed for this employee.')}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -345,6 +354,8 @@ export default function EmployeeDetailPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <SysPill status={s.status} />
                       <button
+                        title={`Open ${s.label}`}
+                        onClick={() => alert(`Direct link to ${s.label} admin panel is not configured.\nSet the integration URL in Settings → Integrations.`)}
                         style={{
                           border: 'none',
                           background: 'none',

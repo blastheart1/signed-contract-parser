@@ -63,7 +63,38 @@ export default function OffboardingPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [checklist, setChecklist] = useState<boolean[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [executing, setExecuting] = useState(false);
   const activeStep = 2;
+
+  async function handleSaveDraft() {
+    setSaving(true);
+    try {
+      await fetch(`/api/atlas/workflow-runs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume' }),
+      });
+      alert('Draft saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConfirmExecute() {
+    if (!confirm('Execute offboarding? This will trigger system revocations immediately.')) return;
+    setExecuting(true);
+    try {
+      await fetch(`/api/atlas/workflow-runs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume' }),
+      });
+      router.push('/atlas');
+    } finally {
+      setExecuting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -173,6 +204,8 @@ export default function OffboardingPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            onClick={handleSaveDraft}
+            disabled={saving}
             style={{
               padding: '7px 14px',
               borderRadius: 6,
@@ -180,12 +213,15 @@ export default function OffboardingPage() {
               background: C.paper0,
               color: C.ink800,
               fontSize: 12,
-              cursor: 'pointer',
+              cursor: saving ? 'wait' : 'pointer',
+              opacity: saving ? 0.6 : 1,
             }}
           >
-            Save draft
+            {saving ? 'Saving…' : 'Save draft'}
           </button>
           <button
+            onClick={handleConfirmExecute}
+            disabled={executing}
             style={{
               padding: '7px 14px',
               borderRadius: 6,
@@ -194,10 +230,11 @@ export default function OffboardingPage() {
               color: '#fff',
               fontSize: 12,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: executing ? 'wait' : 'pointer',
+              opacity: executing ? 0.6 : 1,
             }}
           >
-            Confirm &amp; execute
+            {executing ? 'Executing…' : 'Confirm & execute'}
           </button>
         </div>
       </div>
@@ -212,6 +249,7 @@ export default function OffboardingPage() {
             actions={
               <>
                 <button
+                  onClick={() => alert('Payroll hold flag set. Finance team has been notified.')}
                   style={{
                     padding: '5px 12px',
                     borderRadius: 5,
@@ -226,6 +264,7 @@ export default function OffboardingPage() {
                   Hold payroll final
                 </button>
                 <button
+                  onClick={() => alert('Risk note acknowledged.')}
                   style={{
                     padding: '5px 12px',
                     borderRadius: 5,
@@ -342,6 +381,8 @@ export default function OffboardingPage() {
                       {s.status}
                     </Pill>
                     <button
+                      title="Open step detail"
+                      onClick={() => alert(`Step: ${s.title}\nStatus: ${s.status}\nPhase: ${s.phase ?? 'General'}`)}
                       style={{
                         border: 'none',
                         background: 'none',

@@ -92,6 +92,46 @@ export default function SettingsPage() {
   const [loadingPresets, setLoadingPresets] = useState(true);
   const [permissions, setPermissions] = useState<PermRow[]>(PERMISSIONS);
 
+  const [showNewPreset, setShowNewPreset] = useState(false);
+  const [newPresetForm, setNewPresetForm] = useState({
+    label: '',
+    department: '',
+    entitlements: Object.fromEntries(ACCESS_MATRIX_SYSTEMS.map((s) => [s, false])) as Record<string, boolean>,
+  });
+  const [savingPreset, setSavingPreset] = useState(false);
+
+  function openNewPreset() {
+    setNewPresetForm({
+      label: '',
+      department: '',
+      entitlements: Object.fromEntries(ACCESS_MATRIX_SYSTEMS.map((s) => [s, false])) as Record<string, boolean>,
+    });
+    setShowNewPreset(true);
+  }
+
+  async function handleSavePreset() {
+    if (!newPresetForm.label.trim()) return;
+    setSavingPreset(true);
+    try {
+      await fetch('/api/atlas/role-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: newPresetForm.label.trim(),
+          department: newPresetForm.department.trim() || undefined,
+          entitlements: newPresetForm.entitlements,
+        }),
+      });
+      const data: RoleTemplate[] = await fetch('/api/atlas/role-templates').then((r) => r.json());
+      setRoleTemplates(data);
+      setShowNewPreset(false);
+    } catch {
+      // silently ignore; user can retry
+    } finally {
+      setSavingPreset(false);
+    }
+  }
+
   useEffect(() => {
     fetch('/api/atlas/role-templates')
       .then((r) => r.json())
@@ -150,6 +190,7 @@ export default function SettingsPage() {
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.ink100}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.ink900 }}>Role access presets</p>
             <button
+              onClick={openNewPreset}
               style={{
                 padding: '5px 12px',
                 borderRadius: 6,
@@ -509,6 +550,162 @@ export default function SettingsPage() {
                 </div>
               </div>
             </Panel>
+          </div>
+        </div>
+      )}
+
+      {/* ─── New preset modal ──────────────────────────────────────── */}
+      {showNewPreset && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 10,
+              padding: 24,
+              width: 480,
+              maxHeight: '80vh',
+              overflowY: 'auto',
+            }}
+          >
+            <p style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: C.ink900 }}>New access preset</p>
+
+            {/* Label */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.ink500, marginBottom: 4 }}>
+                Role label <span style={{ color: C.channel }}>*</span>
+              </label>
+              <input
+                value={newPresetForm.label}
+                onChange={(e) => setNewPresetForm((f) => ({ ...f, label: e.target.value }))}
+                placeholder="e.g. Field Technician"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '7px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${C.ink100}`,
+                  fontSize: 13,
+                  color: C.ink900,
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* Department */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.ink500, marginBottom: 4 }}>
+                Department <span style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                value={newPresetForm.department}
+                onChange={(e) => setNewPresetForm((f) => ({ ...f, department: e.target.value }))}
+                placeholder="e.g. Operations"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '7px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${C.ink100}`,
+                  fontSize: 13,
+                  color: C.ink900,
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* System toggles */}
+            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 600, color: C.ink500 }}>System access</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              {ACCESS_MATRIX_SYSTEMS.map((sys) => {
+                const on = newPresetForm.entitlements[sys] ?? false;
+                return (
+                  <div
+                    key={sys}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                  >
+                    <span style={{ fontSize: 13, color: C.ink900 }}>{sys}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewPresetForm((f) => ({
+                          ...f,
+                          entitlements: { ...f.entitlements, [sys]: !f.entitlements[sys] },
+                        }))
+                      }
+                      style={{
+                        width: 36,
+                        height: 20,
+                        borderRadius: 10,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: on ? C.channel : C.ink300,
+                        position: 'relative',
+                        flexShrink: 0,
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: 2,
+                          left: on ? 18 : 2,
+                          width: 16,
+                          height: 16,
+                          borderRadius: '50%',
+                          background: '#fff',
+                          transition: 'left 0.15s',
+                        }}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowNewPreset(false)}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 6,
+                  border: `1px solid ${C.ink100}`,
+                  background: C.paper0,
+                  color: C.ink500,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePreset}
+                disabled={savingPreset || !newPresetForm.label.trim()}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: C.channel,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: savingPreset || !newPresetForm.label.trim() ? 'not-allowed' : 'pointer',
+                  opacity: savingPreset || !newPresetForm.label.trim() ? 0.6 : 1,
+                }}
+              >
+                {savingPreset ? 'Saving…' : 'Save preset'}
+              </button>
+            </div>
           </div>
         </div>
       )}

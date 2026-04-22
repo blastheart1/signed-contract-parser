@@ -68,6 +68,25 @@ export default function WorkflowRunPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [logFilter, setLogFilter] = useState<LogFilter>('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  async function runAction(action: 'retry' | 'cancel' | 'resume') {
+    setActionLoading(action);
+    try {
+      const res = await fetch(`/api/atlas/workflow-runs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = await fetch(`/api/atlas/workflow-runs/${id}`).then(r => r.json());
+      setRun(updated);
+    } catch {
+      alert(`Failed to ${action} run.`);
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +203,8 @@ export default function WorkflowRunPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            onClick={() => runAction('retry')}
+            disabled={actionLoading === 'retry'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -193,14 +214,17 @@ export default function WorkflowRunPage() {
               border: `1px solid ${C.ink100}`,
               background: C.paper0,
               fontSize: 12,
-              cursor: 'pointer',
+              cursor: actionLoading === 'retry' ? 'wait' : 'pointer',
               color: C.ink800,
+              opacity: actionLoading === 'retry' ? 0.6 : 1,
             }}
           >
             <RefreshCw size={12} />
             Retry failed
           </button>
           <button
+            onClick={() => { if (confirm('Cancel this run?')) runAction('cancel'); }}
+            disabled={actionLoading === 'cancel'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -211,13 +235,16 @@ export default function WorkflowRunPage() {
               background: C.paper0,
               color: C.crit,
               fontSize: 12,
-              cursor: 'pointer',
+              cursor: actionLoading === 'cancel' ? 'wait' : 'pointer',
+              opacity: actionLoading === 'cancel' ? 0.6 : 1,
             }}
           >
             <XCircle size={12} />
             Cancel run
           </button>
           <button
+            onClick={() => runAction('resume')}
+            disabled={actionLoading === 'resume'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -229,7 +256,8 @@ export default function WorkflowRunPage() {
               color: '#fff',
               fontSize: 12,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: actionLoading === 'resume' ? 'wait' : 'pointer',
+              opacity: actionLoading === 'resume' ? 0.6 : 1,
             }}
           >
             <Play size={12} />

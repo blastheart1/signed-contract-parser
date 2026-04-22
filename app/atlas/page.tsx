@@ -113,7 +113,14 @@ export default function AtlasDashboard() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const PAGE_SIZE = 8;
+
+  useEffect(() => {
+    function closeMenu() { setOpenMenuId(null); }
+    document.addEventListener('click', closeMenu);
+    return () => document.removeEventListener('click', closeMenu);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +176,30 @@ export default function AtlasDashboard() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelected(next);
+  }
+
+  function handleExport() {
+    const toExport = rows.filter((r) => selected.has(r.runId));
+    const headers = ['Name', 'Position', 'Department', 'Status', 'Type', 'Start Date', 'Progress'];
+    const csvRows = [
+      headers.join(','),
+      ...toExport.map((r) => [
+        `"${r.name}"`,
+        `"${r.position ?? ''}"`,
+        `"${r.department ?? ''}"`,
+        r.status,
+        r.type,
+        r.startDate ?? '',
+        `${r.progress}/${r.totalSteps}`,
+      ].join(',')),
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `atlas-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function toggleAll() {
@@ -439,6 +470,7 @@ export default function AtlasDashboard() {
                   {selected.size} selected
                 </span>
                 <button
+                  onClick={handleExport}
                   style={{
                     padding: '3px 10px',
                     borderRadius: 4,
@@ -585,9 +617,9 @@ export default function AtlasDashboard() {
                           </Pill>
                         </td>
                         {/* Actions */}
-                        <td style={{ padding: '10px 12px' }}>
+                        <td style={{ padding: '10px 12px', position: 'relative' }}>
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === row.runId ? null : row.runId); }}
                             style={{
                               border: 'none',
                               background: 'transparent',
@@ -598,6 +630,54 @@ export default function AtlasDashboard() {
                           >
                             <MoreHorizontal size={14} />
                           </button>
+                          {openMenuId === row.runId && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                position: 'absolute',
+                                right: 8,
+                                top: '100%',
+                                zIndex: 50,
+                                background: C.paper0,
+                                border: `1px solid ${C.ink100}`,
+                                borderRadius: 6,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                minWidth: 140,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {[
+                                { label: 'View run', action: () => router.push(`/atlas/workflows/${row.runId}`) },
+                                { label: 'View employee', action: () => router.push(`/atlas/employees/${row.runId}`) },
+                                { label: 'Cancel run', action: async () => {
+                                  if (!confirm(`Cancel run for ${row.name}?`)) return;
+                                  await fetch(`/api/atlas/workflow-runs/${row.runId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel' }) });
+                                  setRows((prev) => prev.map((r) => r.runId === row.runId ? { ...r, status: 'failed' as const } : r));
+                                  setOpenMenuId(null);
+                                }},
+                              ].map((item) => (
+                                <button
+                                  key={item.label}
+                                  onClick={() => { item.action(); setOpenMenuId(null); }}
+                                  style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                    padding: '8px 14px',
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontSize: 12,
+                                    color: item.label === 'Cancel run' ? C.crit : C.ink800,
+                                    cursor: 'pointer',
+                                  }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.background = C.ink050)}
+                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -721,6 +801,7 @@ export default function AtlasDashboard() {
                       Open workflow
                     </Link>
                     <button
+                      onClick={() => alert(`Snooze: ${row.name}'s alert will be hidden for 24 hours.`)}
                       style={{
                         flex: 1,
                         padding: '5px 0',

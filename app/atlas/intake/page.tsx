@@ -88,12 +88,14 @@ function Input({
   placeholder,
   type = 'text',
   disabled,
+  hasError,
 }: {
   value: string;
   onChange?: (v: string) => void;
   placeholder?: string;
   type?: string;
   disabled?: boolean;
+  hasError?: boolean;
 }) {
   return (
     <input
@@ -106,7 +108,7 @@ function Input({
         width: '100%',
         padding: '7px 10px',
         borderRadius: 6,
-        border: `1px solid ${C.ink100}`,
+        border: hasError ? `1px solid #FE5834` : `1px solid ${C.ink100}`,
         background: disabled ? C.ink050 : C.paper0,
         fontSize: 13,
         color: C.ink900,
@@ -187,6 +189,8 @@ export default function IntakePage() {
   const [form, setForm] = useState<FormData>(INITIAL);
   const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const [customEntitlements, setCustomEntitlements] = useState<Record<string, boolean> | null>(null);
 
   useEffect(() => {
     fetch('/api/atlas/role-templates')
@@ -205,6 +209,29 @@ export default function IntakePage() {
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }
+
+  function validateStep(s: number): boolean {
+    const next: Partial<Record<keyof FormData, string>> = {};
+    if (s === 0) {
+      if (!form.firstName.trim()) next.firstName = 'First name is required';
+      if (!form.lastName.trim()) next.lastName = 'Last name is required';
+      if (!form.personalEmail.trim()) {
+        next.personalEmail = 'Personal email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personalEmail)) {
+        next.personalEmail = 'Enter a valid email address';
+      }
+    }
+    if (s === 1) {
+      if (!form.position.trim()) next.position = 'Position is required';
+      if (!form.startDate) next.startDate = 'Start date is required';
+    }
+    if (s === 2) {
+      if (!isCustomPreset && !form.preset) next.preset = 'Please select a preset';
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
   }
 
   // Resolved entitlements from selected preset
@@ -215,6 +242,30 @@ export default function IntakePage() {
       ACCESS_MATRIX_SYSTEMS.map((s) => [s, tmpl.entitlements[s] ?? false]),
     );
   })();
+
+  const isCustomPreset = customEntitlements !== null;
+  const effectiveEntitlements = customEntitlements ?? resolvedEntitlements;
+
+  function handleToggle(sys: string) {
+    setCustomEntitlements({ ...effectiveEntitlements, [sys]: !effectiveEntitlements[sys] });
+  }
+
+  async function handleSaveCustomPreset() {
+    const label = window.prompt('Preset name:');
+    if (!label) return;
+    try {
+      await fetch('/api/atlas/role-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label, entitlements: effectiveEntitlements }),
+      });
+      const data: RoleTemplate[] = await fetch('/api/atlas/role-templates').then((r) => r.json());
+      setRoleTemplates(data);
+      alert('Preset saved!');
+    } catch {
+      alert('Failed to save preset.');
+    }
+  }
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -232,7 +283,7 @@ export default function IntakePage() {
         startDate: form.startDate,
         companyEmailLocal: form.companyEmailOverride,
         presetCode: form.preset,
-        entitlements: resolvedEntitlements,
+        entitlements: effectiveEntitlements,
       };
       const res = await fetch('/api/atlas/workflow-runs', {
         method: 'POST',
@@ -339,17 +390,21 @@ export default function IntakePage() {
                 }}
               >
                 <Field label="First name">
-                  <Input value={form.firstName} onChange={(v) => set('firstName', v)} />
+                  <Input value={form.firstName} onChange={(v) => set('firstName', v)} hasError={!!errors.firstName} />
+                  {errors.firstName && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.firstName}</p>}
                 </Field>
                 <Field label="Last name">
-                  <Input value={form.lastName} onChange={(v) => set('lastName', v)} />
+                  <Input value={form.lastName} onChange={(v) => set('lastName', v)} hasError={!!errors.lastName} />
+                  {errors.lastName && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.lastName}</p>}
                 </Field>
                 <Field label="Personal email">
                   <Input
                     type="email"
                     value={form.personalEmail}
                     onChange={(v) => set('personalEmail', v)}
+                    hasError={!!errors.personalEmail}
                   />
+                  {errors.personalEmail && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.personalEmail}</p>}
                 </Field>
                 <Field label="Phone">
                   <Input value={form.phone} onChange={(v) => set('phone', v)} />
@@ -373,7 +428,8 @@ export default function IntakePage() {
             <Panel title="Role & Start Date">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
                 <Field label="Position">
-                  <Input value={form.position} onChange={(v) => set('position', v)} />
+                  <Input value={form.position} onChange={(v) => set('position', v)} hasError={!!errors.position} />
+                  {errors.position && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.position}</p>}
                 </Field>
                 <Field label="Department">
                   <Select
@@ -398,7 +454,8 @@ export default function IntakePage() {
                   />
                 </Field>
                 <Field label="Start date">
-                  <Input type="date" value={form.startDate} onChange={(v) => set('startDate', v)} />
+                  <Input type="date" value={form.startDate} onChange={(v) => set('startDate', v)} hasError={!!errors.startDate} />
+                  {errors.startDate && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.startDate}</p>}
                 </Field>
                 <div style={{ gridColumn: 'span 2' }}>
                   <Field label="Compensation (restricted)">
@@ -441,7 +498,7 @@ export default function IntakePage() {
                   {presetOptions.length > 0 ? (
                     <Select
                       value={form.preset}
-                      onChange={(v) => set('preset', v)}
+                      onChange={(v) => { set('preset', v); setCustomEntitlements(null); }}
                       options={presetOptions}
                     />
                   ) : (
@@ -449,9 +506,13 @@ export default function IntakePage() {
                       No presets configured yet. Add presets in Settings → Access presets.
                     </p>
                   )}
+                  {errors.preset && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#FE5834' }}>{errors.preset}</p>}
                 </Field>
                 <div style={{ marginTop: 16 }}>
-                  <Label>Resolved entitlements</Label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Label>Resolved entitlements</Label>
+                    {isCustomPreset && <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: '#D79A2B', color: '#fff' }}>CUSTOM</span>}
+                  </div>
                   <div
                     style={{
                       border: `1px solid ${C.ink100}`,
@@ -460,10 +521,11 @@ export default function IntakePage() {
                     }}
                   >
                     {ACCESS_MATRIX_SYSTEMS.map((sys, i) => {
-                      const hasAccess = resolvedEntitlements[sys] ?? false;
+                      const hasAccess = effectiveEntitlements[sys] ?? false;
                       return (
                         <div
                           key={sys}
+                          onClick={() => handleToggle(sys)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -474,6 +536,7 @@ export default function IntakePage() {
                                 ? `1px solid ${C.ink100}`
                                 : 'none',
                             background: i % 2 === 0 ? C.paper0 : C.paper1,
+                            cursor: 'pointer',
                           }}
                         >
                           <span style={{ fontSize: 13, color: C.ink900 }}>{sys}</span>
@@ -504,6 +567,24 @@ export default function IntakePage() {
                       );
                     })}
                   </div>
+                  {isCustomPreset && (
+                    <button
+                      onClick={handleSaveCustomPreset}
+                      style={{
+                        marginTop: 10,
+                        padding: '6px 14px',
+                        borderRadius: 6,
+                        border: `1px solid ${C.gold}`,
+                        background: 'transparent',
+                        color: C.gold,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Save as new preset
+                    </button>
+                  )}
                 </div>
               </Panel>
               <Panel title="Company email">
@@ -627,7 +708,7 @@ export default function IntakePage() {
             </button>
             {step < 3 ? (
               <button
-                onClick={() => setStep((s) => s + 1)}
+                onClick={() => { if (validateStep(step)) setStep((s) => s + 1); }}
                 style={{
                   padding: '8px 18px',
                   borderRadius: 6,
@@ -729,7 +810,7 @@ export default function IntakePage() {
               ['Manager', form.manager || '—'],
               ['Location', form.location || '—'],
               ['Department', form.department || '—'],
-              ['Preset', form.preset || '—'],
+              ['Preset', isCustomPreset ? 'Custom' : (form.preset || '—')],
             ].map(([label, val]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: C.ink500 }}>{label}</span>
@@ -744,7 +825,7 @@ export default function IntakePage() {
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {ACCESS_MATRIX_SYSTEMS.map((sys) => {
-                  const has = resolvedEntitlements[sys] ?? false;
+                  const has = effectiveEntitlements[sys] ?? false;
                   if (!has) return null;
                   return (
                     <Pill key={sys} variant="ok" dot={false} size="sm">
