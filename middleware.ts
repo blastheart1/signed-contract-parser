@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
 
   // If no session and trying to access protected route, redirect to login
   // Exclude parse-contract API from this check
-  if (!session && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || (pathname.startsWith('/api') && pathname !== '/api/parse-contract'))) {
+  if (!session && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || pathname.startsWith('/atlas') || (pathname.startsWith('/api') && pathname !== '/api/parse-contract'))) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
