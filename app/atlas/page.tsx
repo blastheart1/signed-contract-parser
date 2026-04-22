@@ -1,20 +1,16 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
-  Filter,
   Search,
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle,
-  Clock,
 } from 'lucide-react';
-import { EMPLOYEES } from '@/lib/atlas/data';
-import type { WorkflowStatus, WorkflowType, Employee } from '@/lib/atlas/data';
+import type { WorkflowStatus, WorkflowType, DashboardRow, DashboardMetrics } from '@/lib/atlas/data';
 import { Avatar, StatusPill, ProgressBar, Pill, Banner } from '@/components/atlas';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -69,26 +65,49 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
-function daysUntil(dateStr: string): number {
-  const today = new Date('2026-04-22');
-  const target = new Date(dateStr);
-  return Math.round((target.getTime() - today.getTime()) / 86400000);
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function daysUntilStr(dateStr: string | null): string {
+  if (!dateStr) return '';
+  const today = new Date();
+  const target = new Date(dateStr);
+  const d = Math.round((target.getTime() - today.getTime()) / 86400000);
+  if (d === 0) return 'Today';
+  if (d > 0) return `in ${d}d`;
+  return `${Math.abs(d)}d ago`;
+}
+
+function daysUntilNum(dateStr: string | null): number {
+  if (!dateStr) return -9999;
+  const today = new Date();
+  return Math.round((new Date(dateStr).getTime() - today.getTime()) / 86400000);
 }
 
 type FilterStatus = WorkflowStatus | 'all';
 type TypeFilter = WorkflowType | 'both';
 
-// Filter pill counts
-function countByStatus(employees: Employee[], status: WorkflowStatus): number {
-  return employees.filter((e) => e.status === status).length;
+function countByStatus(rows: DashboardRow[], status: WorkflowStatus): number {
+  return rows.filter((r) => r.status === status).length;
 }
+
+const DEFAULT_METRICS: DashboardMetrics = {
+  activeOnboardings: 0,
+  activeOffboardings: 0,
+  requiresAttention: 0,
+  avgDaysToProductive: null,
+  workflowSuccessRate: null,
+};
 
 export default function AtlasDashboard() {
   const router = useRouter();
+  const [rows, setRows] = useState<DashboardRow[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics>(DEFAULT_METRICS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('both');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [search, setSearch] = useState('');
@@ -96,29 +115,53 @@ export default function AtlasDashboard() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 8;
 
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [rowsRes, metricsRes] = await Promise.all([
+          fetch('/api/atlas/workflow-runs'),
+          fetch('/api/atlas/metrics'),
+        ]);
+        if (!rowsRes.ok || !metricsRes.ok) throw new Error('API error');
+        const [rowsData, metricsData] = await Promise.all([rowsRes.json(), metricsRes.json()]);
+        if (!cancelled) {
+          setRows(rowsData as DashboardRow[]);
+          setMetrics(metricsData as DashboardMetrics);
+        }
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
   const filtered = useMemo(() => {
-    let list = EMPLOYEES;
-    if (typeFilter !== 'both') list = list.filter((e) => e.type === typeFilter);
-    if (statusFilter !== 'all') list = list.filter((e) => e.status === statusFilter);
+    let list = rows;
+    if (typeFilter !== 'both') list = list.filter((r) => r.type === typeFilter);
+    if (statusFilter !== 'all') list = list.filter((r) => r.status === statusFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.position.toLowerCase().includes(q) ||
-          e.dept.toLowerCase().includes(q),
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          (r.position ?? '').toLowerCase().includes(q) ||
+          (r.department ?? '').toLowerCase().includes(q),
       );
     }
     return list;
-  }, [typeFilter, statusFilter, search]);
+  }, [rows, typeFilter, statusFilter, search]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const attention = EMPLOYEES.filter((e) => e.status === 'blocked' || e.status === 'failed');
-  const incoming = EMPLOYEES.filter((e) => {
-    const d = daysUntil(e.startDate);
-    return d >= 0 && d <= 14 && e.status === 'pending';
+  const attention = rows.filter((r) => r.status === 'blocked' || r.status === 'failed');
+  const incoming = rows.filter((r) => {
+    const d = daysUntilNum(r.startDate);
+    return d >= 0 && d <= 14;
   });
 
   function toggleSelect(id: string) {
@@ -132,18 +175,26 @@ export default function AtlasDashboard() {
     if (selected.size === pageItems.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(pageItems.map((e) => e.id)));
+      setSelected(new Set(pageItems.map((r) => r.runId)));
     }
   }
 
   const filterPills: { label: string; value: FilterStatus; count: number }[] = [
-    { label: 'All', value: 'all', count: EMPLOYEES.length },
-    { label: 'In Progress', value: 'in-progress', count: countByStatus(EMPLOYEES, 'in-progress') },
-    { label: 'Blocked', value: 'blocked', count: countByStatus(EMPLOYEES, 'blocked') },
-    { label: 'Failed', value: 'failed', count: countByStatus(EMPLOYEES, 'failed') },
-    { label: 'Pending', value: 'pending', count: countByStatus(EMPLOYEES, 'pending') },
-    { label: 'Completed', value: 'completed', count: countByStatus(EMPLOYEES, 'completed') },
+    { label: 'All',         value: 'all',         count: rows.length },
+    { label: 'In Progress', value: 'in-progress',  count: countByStatus(rows, 'in-progress') },
+    { label: 'Blocked',     value: 'blocked',      count: countByStatus(rows, 'blocked') },
+    { label: 'Failed',      value: 'failed',       count: countByStatus(rows, 'failed') },
+    { label: 'Pending',     value: 'pending',      count: countByStatus(rows, 'pending') },
+    { label: 'Completed',   value: 'completed',    count: countByStatus(rows, 'completed') },
   ];
+
+  if (loading) {
+    return <div style={{ padding: 32, color: C.ink500, fontSize: 13 }}>Loading…</div>;
+  }
+
+  if (error) {
+    return <div style={{ padding: 32, color: C.crit, fontSize: 13 }}>Failed to load data.</div>;
+  }
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
@@ -196,33 +247,33 @@ export default function AtlasDashboard() {
         {[
           {
             label: 'Active onboardings',
-            value: '7',
-            sub: '+2 this week',
+            value: String(metrics.activeOnboardings),
+            sub: '',
             subColor: C.ok,
           },
           {
             label: 'Active offboardings',
-            value: '2',
-            sub: '1 pending device return',
+            value: String(metrics.activeOffboardings),
+            sub: '',
             subColor: C.warn,
           },
           {
             label: 'Requires attention',
-            value: '3',
-            sub: '1 failed · 2 blocked',
+            value: String(metrics.requiresAttention),
+            sub: '',
             subColor: C.crit,
-            valueColor: C.crit,
+            valueColor: metrics.requiresAttention > 0 ? C.crit : undefined,
           },
           {
             label: 'Avg. time to productive',
-            value: '4.2d',
-            sub: '−0.6d vs prior 30d',
+            value: metrics.avgDaysToProductive != null ? `${metrics.avgDaysToProductive}d` : '—',
+            sub: '',
             subColor: C.ok,
           },
           {
             label: 'Workflow run success',
-            value: '94.3%',
-            sub: 'Last 100 runs · 6 retried',
+            value: metrics.workflowSuccessRate != null ? `${metrics.workflowSuccessRate}%` : '—',
+            sub: '',
             subColor: C.ink500,
           },
         ].map((m, i) => (
@@ -245,7 +296,7 @@ export default function AtlasDashboard() {
             >
               {m.value}
             </p>
-            <p style={{ margin: 0, fontSize: 11, color: m.subColor }}>{m.sub}</p>
+            {m.sub && <p style={{ margin: 0, fontSize: 11, color: m.subColor }}>{m.sub}</p>}
           </div>
         ))}
       </div>
@@ -456,39 +507,41 @@ export default function AtlasDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageItems.map((emp, i) => {
-                    const d = daysUntil(emp.startDate);
+                  {pageItems.map((row, i) => {
+                    const dStr = daysUntilStr(row.startDate);
+                    const dNum = daysUntilNum(row.startDate);
                     return (
                       <tr
-                        key={emp.id}
+                        key={row.runId}
                         className="atlas-row"
-                        onClick={() => router.push(`/atlas/employees/${emp.id}`)}
+                        onClick={() => router.push(`/atlas/workflows/${row.runId}`)}
                         style={{
                           borderTop: `1px solid ${C.ink100}`,
                           background: i % 2 === 0 ? C.paper0 : 'transparent',
+                          cursor: 'pointer',
                         }}
                       >
                         <td
                           style={{ padding: '10px 12px' }}
-                          onClick={(e) => { e.stopPropagation(); toggleSelect(emp.id); }}
+                          onClick={(e) => { e.stopPropagation(); toggleSelect(row.runId); }}
                         >
                           <input
                             type="checkbox"
-                            checked={selected.has(emp.id)}
-                            onChange={() => toggleSelect(emp.id)}
+                            checked={selected.has(row.runId)}
+                            onChange={() => toggleSelect(row.runId)}
                             style={{ cursor: 'pointer' }}
                           />
                         </td>
                         {/* Person */}
                         <td style={{ padding: '10px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Avatar name={emp.name} size="md" />
+                            <Avatar name={row.name} size="md" />
                             <div>
                               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.ink900 }}>
-                                {emp.name}
+                                {row.name}
                               </p>
                               <p style={{ margin: 0, fontSize: 11, color: C.ink500 }}>
-                                {emp.position} · {emp.dept}
+                                {row.position ?? '—'} · {row.department ?? '—'}
                               </p>
                             </div>
                           </div>
@@ -496,9 +549,9 @@ export default function AtlasDashboard() {
                         {/* Status */}
                         <td style={{ padding: '10px 12px' }}>
                           <div>
-                            <StatusPill status={emp.status} />
-                            {emp.risk && (
-                              <p style={{ margin: '3px 0 0', fontSize: 10, color: C.warn }}>{emp.risk}</p>
+                            <StatusPill status={row.status} />
+                            {row.riskNote && (
+                              <p style={{ margin: '3px 0 0', fontSize: 10, color: C.warn }}>{row.riskNote}</p>
                             )}
                           </div>
                         </td>
@@ -506,29 +559,29 @@ export default function AtlasDashboard() {
                         <td style={{ padding: '10px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <ProgressBar
-                              pct={(emp.progress / emp.totalSteps) * 100}
-                              status={emp.status}
+                              pct={row.totalSteps > 0 ? (row.progress / row.totalSteps) * 100 : 0}
+                              status={row.status}
                             />
                             <span style={{ fontSize: 11, color: C.ink500, whiteSpace: 'nowrap' }}>
-                              {emp.progress}/{emp.totalSteps}
+                              {row.progress}/{row.totalSteps}
                             </span>
                           </div>
                         </td>
                         {/* Start date */}
                         <td style={{ padding: '10px 12px' }}>
-                          <p style={{ margin: 0, fontSize: 12, color: C.ink900 }}>{formatDate(emp.startDate)}</p>
-                          <p style={{ margin: 0, fontSize: 10, color: d < 0 ? C.ink500 : C.info }}>
-                            {d === 0 ? 'Today' : d > 0 ? `in ${d}d` : `${Math.abs(d)}d ago`}
+                          <p style={{ margin: 0, fontSize: 12, color: C.ink900 }}>{formatDate(row.startDate)}</p>
+                          <p style={{ margin: 0, fontSize: 10, color: dNum < 0 ? C.ink500 : C.info }}>
+                            {dStr}
                           </p>
                         </td>
                         {/* Owner */}
                         <td style={{ padding: '10px 12px' }}>
-                          <span style={{ fontSize: 12, color: C.ink500 }}>{emp.owner}</span>
+                          <span style={{ fontSize: 12, color: C.ink500 }}>{row.ownerLabel ?? '—'}</span>
                         </td>
                         {/* Type */}
                         <td style={{ padding: '10px 12px' }}>
-                          <Pill variant={emp.type === 'onboarding' ? 'ok' : 'gold'} dot={false}>
-                            {emp.type === 'onboarding' ? 'Onboard' : 'Offboard'}
+                          <Pill variant={row.type === 'onboarding' ? 'ok' : 'gold'} dot={false}>
+                            {row.type === 'onboarding' ? 'Onboard' : 'Offboard'}
                           </Pill>
                         </td>
                         {/* Actions */}
@@ -555,7 +608,9 @@ export default function AtlasDashboard() {
                         colSpan={8}
                         style={{ padding: 32, textAlign: 'center', fontSize: 13, color: C.ink500 }}
                       >
-                        No employees match your filters.
+                        {rows.length === 0
+                          ? 'No active workflows. Click "New hire" to start one.'
+                          : 'No workflows match your filters.'}
                       </td>
                     </tr>
                   )}
@@ -574,7 +629,7 @@ export default function AtlasDashboard() {
               }}
             >
               <span style={{ fontSize: 12, color: C.ink500 }}>
-                {filtered.length} employee{filtered.length !== 1 ? 's' : ''}
+                {filtered.length} workflow{filtered.length !== 1 ? 's' : ''}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button
@@ -614,7 +669,7 @@ export default function AtlasDashboard() {
                     justifyContent: 'center',
                   }}
                 >
-                  <ChevronRight size={13} color={C.ink500} />
+                  <ChevronLeft size={13} color={C.ink500} style={{ transform: 'rotate(180deg)' }} />
                 </button>
               </div>
             </div>
@@ -632,25 +687,25 @@ export default function AtlasDashboard() {
               </p>
             </div>
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {attention.map((emp) => (
-                <div key={emp.id}>
+              {attention.map((row) => (
+                <div key={row.runId}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Avatar name={emp.name} size="sm" />
+                    <Avatar name={row.name} size="sm" />
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.ink900 }}>{emp.name}</p>
-                      <p style={{ margin: 0, fontSize: 10, color: C.ink500 }}>{emp.position}</p>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.ink900 }}>{row.name}</p>
+                      <p style={{ margin: 0, fontSize: 10, color: C.ink500 }}>{row.position ?? '—'}</p>
                     </div>
-                    <StatusPill status={emp.status} />
+                    <StatusPill status={row.status} />
                   </div>
-                  {emp.risk && (
+                  {row.riskNote && (
                     <Banner
-                      variant={emp.status === 'failed' ? 'crit' : 'warn'}
-                      title={emp.risk}
+                      variant={row.status === 'failed' ? 'crit' : 'warn'}
+                      title={row.riskNote}
                     />
                   )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     <Link
-                      href={`/atlas/employees/${emp.id}`}
+                      href={`/atlas/workflows/${row.runId}`}
                       style={{
                         flex: 1,
                         textAlign: 'center',
@@ -699,16 +754,14 @@ export default function AtlasDashboard() {
               </p>
             </div>
             <div style={{ padding: '8px 0' }}>
-              {EMPLOYEES.filter((e) => {
-                const d = daysUntil(e.startDate);
-                return d >= 0 && d <= 14;
-              })
-                .sort((a, b) => daysUntil(a.startDate) - daysUntil(b.startDate))
-                .map((emp) => {
-                  const d = daysUntil(emp.startDate);
+              {incoming
+                .sort((a, b) => daysUntilNum(a.startDate) - daysUntilNum(b.startDate))
+                .map((row) => {
+                  const d = daysUntilNum(row.startDate);
+                  const date = row.startDate ? new Date(row.startDate) : null;
                   return (
                     <div
-                      key={emp.id}
+                      key={row.runId}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -731,15 +784,17 @@ export default function AtlasDashboard() {
                         }}
                       >
                         <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.channel, lineHeight: 1 }}>
-                          {new Date(emp.startDate).getDate()}
+                          {date ? date.getDate() : '—'}
                         </p>
                         <p style={{ margin: 0, fontSize: 9, color: C.ink500, lineHeight: 1 }}>
-                          {new Date(emp.startDate).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                          {date
+                            ? date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+                            : ''}
                         </p>
                       </div>
                       <div style={{ flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.ink900 }}>{emp.name}</p>
-                        <p style={{ margin: 0, fontSize: 11, color: C.ink500 }}>{emp.position}</p>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.ink900 }}>{row.name}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: C.ink500 }}>{row.position ?? '—'}</p>
                       </div>
                       <span style={{ fontSize: 11, color: C.info, fontWeight: 500 }}>
                         {d === 0 ? 'Today' : `in ${d}d`}
@@ -747,10 +802,7 @@ export default function AtlasDashboard() {
                     </div>
                   );
                 })}
-              {EMPLOYEES.filter((e) => {
-                const d = daysUntil(e.startDate);
-                return d >= 0 && d <= 14;
-              }).length === 0 && (
+              {incoming.length === 0 && (
                 <p style={{ fontSize: 12, color: C.ink500, textAlign: 'center', padding: 16 }}>
                   No upcoming start dates in the next 14 days.
                 </p>

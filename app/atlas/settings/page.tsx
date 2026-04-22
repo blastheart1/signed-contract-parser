@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Check, Settings as SettingsIcon, ExternalLink } from 'lucide-react';
-import { ACCESS_MATRIX, ACCESS_MATRIX_SYSTEMS } from '@/lib/atlas/data';
+import React, { useState, useEffect } from 'react';
+import { Check, Settings as SettingsIcon } from 'lucide-react';
+import { ACCESS_MATRIX_SYSTEMS } from '@/lib/atlas/data';
+import type { RoleTemplate } from '@/lib/atlas/data';
 import { Pill, Avatar } from '@/components/atlas';
 
 const C = {
@@ -84,6 +85,16 @@ const PERMISSIONS = [
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
+  const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [loadingPresets, setLoadingPresets] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/atlas/role-templates')
+      .then((r) => r.json())
+      .then((data: RoleTemplate[]) => setRoleTemplates(data))
+      .catch(() => {})
+      .finally(() => setLoadingPresets(false));
+  }, []);
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -118,99 +129,125 @@ export default function SettingsPage() {
       {/* ─── Access presets ────────────────────────────────────────── */}
       {activeTab === 0 && (
         <Panel>
-          <PanelHeader title="Role access presets" />
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: C.paper1 }}>
-                  <th
-                    style={{
-                      padding: '10px 18px',
-                      textAlign: 'left',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: C.ink500,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      minWidth: 180,
-                    }}
-                  >
-                    Role
-                  </th>
-                  {ACCESS_MATRIX_SYSTEMS.map((sys) => (
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.ink100}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.ink900 }}>Role access presets</p>
+            <button
+              style={{
+                padding: '5px 12px',
+                borderRadius: 6,
+                border: `1px solid ${C.ink100}`,
+                background: C.paper0,
+                color: C.ink800,
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              New preset
+            </button>
+          </div>
+          {loadingPresets ? (
+            <p style={{ padding: 18, fontSize: 13, color: C.ink500 }}>Loading…</p>
+          ) : roleTemplates.length === 0 ? (
+            <p style={{ padding: 18, fontSize: 13, color: C.ink500 }}>
+              No presets configured. Click &ldquo;New preset&rdquo; to add one.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: C.paper1 }}>
                     <th
-                      key={sys}
                       style={{
-                        padding: '10px 8px',
-                        textAlign: 'center',
-                        width: 72,
+                        padding: '10px 18px',
+                        textAlign: 'left',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: C.ink500,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        minWidth: 180,
                       }}
                     >
-                      <div
+                      Role
+                    </th>
+                    {ACCESS_MATRIX_SYSTEMS.map((sys) => (
+                      <th
+                        key={sys}
                         style={{
-                          writingMode: 'vertical-rl',
-                          transform: 'rotate(180deg)',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: C.ink500,
-                          whiteSpace: 'nowrap',
-                          height: 80,
-                          display: 'flex',
-                          alignItems: 'center',
+                          padding: '10px 8px',
+                          textAlign: 'center',
+                          width: 72,
                         }}
                       >
-                        {sys}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ACCESS_MATRIX.map((row, ri) => (
-                  <tr
-                    key={row.role}
-                    style={{
-                      borderTop: `1px solid ${C.ink100}`,
-                      background: ri % 2 === 0 ? C.paper0 : C.paper1,
-                    }}
-                  >
-                    <td style={{ padding: '10px 18px', fontSize: 13, color: C.ink900, fontWeight: 500 }}>
-                      {row.role}
-                    </td>
-                    {row.access.map((has, si) => (
-                      <td key={si} style={{ padding: '10px 8px', textAlign: 'center' }}>
-                        {has ? (
-                          <div
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 22,
-                              height: 22,
-                              borderRadius: 4,
-                              background: C.okBg,
-                            }}
-                          >
-                            <Check size={12} color={C.ok} strokeWidth={2.5} />
-                          </div>
-                        ) : (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              background: C.ink100,
-                            }}
-                          />
-                        )}
-                      </td>
+                        <div
+                          style={{
+                            writingMode: 'vertical-rl',
+                            transform: 'rotate(180deg)',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: C.ink500,
+                            whiteSpace: 'nowrap',
+                            height: 80,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          {sys}
+                        </div>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {roleTemplates.map((tmpl, ri) => (
+                    <tr
+                      key={tmpl.id}
+                      style={{
+                        borderTop: `1px solid ${C.ink100}`,
+                        background: ri % 2 === 0 ? C.paper0 : C.paper1,
+                      }}
+                    >
+                      <td style={{ padding: '10px 18px', fontSize: 13, color: C.ink900, fontWeight: 500 }}>
+                        {tmpl.label}
+                      </td>
+                      {ACCESS_MATRIX_SYSTEMS.map((sys) => {
+                        const has = tmpl.entitlements[sys] ?? false;
+                        return (
+                          <td key={sys} style={{ padding: '10px 8px', textAlign: 'center' }}>
+                            {has ? (
+                              <div
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 4,
+                                  background: C.okBg,
+                                }}
+                              >
+                                <Check size={12} color={C.ok} strokeWidth={2.5} />
+                              </div>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: '50%',
+                                  background: C.ink100,
+                                }}
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Panel>
       )}
 
@@ -330,7 +367,6 @@ export default function SettingsPage() {
       {/* ─── Email templates ───────────────────────────────────────── */}
       {activeTab === 3 && (
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-          {/* Template list */}
           <div
             style={{
               width: 240,
@@ -370,12 +406,10 @@ export default function SettingsPage() {
             ))}
           </div>
 
-          {/* Email preview */}
           <div style={{ flex: 1 }}>
             <Panel>
               <PanelHeader title={`Preview: ${EMAIL_TEMPLATES[selectedTemplate].name}`} />
               <div style={{ padding: 0 }}>
-                {/* Gold header */}
                 <div
                   style={{
                     background: C.gold,
@@ -414,7 +448,6 @@ export default function SettingsPage() {
                     CALIMINGO
                   </span>
                 </div>
-                {/* Body */}
                 <div style={{ padding: '28px 32px' }}>
                   <p style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700, color: C.ink900 }}>
                     {EMAIL_TEMPLATES[selectedTemplate].subject}
@@ -447,9 +480,7 @@ export default function SettingsPage() {
                         fontWeight: 600,
                       }}
                     >
-                      {EMAIL_TEMPLATES[selectedTemplate].key === 'offer-letter'
-                        ? 'Review & Sign'
-                        : 'Get Started'}
+                      {EMAIL_TEMPLATES[selectedTemplate].key === 'offer-letter' ? 'Review & Sign' : 'Get Started'}
                     </a>
                   </div>
                   <p style={{ margin: '20px 0 0', fontSize: 12, color: C.ink500, lineHeight: 1.6 }}>

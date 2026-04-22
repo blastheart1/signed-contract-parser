@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Info } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { Avatar, Pill, Banner } from '@/components/atlas';
-import { ACCESS_MATRIX_SYSTEMS, ACCESS_MATRIX } from '@/lib/atlas/data';
+import { ACCESS_MATRIX_SYSTEMS } from '@/lib/atlas/data';
+import type { RoleTemplate } from '@/lib/atlas/data';
+import { SYSTEM_KEY_MAP } from '@/lib/atlas/data';
 
 const C = {
   channel:  '#232F47',
@@ -23,8 +25,6 @@ const C = {
 };
 
 const STEPS = ['Profile', 'Role & Start', 'Access Preset', 'Review'];
-
-const PRESETS = ACCESS_MATRIX.map((r) => r.role);
 
 interface FormData {
   firstName: string;
@@ -46,20 +46,20 @@ interface FormData {
 }
 
 const INITIAL: FormData = {
-  firstName: 'Rafael',
-  lastName: 'Bustamante',
-  personalEmail: 'r.bustamante@gmail.com',
-  phone: '(714) 555-0192',
-  location: 'Orange County, CA',
+  firstName: '',
+  lastName: '',
+  personalEmail: '',
+  phone: '',
+  location: '',
   employmentType: 'Full-time',
-  position: 'Service Technician',
+  position: '',
   department: 'Operations',
-  manager: 'Derek Hollis',
-  startDate: '2026-05-05',
+  manager: '',
+  startDate: '',
   compensation: '',
   compensationVisible: false,
-  preset: 'Pool Service Technician',
-  companyEmailOverride: 'rafael.bustamante',
+  preset: '',
+  companyEmailOverride: '',
   manualEmailOverride: false,
   entitlements: Object.fromEntries(ACCESS_MATRIX_SYSTEMS.map((s) => [s, false])),
 };
@@ -111,6 +111,7 @@ function Input({
         fontSize: 13,
         color: C.ink900,
         outline: 'none',
+        boxSizing: 'border-box',
       }}
     />
   );
@@ -184,22 +185,72 @@ export default function IntakePage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(INITIAL);
+  const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/atlas/role-templates')
+      .then((r) => r.json())
+      .then((data: RoleTemplate[]) => setRoleTemplates(data))
+      .catch(() => {});
+  }, []);
+
+  // Auto-generate company email from name when not in manual override
+  useEffect(() => {
+    if (!form.manualEmailOverride && (form.firstName || form.lastName)) {
+      const local = `${form.firstName.toLowerCase()}.${form.lastName.toLowerCase()}`.replace(/\s+/g, '');
+      setForm((prev) => ({ ...prev, companyEmailOverride: local }));
+    }
+  }, [form.firstName, form.lastName, form.manualEmailOverride]);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  const presetEntitlements = (() => {
-    const row = ACCESS_MATRIX.find((r) => r.role === form.preset);
-    return row ? row.access : ACCESS_MATRIX_SYSTEMS.map(() => false);
+  // Resolved entitlements from selected preset
+  const resolvedEntitlements: Record<string, boolean> = (() => {
+    const tmpl = roleTemplates.find((t) => t.presetCode === form.preset || t.label === form.preset);
+    if (!tmpl) return Object.fromEntries(ACCESS_MATRIX_SYSTEMS.map((s) => [s, false]));
+    return Object.fromEntries(
+      ACCESS_MATRIX_SYSTEMS.map((s) => [s, tmpl.entitlements[s] ?? false]),
+    );
   })();
 
-  function handleSubmit() {
-    router.push('/atlas');
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      const body = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        personalEmail: form.personalEmail,
+        phone: form.phone,
+        location: form.location,
+        employmentType: form.employmentType,
+        position: form.position,
+        department: form.department,
+        managerName: form.manager,
+        startDate: form.startDate,
+        companyEmailLocal: form.companyEmailOverride,
+        presetCode: form.preset,
+        entitlements: resolvedEntitlements,
+      };
+      const res = await fetch('/api/atlas/workflow-runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Submit failed');
+      router.push('/atlas');
+    } catch {
+      alert('Failed to submit. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const fullName = `${form.firstName} ${form.lastName}`.trim() || 'New Hire';
   const companyEmail = `${form.companyEmailOverride}@calimingo.com`;
+  const presetOptions = roleTemplates.map((t) => t.label);
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -340,10 +391,10 @@ export default function IntakePage() {
                   />
                 </Field>
                 <Field label="Hiring manager">
-                  <Select
+                  <Input
                     value={form.manager}
                     onChange={(v) => set('manager', v)}
-                    options={['Derek Hollis', 'Alana Reeves', 'Kate Hollister', 'Eric Vinh', 'Lena Park']}
+                    placeholder="e.g. Derek Hollis"
                   />
                 </Field>
                 <Field label="Start date">
@@ -387,11 +438,17 @@ export default function IntakePage() {
             <>
               <Panel title="Access Preset">
                 <Field label="Role preset">
-                  <Select
-                    value={form.preset}
-                    onChange={(v) => set('preset', v)}
-                    options={PRESETS}
-                  />
+                  {presetOptions.length > 0 ? (
+                    <Select
+                      value={form.preset}
+                      onChange={(v) => set('preset', v)}
+                      options={presetOptions}
+                    />
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 13, color: C.ink500 }}>
+                      No presets configured yet. Add presets in Settings → Access presets.
+                    </p>
+                  )}
                 </Field>
                 <div style={{ marginTop: 16 }}>
                   <Label>Resolved entitlements</Label>
@@ -403,7 +460,7 @@ export default function IntakePage() {
                     }}
                   >
                     {ACCESS_MATRIX_SYSTEMS.map((sys, i) => {
-                      const hasAccess = presetEntitlements[i];
+                      const hasAccess = resolvedEntitlements[sys] ?? false;
                       return (
                         <div
                           key={sys}
@@ -427,7 +484,6 @@ export default function IntakePage() {
                               borderRadius: 10,
                               background: hasAccess ? C.channel : C.ink300,
                               position: 'relative',
-                              cursor: 'pointer',
                               transition: 'background 0.2s',
                             }}
                           >
@@ -592,6 +648,7 @@ export default function IntakePage() {
             ) : (
               <button
                 onClick={handleSubmit}
+                disabled={submitting}
                 style={{
                   padding: '8px 20px',
                   borderRadius: 6,
@@ -600,14 +657,15 @@ export default function IntakePage() {
                   color: '#fff',
                   fontSize: 13,
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  cursor: submitting ? 'wait' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
+                  opacity: submitting ? 0.7 : 1,
                 }}
               >
                 <Check size={14} />
-                Submit & queue workflow
+                {submitting ? 'Submitting…' : 'Submit & queue workflow'}
               </button>
             )}
           </div>
@@ -685,9 +743,8 @@ export default function IntakePage() {
                 Entitlements
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {ACCESS_MATRIX_SYSTEMS.map((sys, i) => {
-                  const row = ACCESS_MATRIX.find((r) => r.role === form.preset);
-                  const has = row ? row.access[i] : false;
+                {ACCESS_MATRIX_SYSTEMS.map((sys) => {
+                  const has = resolvedEntitlements[sys] ?? false;
                   if (!has) return null;
                   return (
                     <Pill key={sys} variant="ok" dot={false} size="sm">

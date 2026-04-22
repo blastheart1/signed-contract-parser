@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, ExternalLink, CheckSquare, Square } from 'lucide-react';
-import { EMPLOYEES } from '@/lib/atlas/data';
-import { Avatar, StatusPill, Pill, Banner, SysPill } from '@/components/atlas';
+import type { RunDetail } from '@/lib/atlas/data';
+import { Avatar, Pill, Banner, SysPill } from '@/components/atlas';
 
 const C = {
   channel:  '#232F47',
@@ -52,39 +52,37 @@ function PanelHeader({ title }: { title: string }) {
   );
 }
 
-const SYSTEM_ACTIONS = [
-  { sys: 'Google Workspace', action: 'Suspend account + transfer Drive ownership to manager', risk: false, status: 'Pending', checked: false },
-  { sys: 'Dropbox', action: 'Revoke access + unlink personal device', risk: false, status: 'Pending', checked: false },
-  { sys: 'Trello', action: 'Remove from all boards', risk: false, status: 'Executed', checked: true },
-  { sys: 'Bill.com', action: 'Remove payment approval rights immediately', risk: true, status: 'Executed', checked: true },
-  { sys: 'QuickBooks', action: 'Remove accounting access', risk: false, status: 'Executed', checked: true },
-  { sys: 'Trainual', action: 'Archive account + preserve training record', risk: false, status: 'Executed', checked: true },
-  { sys: 'Fleet App', action: 'Disable GPS tracking + remove device enrollment', risk: false, status: 'Pending', checked: false },
-];
-
-const DEPENDENCIES = [
-  { label: 'Owned Trello cards', count: 4, action: 'Reassign' },
-  { label: 'Shared Dropbox folders', count: 2, action: 'Transfer' },
-  { label: 'Bill.com approval rules', count: 1, action: 'Update' },
-  { label: 'Recurring calendar events', count: 7, action: 'Cancel or transfer' },
-];
-
-const APPROVALS = [
-  { name: 'Alana Reeves', role: 'Manager', action: 'Approved offboarding', done: true },
-  { name: 'Lena Park', role: 'HR', action: 'Confirmed last day', done: true },
-  { name: 'Jo Bell', role: 'Finance', action: 'Final payroll approved', done: true },
-];
-
 const OFFBOARDING_STEPS = ['Approval', 'Effective date', 'System actions', 'Final review'];
 
 export default function OffboardingPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const emp = EMPLOYEES.find((e) => e.id === id) ?? EMPLOYEES.find((e) => e.id === 'E-2133')!;
 
-  const [checklist, setChecklist] = useState<boolean[]>(SYSTEM_ACTIONS.map((s) => s.checked));
+  const [run, setRun] = useState<RunDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [checklist, setChecklist] = useState<boolean[]>([]);
   const activeStep = 2;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/atlas/workflow-runs/${id}`)
+      .then(async (res) => {
+        if (res.status === 404) {
+          if (!cancelled) setNotFound(true);
+          return;
+        }
+        const data = await res.json() as RunDetail;
+        if (!cancelled) {
+          setRun(data);
+          setChecklist(data.steps.map((s) => s.status === 'done'));
+        }
+      })
+      .catch(() => { if (!cancelled) setNotFound(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
 
   function toggleCheck(i: number) {
     setChecklist((prev) => {
@@ -93,6 +91,27 @@ export default function OffboardingPage() {
       return next;
     });
   }
+
+  if (loading) {
+    return <div style={{ padding: 32, color: C.ink500, fontSize: 13 }}>Loading…</div>;
+  }
+
+  if (notFound || !run) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: C.ink500 }}>
+        Offboarding record not found.{' '}
+        <button onClick={() => router.push('/atlas')} style={{ color: C.info, background: 'none', border: 'none', cursor: 'pointer' }}>
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  const steps = run.steps ?? [];
+  const hasSteps = steps.length > 0;
+  const lastDay = run.startDate
+    ? new Date(run.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -140,14 +159,14 @@ export default function OffboardingPage() {
             Offboarding
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <Avatar name={emp.name} size="lg" />
+            <Avatar name={run.name} size="lg" />
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.ink900 }}>{emp.name}</h1>
+                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.ink900 }}>{run.name}</h1>
                 <Pill variant="gold" dot={false}>Offboarding</Pill>
               </div>
               <p style={{ margin: '3px 0 0', fontSize: 13, color: C.ink500 }}>
-                {emp.position} · {emp.dept} · Last day: {emp.startDate}
+                {run.position ?? '—'} · {run.department ?? '—'} · Last day: {lastDay}
               </p>
             </div>
           </div>
@@ -184,12 +203,12 @@ export default function OffboardingPage() {
       </div>
 
       {/* Crit banner */}
-      {emp.risk && (
+      {run.riskNote && (
         <div style={{ marginBottom: 16 }}>
           <Banner
             variant="crit"
-            title={`Critical: ${emp.risk}`}
-            body="All final payroll actions are on hold until device is returned and confirmed."
+            title={`Critical: ${run.riskNote}`}
+            body="All final payroll actions are on hold until resolved."
             actions={
               <>
                 <button
@@ -283,107 +302,60 @@ export default function OffboardingPage() {
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
         {/* Main */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* System actions */}
+          {/* System actions (from steps) */}
           <Panel>
             <PanelHeader title="System actions" />
-            <div>
-              {SYSTEM_ACTIONS.map((s, i) => (
-                <div
-                  key={s.sys}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '11px 18px',
-                    borderBottom: i < SYSTEM_ACTIONS.length - 1 ? `1px solid ${C.ink100}` : 'none',
-                    background: s.risk ? '#FFF5F3' : 'transparent',
-                  }}
-                >
-                  <button
-                    onClick={() => toggleCheck(i)}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                  >
-                    {checklist[i] ? (
-                      <CheckSquare size={18} color={C.channel} />
-                    ) : (
-                      <Square size={18} color={C.ink300} />
-                    )}
-                  </button>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.ink900 }}>{s.sys}</p>
-                    <p style={{ margin: '1px 0 0', fontSize: 12, color: C.ink500 }}>{s.action}</p>
-                    {s.risk && (
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.crit, fontWeight: 500 }}>
-                        ⚠ High risk — confirm before executing
-                      </p>
-                    )}
-                  </div>
-                  <Pill variant={s.status === 'Executed' ? 'ok' : 'neutral'} dot={false} size="sm">
-                    {s.status}
-                  </Pill>
-                  <button
+            {!hasSteps ? (
+              <p style={{ padding: 18, fontSize: 13, color: C.ink500, margin: 0 }}>
+                No system actions defined yet.
+              </p>
+            ) : (
+              <div>
+                {steps.map((s, i) => (
+                  <div
+                    key={s.id}
                     style={{
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      color: C.ink300,
-                      padding: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '11px 18px',
+                      borderBottom: i < steps.length - 1 ? `1px solid ${C.ink100}` : 'none',
                     }}
                   >
-                    <ExternalLink size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          {/* Dependencies */}
-          <Panel>
-            <PanelHeader title="Dependencies" />
-            <div>
-              {DEPENDENCIES.map((dep, i) => (
-                <div
-                  key={dep.label}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 18px',
-                    borderBottom: i < DEPENDENCIES.length - 1 ? `1px solid ${C.ink100}` : 'none',
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: 13, color: C.ink900, fontWeight: 500 }}>{dep.label}</span>
-                    <span
+                    <button
+                      onClick={() => toggleCheck(i)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                    >
+                      {checklist[i] ? (
+                        <CheckSquare size={18} color={C.channel} />
+                      ) : (
+                        <Square size={18} color={C.ink300} />
+                      )}
+                    </button>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.ink900 }}>{s.title}</p>
+                      {s.phase && (
+                        <p style={{ margin: '1px 0 0', fontSize: 12, color: C.ink500 }}>{s.phase}</p>
+                      )}
+                    </div>
+                    <Pill variant={s.status === 'done' ? 'ok' : 'neutral'} dot={false} size="sm">
+                      {s.status}
+                    </Pill>
+                    <button
                       style={{
-                        marginLeft: 8,
-                        fontSize: 11,
-                        background: C.warnBg,
-                        color: C.warn,
-                        padding: '1px 6px',
-                        borderRadius: 10,
-                        fontWeight: 600,
+                        border: 'none',
+                        background: 'none',
+                        cursor: 'pointer',
+                        color: C.ink300,
+                        padding: 2,
                       }}
                     >
-                      {dep.count}
-                    </span>
+                      <ExternalLink size={12} />
+                    </button>
                   </div>
-                  <button
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: 5,
-                      border: `1px solid ${C.ink100}`,
-                      background: C.paper0,
-                      color: C.ink800,
-                      fontSize: 11,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {dep.action}
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Panel>
         </div>
 
@@ -393,28 +365,7 @@ export default function OffboardingPage() {
           <Panel>
             <PanelHeader title="Approvals" />
             <div style={{ padding: 14 }}>
-              {APPROVALS.map((a) => (
-                <div
-                  key={a.name}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    paddingBottom: 10,
-                    marginBottom: 10,
-                    borderBottom: `1px solid ${C.ink100}`,
-                  }}
-                >
-                  <Avatar name={a.name} size="sm" />
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.ink900 }}>{a.name}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: C.ink500 }}>
-                      {a.role} · {a.action}
-                    </p>
-                  </div>
-                  <Check size={14} color={C.ok} />
-                </div>
-              ))}
+              <p style={{ margin: 0, fontSize: 12, color: C.ink500 }}>No approvals recorded yet.</p>
             </div>
           </Panel>
 
@@ -423,12 +374,11 @@ export default function OffboardingPage() {
             <PanelHeader title="Exit summary" />
             <div style={{ padding: 14 }}>
               {[
-                ['Last day', emp.startDate],
-                ['Tenure', '2 years, 3 months'],
-                ['Final payroll', 'On hold'],
-                ['Device', 'Not returned'],
-                ['Knowledge transfer', 'In progress'],
-                ['Exit interview', 'Scheduled Apr 29'],
+                ['Last day', lastDay],
+                ['Run code', run.runCode],
+                ['Status', run.status],
+                ['Department', run.department ?? '—'],
+                ['Location', run.location ?? '—'],
               ].map(([label, val]) => (
                 <div
                   key={label}
@@ -440,18 +390,7 @@ export default function OffboardingPage() {
                   }}
                 >
                   <span style={{ fontSize: 12, color: C.ink500 }}>{label}</span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color:
-                        val === 'On hold' || val === 'Not returned'
-                          ? C.crit
-                          : C.ink900,
-                    }}
-                  >
-                    {val}
-                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: C.ink900 }}>{val}</span>
                 </div>
               ))}
             </div>
