@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique, index, foreignKey } from 'drizzle-orm/pg-core';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
@@ -458,6 +458,46 @@ export const atlasNotes = pgTable('atlas_notes', {
   employeeIdx: index('atlas_notes_employee_id_idx').on(t.employeeId),
 }));
 
+// atlas_equipment — physical devices and hardware assigned to employees
+export const atlasEquipment = pgTable('atlas_equipment', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => atlasEmployees.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 50 }).notNull(), // laptop | mobile | monitor | tablet | headset | keyboard | mouse | other
+  brand: varchar('brand', { length: 100 }),
+  model: varchar('model', { length: 200 }),
+  serialNumber: varchar('serial_number', { length: 100 }),
+  assetTag: varchar('asset_tag', { length: 50 }),
+  condition: varchar('condition', { length: 20 }).notNull().default('good'), // new | good | fair | damaged | returned
+  notes: text('notes'),
+  assignedAt: timestamp('assigned_at').notNull().defaultNow(),
+  returnedAt: timestamp('returned_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  employeeIdx: index('atlas_equipment_employee_id_idx').on(t.employeeId),
+}));
+
+// atlas_cards — company credit cards (including supplementary)
+export const atlasCards = pgTable('atlas_cards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => atlasEmployees.id, { onDelete: 'cascade' }),
+  cardholderName: varchar('cardholder_name', { length: 200 }).notNull(),
+  last4: varchar('last4', { length: 4 }),
+  issuer: varchar('issuer', { length: 50 }).notNull().default('Visa'), // Visa | Mastercard | Amex
+  creditLimit: integer('credit_limit'), // in cents
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  supplementaryTo: uuid('supplementary_to'),
+  primaryOwnerName: varchar('primary_owner_name', { length: 200 }), // denormalised — who holds the primary line
+  status: varchar('status', { length: 20 }).notNull().default('active'), // active | suspended | cancelled
+  assignedAt: timestamp('assigned_at').notNull().defaultNow(),
+  cancelledAt: timestamp('cancelled_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  employeeIdx: index('atlas_cards_employee_id_idx').on(t.employeeId),
+  supplementaryFk: foreignKey({ columns: [t.supplementaryTo], foreignColumns: [t.id] }),
+}));
+
 // Atlas type exports
 export type AtlasEmployee = typeof atlasEmployees.$inferSelect;
 export type NewAtlasEmployee = typeof atlasEmployees.$inferInsert;
@@ -477,6 +517,10 @@ export type AtlasRoleTemplate = typeof atlasRoleTemplates.$inferSelect;
 export type NewAtlasRoleTemplate = typeof atlasRoleTemplates.$inferInsert;
 export type AtlasNote = typeof atlasNotes.$inferSelect;
 export type NewAtlasNote = typeof atlasNotes.$inferInsert;
+export type AtlasEquipment = typeof atlasEquipment.$inferSelect;
+export type NewAtlasEquipment = typeof atlasEquipment.$inferInsert;
+export type AtlasCard = typeof atlasCards.$inferSelect;
+export type NewAtlasCard = typeof atlasCards.$inferInsert;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

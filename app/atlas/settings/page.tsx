@@ -2,25 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { Check, Settings as SettingsIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import { ACCESS_MATRIX_SYSTEMS } from '@/lib/atlas/data';
 import type { RoleTemplate } from '@/lib/atlas/data';
 import { Pill, Avatar } from '@/components/atlas';
-
-const C = {
-  channel:  '#232F47',
-  gold:     '#D79A2B',
-  ink900:   '#141A28',
-  ink800:   '#232F47',
-  ink500:   '#6B7690',
-  ink300:   '#B7BECB',
-  ink100:   '#E8EAF0',
-  ink050:   '#F1F2F6',
-  paper0:   '#FFFFFF',
-  paper1:   '#FBF7EF',
-  paper2:   '#F8F1E7',
-  ok:       '#3E8E68',
-  okBg:     '#EAF4EF',
-};
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -334,6 +320,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                   <button
+                    onClick={() => toast.info('Template editor coming soon')}
                     style={{
                       padding: '5px 10px',
                       borderRadius: 5,
@@ -401,6 +388,7 @@ export default function SettingsPage() {
                   {intg.status}
                 </Pill>
                 <button
+                  onClick={() => toast.info(`Integration configuration coming soon`)}
                   style={{
                     padding: '5px 10px',
                     borderRadius: 5,
@@ -749,6 +737,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <button
+                  onClick={() => toast.info('Template editor coming soon')}
                   style={{
                     padding: '6px 12px',
                     borderRadius: 5,

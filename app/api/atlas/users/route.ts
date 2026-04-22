@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireAtlasAuth } from '@/lib/atlas/auth-guard';
 
 export async function GET() {
+  const auth = await requireAtlasAuth();
+  if (auth instanceof NextResponse) return auth;
   try {
     const rows = await db
       .select({ id: users.id, username: users.username, role: users.role })

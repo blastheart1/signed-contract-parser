@@ -7,22 +7,8 @@ import { Avatar, Pill, Banner } from '@/components/atlas';
 import { ACCESS_MATRIX_SYSTEMS } from '@/lib/atlas/data';
 import type { RoleTemplate } from '@/lib/atlas/data';
 import { SYSTEM_KEY_MAP } from '@/lib/atlas/data';
-
-const C = {
-  channel:  '#232F47',
-  gold:     '#D79A2B',
-  ink900:   '#141A28',
-  ink800:   '#232F47',
-  ink500:   '#6B7690',
-  ink300:   '#B7BECB',
-  ink100:   '#E8EAF0',
-  ink050:   '#F1F2F6',
-  paper0:   '#FFFFFF',
-  paper1:   '#FBF7EF',
-  paper2:   '#F8F1E7',
-  paper3:   '#EFE8DA',
-  ok:       '#3E8E68',
-};
+import { ATLAS_DEPARTMENTS } from '@/lib/atlas/constants';
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
 
 const STEPS = ['Profile', 'Role & Start', 'Access Preset', 'Review'];
 
@@ -188,6 +174,7 @@ export default function IntakePage() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(INITIAL);
   const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [managerOptions, setManagerOptions] = useState<{ id: string; name: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [customEntitlements, setCustomEntitlements] = useState<Record<string, boolean> | null>(null);
@@ -196,6 +183,10 @@ export default function IntakePage() {
     fetch('/api/atlas/role-templates')
       .then((r) => r.json())
       .then((data: RoleTemplate[]) => setRoleTemplates(data))
+      .catch(() => {});
+    fetch('/api/atlas/managers')
+      .then((r) => r.json())
+      .then((data: { id: string; name: string }[]) => setManagerOptions(data))
       .catch(() => {});
   }, []);
 
@@ -284,6 +275,8 @@ export default function IntakePage() {
         companyEmailLocal: form.companyEmailOverride,
         presetCode: form.preset,
         entitlements: effectiveEntitlements,
+        ...(form.compensation ? { compensation: form.compensation } : {}),
+        compensationVisible: form.compensationVisible ? 'manager' : 'restricted',
       };
       const res = await fetch('/api/atlas/workflow-runs', {
         method: 'POST',
@@ -435,23 +428,32 @@ export default function IntakePage() {
                   <Select
                     value={form.department}
                     onChange={(v) => set('department', v)}
-                    options={[
-                      'Operations',
-                      'Accounting',
-                      'Construction',
-                      'Marketing',
-                      'People Ops',
-                      'Sales',
-                      'Service',
-                    ]}
+                    options={ATLAS_DEPARTMENTS}
                   />
                 </Field>
                 <Field label="Hiring manager">
-                  <Input
+                  <select
                     value={form.manager}
-                    onChange={(v) => set('manager', v)}
-                    placeholder="e.g. Derek Hollis"
-                  />
+                    onChange={(e) => set('manager', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 6,
+                      border: `1px solid ${C.ink100}`,
+                      background: C.paper0,
+                      fontSize: 13,
+                      color: C.ink900,
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">— Select manager —</option>
+                    {managerOptions.map((m) => (
+                      <option key={m.id} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Start date">
                   <Input type="date" value={form.startDate} onChange={(v) => set('startDate', v)} hasError={!!errors.startDate} />

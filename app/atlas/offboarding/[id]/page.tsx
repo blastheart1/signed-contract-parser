@@ -3,30 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, ExternalLink, CheckSquare, Square } from 'lucide-react';
+import { toast } from 'sonner';
 import type { RunDetail } from '@/lib/atlas/data';
 import { Avatar, Pill, Banner, SysPill } from '@/components/atlas';
-
-const C = {
-  channel:  '#232F47',
-  gold:     '#D79A2B',
-  ink900:   '#141A28',
-  ink800:   '#232F47',
-  ink500:   '#6B7690',
-  ink300:   '#B7BECB',
-  ink100:   '#E8EAF0',
-  ink050:   '#F1F2F6',
-  paper0:   '#FFFFFF',
-  paper1:   '#FBF7EF',
-  paper2:   '#F8F1E7',
-  paper3:   '#EFE8DA',
-  ok:       '#3E8E68',
-  okBg:     '#EAF4EF',
-  warn:     '#C29327',
-  warnBg:   '#FDF3DC',
-  crit:     '#FE5834',
-  critBg:   '#FDECEA',
-  info:     '#466BA6',
-};
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -65,17 +45,32 @@ export default function OffboardingPage() {
   const [checklist, setChecklist] = useState<boolean[]>([]);
   const [saving, setSaving] = useState(false);
   const [executing, setExecuting] = useState(false);
-  const activeStep = 2;
+
+  // Derive active step from real steps data
+  const activeStep = (() => {
+    if (!run) return 0;
+    const steps = run.steps ?? [];
+    const doneCount = steps.filter((s) => s.status === 'done').length;
+    const OFFBOARDING_STAGE_STEPS = 4;
+    const stageIndex = Math.floor(doneCount / Math.max(1, Math.ceil(steps.length / OFFBOARDING_STAGE_STEPS)));
+    return Math.min(stageIndex, 3);
+  })();
 
   async function handleSaveDraft() {
     setSaving(true);
     try {
-      await fetch(`/api/atlas/workflow-runs/${id}`, {
+      const res = await fetch(`/api/atlas/workflow-runs/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'resume' }),
       });
-      alert('Draft saved.');
+      if (res.ok) {
+        toast.success('Progress saved. Run is in-progress.');
+      } else {
+        toast.error('Failed to save progress.');
+      }
+    } catch {
+      toast.error('Failed to save progress.');
     } finally {
       setSaving(false);
     }
@@ -85,12 +80,24 @@ export default function OffboardingPage() {
     if (!confirm('Execute offboarding? This will trigger system revocations immediately.')) return;
     setExecuting(true);
     try {
-      await fetch(`/api/atlas/workflow-runs/${id}`, {
+      const res = await fetch(`/api/atlas/workflow-runs/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resume' }),
+        body: JSON.stringify({ action: 'complete' }),
       });
-      router.push('/atlas');
+      if (res.ok) {
+        toast.success('Offboarding completed.');
+        const employeeId = run?.employeeId;
+        if (employeeId) {
+          router.push(`/atlas/employees/${employeeId}`);
+        } else {
+          router.push('/atlas');
+        }
+      } else {
+        toast.error('Failed to complete offboarding run.');
+      }
+    } catch {
+      toast.error('Failed to complete offboarding run.');
     } finally {
       setExecuting(false);
     }
@@ -249,7 +256,7 @@ export default function OffboardingPage() {
             actions={
               <>
                 <button
-                  onClick={() => alert('Payroll hold flag set. Finance team has been notified.')}
+                  onClick={() => toast.success('Payroll hold flag set. Finance team has been notified.')}
                   style={{
                     padding: '5px 12px',
                     borderRadius: 5,
@@ -264,7 +271,7 @@ export default function OffboardingPage() {
                   Hold payroll final
                 </button>
                 <button
-                  onClick={() => alert('Risk note acknowledged.')}
+                  onClick={() => toast.success('Risk note acknowledged.')}
                   style={{
                     padding: '5px 12px',
                     borderRadius: 5,
@@ -382,7 +389,7 @@ export default function OffboardingPage() {
                     </Pill>
                     <button
                       title="Open step detail"
-                      onClick={() => alert(`Step: ${s.title}\nStatus: ${s.status}\nPhase: ${s.phase ?? 'General'}`)}
+                      onClick={() => toast(`${s.title} — ${s.phase ?? 'General'} — ${s.status}`)}
                       style={{
                         border: 'none',
                         background: 'none',

@@ -3,11 +3,15 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { atlasWorkflowRuns, atlasWorkflowSteps } from '@/lib/db/schema';
 import { getRunDetail } from '@/lib/atlas/queries';
+import { requireAtlasAuth } from '@/lib/atlas/auth-guard';
+import { logAudit } from '@/lib/atlas/audit';
 
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } },
 ) {
+  const auth = await requireAtlasAuth();
+  if (auth instanceof NextResponse) return auth;
   try {
     const run = await getRunDetail(params.id);
     if (!run) {
@@ -24,11 +28,13 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } },
 ) {
+  const auth = await requireAtlasAuth();
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json() as { action?: string };
     const { action } = body;
 
-    if (action !== 'retry' && action !== 'cancel' && action !== 'resume') {
+    if (action !== 'retry' && action !== 'cancel' && action !== 'resume' && action !== 'complete') {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
@@ -57,8 +63,20 @@ export async function PATCH(
         .update(atlasWorkflowRuns)
         .set({ status: 'in-progress' })
         .where(eq(atlasWorkflowRuns.id, params.id));
+    } else if (action === 'complete') {
+      await db
+        .update(atlasWorkflowRuns)
+        .set({ status: 'completed', completedAt: new Date() })
+        .where(eq(atlasWorkflowRuns.id, params.id));
     }
 
+    await logAudit({
+      actorId: auth.user.id,
+      actorLabel: auth.user.username,
+      action: `workflow_run.${action}`,
+      entityType: 'workflow_run',
+      entityId: params.id,
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[atlas/workflow-runs/[id] PATCH]', err);

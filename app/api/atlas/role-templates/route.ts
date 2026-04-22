@@ -2,8 +2,14 @@ import { NextResponse } from 'next/server';
 import { getRoleTemplates } from '@/lib/atlas/queries';
 import { db } from '@/lib/db';
 import { atlasRoleTemplates } from '@/lib/db/schema';
+import { requireAtlasAuth } from '@/lib/atlas/auth-guard';
+import { RoleTemplateSchema } from '@/lib/atlas/schemas';
+import { logAudit } from '@/lib/atlas/audit';
+import { z } from 'zod';
 
 export async function GET() {
+  const auth = await requireAtlasAuth();
+  if (auth instanceof NextResponse) return auth;
   try {
     const templates = await getRoleTemplates();
     return NextResponse.json(templates);
@@ -14,13 +20,14 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAtlasAuth();
+  if (auth instanceof NextResponse) return auth;
   try {
-    const body = await req.json() as { label: string; department?: string; entitlements: Record<string, boolean> };
-    const { label, department, entitlements } = body;
-
-    if (!label || typeof label !== 'string') {
-      return NextResponse.json({ error: 'label is required' }, { status: 400 });
-    }
+    let body: z.infer<typeof RoleTemplateSchema>;
+    try { body = RoleTemplateSchema.parse(await req.json()); }
+    catch { return NextResponse.json({ error: 'Invalid input' }, { status: 400 }); }
+    const { label, entitlements } = body;
+    const department = undefined;
 
     const presetCode = label.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 30);
 
@@ -35,6 +42,14 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    await logAudit({
+      actorId: auth.user.id,
+      actorLabel: auth.user.username,
+      action: 'role_template.create',
+      entityType: 'role_template',
+      entityId: created.id,
+      detail: { presetCode, label },
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
     console.error('[atlas/role-templates POST]', err);

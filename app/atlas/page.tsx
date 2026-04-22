@@ -11,26 +11,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { WorkflowStatus, WorkflowType, DashboardRow, DashboardMetrics } from '@/lib/atlas/data';
-import { Avatar, StatusPill, ProgressBar, Pill, Banner } from '@/components/atlas';
-
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const C = {
-  channel:  '#232F47',
-  gold:     '#D79A2B',
-  ink900:   '#141A28',
-  ink800:   '#232F47',
-  ink500:   '#6B7690',
-  ink300:   '#B7BECB',
-  ink100:   '#E8EAF0',
-  ink050:   '#F1F2F6',
-  paper0:   '#FFFFFF',
-  paper1:   '#FBF7EF',
-  paper2:   '#F8F1E7',
-  ok:       '#3E8E68',
-  warn:     '#C29327',
-  crit:     '#FE5834',
-  info:     '#466BA6',
-};
+import { Avatar, StatusPill, ProgressBar, Pill, Banner, SkeletonTable } from '@/components/atlas';
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
+import { toast } from 'sonner';
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -146,6 +129,19 @@ export default function AtlasDashboard() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Promise.all([
+        fetch('/api/atlas/workflow-runs').then((r) => r.json()),
+        fetch('/api/atlas/metrics').then((r) => r.json()),
+      ]).then(([rowsData, metricsData]) => {
+        setRows(rowsData as DashboardRow[]);
+        setMetrics(metricsData as DashboardMetrics);
+      }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const filtered = useMemo(() => {
     let list = rows;
     if (typeFilter !== 'both') list = list.filter((r) => r.type === typeFilter);
@@ -220,7 +216,7 @@ export default function AtlasDashboard() {
   ];
 
   if (loading) {
-    return <div style={{ padding: 32, color: C.ink500, fontSize: 13 }}>Loading…</div>;
+    return <SkeletonTable rows={6} />;
   }
 
   if (error) {
@@ -546,7 +542,7 @@ export default function AtlasDashboard() {
                       <tr
                         key={row.runId}
                         className="atlas-row"
-                        onClick={() => router.push(`/atlas/workflows/${row.runId}`)}
+                        onClick={() => router.push(`/atlas/employees/${row.employeeId}`)}
                         style={{
                           borderTop: `1px solid ${C.ink100}`,
                           background: i % 2 === 0 ? C.paper0 : 'transparent',
@@ -648,7 +644,7 @@ export default function AtlasDashboard() {
                             >
                               {[
                                 { label: 'View run', action: () => router.push(`/atlas/workflows/${row.runId}`) },
-                                { label: 'View employee', action: () => router.push(`/atlas/employees/${row.runId}`) },
+                                { label: 'View employee', action: () => router.push(`/atlas/employees/${row.employeeId}`) },
                                 { label: 'Cancel run', action: async () => {
                                   if (!confirm(`Cancel run for ${row.name}?`)) return;
                                   await fetch(`/api/atlas/workflow-runs/${row.runId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel' }) });
@@ -801,7 +797,7 @@ export default function AtlasDashboard() {
                       Open workflow
                     </Link>
                     <button
-                      onClick={() => alert(`Snooze: ${row.name}'s alert will be hidden for 24 hours.`)}
+                      onClick={() => toast.success(`Snooze: ${row.name}'s alert will be hidden for 24 hours.`)}
                       style={{
                         flex: 1,
                         padding: '5px 0',

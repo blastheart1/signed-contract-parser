@@ -2,29 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, XCircle, Play } from 'lucide-react';
+import { ArrowLeft, RefreshCw, XCircle, Play, CheckCircle, ChevronRight } from 'lucide-react';
 import type { RunDetail } from '@/lib/atlas/data';
 import { Avatar, StatusPill, Pill } from '@/components/atlas';
-
-const C = {
-  channel:  '#232F47',
-  gold:     '#D79A2B',
-  ink900:   '#141A28',
-  ink800:   '#232F47',
-  ink500:   '#6B7690',
-  ink300:   '#B7BECB',
-  ink100:   '#E8EAF0',
-  ink050:   '#F1F2F6',
-  paper0:   '#FFFFFF',
-  paper1:   '#FBF7EF',
-  paper2:   '#F8F1E7',
-  ok:       '#3E8E68',
-  okBg:     '#EAF4EF',
-  warn:     '#C29327',
-  warnBg:   '#FDF3DC',
-  crit:     '#FE5834',
-  info:     '#466BA6',
-};
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
+import { toast } from 'sonner';
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -69,6 +51,51 @@ export default function WorkflowRunPage() {
   const [notFound, setNotFound] = useState(false);
   const [logFilter, setLogFilter] = useState<LogFilter>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [advanceLoading, setAdvanceLoading] = useState(false);
+  const [stepLoading, setStepLoading] = useState<string | null>(null);
+
+  async function markStepDone(stepId: string) {
+    setStepLoading(stepId);
+    try {
+      await fetch(`/api/atlas/workflow-runs/${id}/steps/${stepId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_done' }),
+      });
+      const updated = await fetch(`/api/atlas/workflow-runs/${id}`).then(r => r.json());
+      setRun(updated);
+    } catch {
+      toast.error('Failed to mark step as done.');
+    } finally {
+      setStepLoading(null);
+    }
+  }
+
+  async function advanceNextStep() {
+    setAdvanceLoading(true);
+    try {
+      const res = await fetch(`/api/atlas/workflow-runs/${id}/advance`, { method: 'POST' });
+      if (!res.ok) throw new Error();
+      const { result } = await res.json() as { result: string };
+      const updated = await fetch(`/api/atlas/workflow-runs/${id}`).then(r => r.json());
+      setRun(updated);
+      const messages: Record<string, string> = {
+        advanced: 'Step completed.',
+        awaiting_manual: 'Manual step is now active — awaiting human review.',
+        all_done: 'All steps are done. Run completed.',
+        nothing_to_advance: 'Nothing to advance right now.',
+      };
+      if (result === 'advanced' || result === 'all_done') {
+        toast.success(messages[result] ?? result);
+      } else {
+        toast.info(messages[result] ?? result);
+      }
+    } catch {
+      toast.error('Failed to advance run.');
+    } finally {
+      setAdvanceLoading(false);
+    }
+  }
 
   async function runAction(action: 'retry' | 'cancel' | 'resume') {
     setActionLoading(action);
@@ -82,7 +109,7 @@ export default function WorkflowRunPage() {
       const updated = await fetch(`/api/atlas/workflow-runs/${id}`).then(r => r.json());
       setRun(updated);
     } catch {
-      alert(`Failed to ${action} run.`);
+      toast.error(`Failed to ${action} run.`);
     } finally {
       setActionLoading(null);
     }
@@ -202,6 +229,26 @@ export default function WorkflowRunPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={advanceNextStep}
+            disabled={advanceLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '7px 12px',
+              borderRadius: 6,
+              border: `1px solid ${C.info}`,
+              background: C.paper0,
+              fontSize: 12,
+              cursor: advanceLoading ? 'wait' : 'pointer',
+              color: C.info,
+              opacity: advanceLoading ? 0.6 : 1,
+            }}
+          >
+            <ChevronRight size={12} />
+            Run next step
+          </button>
           <button
             onClick={() => runAction('retry')}
             disabled={actionLoading === 'retry'}
@@ -451,6 +498,30 @@ export default function WorkflowRunPage() {
                               <span style={{ fontSize: 11, color: C.warn }}>{s.retryCount} retries</span>
                             )}
                             <Pill variant={stepVariant} size="sm">{s.status}</Pill>
+                            {s.status !== 'done' && (
+                              <button
+                                onClick={() => markStepDone(s.id)}
+                                disabled={stepLoading === s.id}
+                                title="Mark as done"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  padding: '3px 8px',
+                                  borderRadius: 4,
+                                  border: `1px solid ${C.ok}`,
+                                  background: 'transparent',
+                                  color: C.ok,
+                                  fontSize: 11,
+                                  cursor: stepLoading === s.id ? 'wait' : 'pointer',
+                                  opacity: stepLoading === s.id ? 0.6 : 1,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <CheckCircle size={11} />
+                                Mark done
+                              </button>
+                            )}
                           </div>
                         );
                       })}

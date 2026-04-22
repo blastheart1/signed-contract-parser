@@ -5,3 +5,4 @@ export { StatusPill } from './status-pill';
 export { ProgressBar } from './progress-bar';
 export { Banner } from './banner';
 export { SysPill } from './sys-pill';
+export { SkeletonLine, SkeletonRow, SkeletonCard, SkeletonTable } from './skeleton';

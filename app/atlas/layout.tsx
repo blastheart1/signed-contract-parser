@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { Toaster } from 'sonner';
 import {
   LayoutDashboard,
   Users,
@@ -16,28 +17,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { Avatar } from '@/components/atlas/avatar';
-
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const C = {
-  channel:    '#232F47',
-  avalon:     '#485568',
-  santaFe:    '#F8F1E7',
-  gold:       '#D79A2B',
-  coral:      '#FE5834',
-  ink900:     '#141A28',
-  ink800:     '#232F47',
-  ink500:     '#6B7690',
-  ink300:     '#B7BECB',
-  ink100:     '#E8EAF0',
-  ink050:     '#F1F2F6',
-  paper0:     '#FFFFFF',
-  paper1:     '#FBF7EF',
-  paper2:     '#F8F1E7',
-  paper3:     '#EFE8DA',
-  sidebarFg:  '#DFE4EF',
-  sidebarDim: 'rgba(223,228,239,0.55)',
-  sidebarDiv: 'rgba(255,255,255,0.08)',
-};
+import { ATLAS_C as C } from '@/lib/atlas/tokens';
 
 interface NavItem {
   href: string;
@@ -49,6 +29,13 @@ interface NavItem {
 interface NavSection {
   label: string;
   items: NavItem[];
+}
+
+interface SearchResult {
+  id: string;
+  name: string;
+  employeeCode: string;
+  position?: string | null;
 }
 
 interface SessionUser {
@@ -95,6 +82,11 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [employeeCount, setEmployeeCount] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -106,6 +98,37 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
       .then((r) => r.json())
       .then((data) => { if (typeof data?.count === 'number') setEmployeeCount(data.count); })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (searchQuery.length < 2) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      fetch(`/api/atlas/employees?q=${encodeURIComponent(searchQuery)}&limit=6`)
+        .then((r) => r.json())
+        .then((data: SearchResult[]) => {
+          setSearchResults(Array.isArray(data) ? data : []);
+          setSearchOpen(true);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   async function handleLogout() {
@@ -327,31 +350,83 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
             </div>
 
             {/* Search */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: C.ink050,
-                border: `1px solid ${C.ink100}`,
-                borderRadius: 6,
-                padding: '0 10px',
-                width: 220,
-                height: 32,
-              }}
-            >
-              <Search size={13} color={C.ink500} />
-              <input
-                placeholder="Search employees…"
+            <div ref={searchRef} style={{ position: 'relative' }}>
+              <div
                 style={{
-                  flex: 1,
-                  border: 'none',
-                  background: 'transparent',
-                  fontSize: 12,
-                  color: C.ink900,
-                  outline: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: C.ink050,
+                  border: `1px solid ${C.ink100}`,
+                  borderRadius: 6,
+                  padding: '0 10px',
+                  width: 220,
+                  height: 32,
                 }}
-              />
+              >
+                <Search size={13} color={C.ink500} />
+                <input
+                  placeholder="Search employees…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => { if (searchResults.length > 0) setSearchOpen(true); }}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: 12,
+                    color: C.ink900,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              {searchOpen && searchResults.length > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: 4,
+                    background: C.paper0,
+                    border: `1px solid ${C.ink100}`,
+                    borderRadius: 6,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                    zIndex: 200,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      onClick={() => {
+                        router.push(`/atlas/employees/${result.id}`);
+                        setSearchQuery('');
+                        setSearchOpen(false);
+                        setSearchResults([]);
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 12px',
+                        border: 'none',
+                        borderBottom: `1px solid ${C.ink100}`,
+                        background: 'transparent',
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = C.ink050)}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.ink900 }}>{result.name}</span>
+                      <span style={{ fontSize: 11, color: C.ink500 }}>
+                        {result.employeeCode}{result.position ? ` · ${result.position}` : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Icon buttons */}
@@ -393,6 +468,7 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
           </main>
         </div>
       </div>
+      <Toaster position="bottom-right" />
     </>
   );
 }

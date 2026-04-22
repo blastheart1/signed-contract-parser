@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { atlasEmployees } from '@/lib/db/schema';
-import { count } from 'drizzle-orm';
+import { getManagerCandidates } from '@/lib/atlas/queries';
 import { requireAtlasAuth } from '@/lib/atlas/auth-guard';
 
 export async function GET() {
   const auth = await requireAtlasAuth();
   if (auth instanceof NextResponse) return auth;
   try {
-    const [row] = await db.select({ count: count() }).from(atlasEmployees);
-    return NextResponse.json({ count: Number(row?.count ?? 0) });
+    const managers = await getManagerCandidates();
+    return NextResponse.json(managers);
   } catch (err) {
-    console.error('[atlas/employees/count GET]', err);
+    console.error('[atlas/managers GET]', err);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
