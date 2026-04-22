@@ -5,10 +5,7 @@ import {
   atlasAccessAccounts,
 } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import {
-  getWorkspaceBoards,
-  inviteMemberToBoard,
-} from '@/lib/atlas/integrations/trello/adapter';
+import { inviteMemberToBoard } from '@/lib/atlas/integrations/trello/adapter';
 import type { ProviderResult } from '@/lib/atlas/integrations/types';
 
 export async function runTrelloInvite(opts: {
@@ -18,6 +15,19 @@ export async function runTrelloInvite(opts: {
 }): Promise<ProviderResult<void>> {
   const { runId, stepId, employeeId } = opts;
   const startedAt = Date.now();
+
+  const boardId = process.env.TRELLO_BOARD_ID;
+  if (!boardId) {
+    return {
+      ok: false,
+      error: {
+        provider: 'trello',
+        code: 'MISCONFIGURED',
+        message: 'TRELLO_BOARD_ID env var is not set',
+        retryable: false,
+      },
+    };
+  }
 
   try {
     const [employee] = await db
@@ -38,57 +48,22 @@ export async function runTrelloInvite(opts: {
       };
     }
 
-    const workspaceId = process.env.TRELLO_WORKSPACE_ID ?? '';
-    if (!workspaceId) {
-      console.warn('[atlas/trello] TRELLO_WORKSPACE_ID not set');
-    }
-
-    const boardsResult = await getWorkspaceBoards(workspaceId);
-    if (!boardsResult.ok) {
-      await db.insert(atlasIntegrationEvents).values({
-        runId,
-        stepId,
-        provider: 'trello',
-        eventType: 'get_workspace_boards',
-        status: 'error',
-        errorMessage: boardsResult.error.message,
-        durationMs: Date.now() - startedAt,
-      });
-      return { ok: false, error: boardsResult.error };
-    }
-
     const email = employee.companyEmail;
-    let anySuccess = false;
+    const inviteResult = await inviteMemberToBoard(boardId, email);
 
-    for (const board of boardsResult.data) {
-      const inviteResult = await inviteMemberToBoard(board.id, email);
+    await db.insert(atlasIntegrationEvents).values({
+      runId,
+      stepId,
+      provider: 'trello',
+      eventType: 'invite_member',
+      status: inviteResult.ok ? 'ok' : 'error',
+      requestPayload: { boardId, email },
+      responsePayload: inviteResult.ok ? inviteResult.data : null,
+      errorMessage: inviteResult.ok ? null : inviteResult.error.message,
+      durationMs: Date.now() - startedAt,
+    });
 
-      await db.insert(atlasIntegrationEvents).values({
-        runId,
-        stepId,
-        provider: 'trello',
-        eventType: 'invite_member',
-        status: inviteResult.ok ? 'ok' : 'error',
-        requestPayload: { boardId: board.id, boardName: board.name, email },
-        responsePayload: inviteResult.ok ? inviteResult.data : null,
-        errorMessage: inviteResult.ok ? null : inviteResult.error.message,
-        durationMs: Date.now() - startedAt,
-      });
-
-      if (inviteResult.ok) anySuccess = true;
-    }
-
-    if (!anySuccess && boardsResult.data.length > 0) {
-      return {
-        ok: false,
-        error: {
-          provider: 'trello',
-          code: 'ALL_INVITES_FAILED',
-          message: 'Failed to invite member to any Trello board',
-          retryable: true,
-        },
-      };
-    }
+    if (!inviteResult.ok) return { ok: false, error: inviteResult.error };
 
     const now = new Date();
     const [existingAccount] = await db

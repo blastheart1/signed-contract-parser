@@ -6,8 +6,35 @@ import {
 } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { createUser } from '@/lib/atlas/integrations/google/adapter';
-import { generateTempPassword } from '@/lib/atlas/integrations/password';
 import type { ProviderResult } from '@/lib/atlas/integrations/types';
+
+function buildTempPassword(firstName: string, lastName: string): string {
+  const clean = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  return `${clean(firstName)}${clean(lastName)}-${new Date().getFullYear()}`;
+}
+
+async function sendOnboardingWebhook(payload: {
+  to: string;
+  firstName: string;
+  lastName: string;
+  companyEmail: string;
+  tempPassword: string;
+}): Promise<void> {
+  const url = process.env.ATLAS_ONBOARDING_WEBHOOK_URL;
+  if (!url) return;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export async function runGoogleCreateUser(opts: {
   runId: string;
@@ -23,6 +50,7 @@ export async function runGoogleCreateUser(opts: {
         firstName: atlasEmployees.firstName,
         lastName: atlasEmployees.lastName,
         companyEmail: atlasEmployees.companyEmail,
+        personalEmail: atlasEmployees.personalEmail,
       })
       .from(atlasEmployees)
       .where(eq(atlasEmployees.id, employeeId))
@@ -52,11 +80,12 @@ export async function runGoogleCreateUser(opts: {
       };
     }
 
+    const tempPassword = buildTempPassword(employee.firstName, employee.lastName);
     const result = await createUser({
       email: employee.companyEmail,
       firstName: employee.firstName,
       lastName: employee.lastName,
-      tempPassword: generateTempPassword(),
+      tempPassword,
     });
 
     const durationMs = Date.now() - startedAt;
@@ -75,6 +104,16 @@ export async function runGoogleCreateUser(opts: {
 
     if (!result.ok) {
       return { ok: false, error: result.error };
+    }
+
+    if (employee.personalEmail) {
+      await sendOnboardingWebhook({
+        to: employee.personalEmail,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        companyEmail: employee.companyEmail,
+        tempPassword,
+      });
     }
 
     const now = new Date();
