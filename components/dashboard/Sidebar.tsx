@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Menu, X, FileText, LogOut, Repeat } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Menu, X, FileText, LogOut, ChevronDown, Shield, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -276,27 +276,9 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Admin Button (if applicable) */}
-      {user?.role === 'admin' && (!collapsed || isMobile) && (
-        <motion.div
-          initial={false}
-          animate={{ opacity: collapsed && !isMobile ? 0 : 1, height: collapsed && !isMobile ? 0 : 'auto' }}
-          transition={{ duration: 0.15 }}
-          className="px-4 py-4 border-b"
-        >
-          <Link href="/admin">
-            <Button
-              variant="outline"
-              className={cn(
-                'w-full justify-center gap-2 border-2 hover:bg-accent',
-                collapsed && !isMobile ? 'w-12 px-0' : ''
-              )}
-            >
-              <Repeat className="h-4 w-4" />
-              {(!collapsed || isMobile) && <span className="font-medium">Admin</span>}
-            </Button>
-          </Link>
-        </motion.div>
+      {/* Go to… dropdown (admin sees Admin + Atlas; calimingo_admin sees Atlas only) */}
+      {(user?.role === 'admin' || user?.role === 'calimingo_admin') && (!collapsed || isMobile) && (
+        <SwitchDropdown role={user.role} />
       )}
 
       {/* Navigation */}
@@ -402,5 +384,56 @@ export default function Sidebar({
       )}
       {sidebarContent}
     </>
+  );
+}
+
+function SwitchDropdown({ role }: { role: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <motion.div
+      initial={false}
+      animate={{ opacity: 1, height: 'auto' }}
+      transition={{ duration: 0.15 }}
+      className="px-4 py-4 border-b relative"
+    >
+      <Button
+        variant="outline"
+        className="w-full justify-between gap-2 border-2 hover:bg-accent"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="font-medium">Go to…</span>
+        <ChevronDown className="h-4 w-4" />
+      </Button>
+      {open && (
+        <div className="absolute left-4 right-4 top-full -mt-1 z-50 rounded-md border bg-card shadow-lg overflow-hidden">
+          <a
+            href="/dashboard"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            Dashboard
+          </a>
+          <a
+            href="/atlas"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+          >
+            <Shield className="h-4 w-4" />
+            Atlas
+          </a>
+          {role === 'admin' && (
+            <a
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+              Admin
+            </a>
+          )}
+        </div>
+      )}
+    </motion.div>
   );
 }

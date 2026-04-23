@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, text, timestamp, boolean, decimal, integer, pgEnum, jsonb, unique, index, foreignKey } from 'drizzle-orm/pg-core';
 
 // Enums
-export const userRoleEnum = pgEnum('user_role', ['admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'calimingo_admin', 'contract_manager', 'sales_rep', 'accountant', 'viewer', 'vendor']);
 export const userStatusEnum = pgEnum('user_status', ['pending', 'active', 'suspended']);
 export const orderStatusEnum = pgEnum('order_status', ['pending_updates', 'completed']);
 export const itemTypeEnum = pgEnum('item_type', ['maincategory', 'subcategory', 'item']);

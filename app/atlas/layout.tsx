@@ -15,6 +15,7 @@ import {
   Bell,
   Search,
   LogOut,
+  ChevronDown,
 } from 'lucide-react';
 import { Avatar } from '@/components/atlas/avatar';
 import { ATLAS_C as C } from '@/lib/atlas/tokens';
@@ -224,6 +225,13 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
               </div>
             </div>
           </div>
+
+          {/* Switch area */}
+          {(sessionUser?.role === 'admin' || sessionUser?.role === 'calimingo_admin') && (
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.sidebarDiv}` }}>
+              <AtlasSwitchDropdown role={sessionUser.role} />
+            </div>
+          )}
 
           {/* Nav */}
           <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
@@ -470,5 +478,80 @@ export default function AtlasLayout({ children }: { children: React.ReactNode })
       </div>
       <Toaster position="bottom-right" />
     </>
+  );
+}
+
+function AtlasSwitchDropdown({ role }: { role: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 10px',
+          borderRadius: 6,
+          border: '1px solid rgba(255,255,255,0.15)',
+          background: 'rgba(255,255,255,0.06)',
+          color: '#DFE4EF',
+          fontSize: 12,
+          fontWeight: 500,
+          cursor: 'pointer',
+          gap: 6,
+        }}
+      >
+        <span>Go to…</span>
+        <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: 4,
+            background: '#1e2a3a',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            overflow: 'hidden',
+            zIndex: 300,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+          }}
+        >
+          <a
+            href="/dashboard"
+            onClick={() => setOpen(false)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', fontSize: 12, color: '#DFE4EF',
+              textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.08)',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <LayoutDashboard size={13} /> Dashboard
+          </a>
+          {role === 'admin' && (
+            <a
+              href="/admin"
+              onClick={() => setOpen(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', fontSize: 12, color: '#DFE4EF',
+                textDecoration: 'none',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Shield size={13} /> Admin
+            </a>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

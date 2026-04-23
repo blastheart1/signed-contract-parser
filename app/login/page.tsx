@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,16 @@ const REMEMBER_ME_KEY = 'remembered_username';
 const REMEMBER_ME_CHECKED_KEY = 'remember_me_checked';
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -77,8 +86,16 @@ export default function LoginPage() {
       // but before navigation occurs
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      // Honour ?redirect= param only for /atlas paths (prevents open redirect)
+      const redirect = searchParams.get('redirect');
+      if (redirect && redirect.startsWith('/atlas')) {
+        router.push(redirect);
+        return;
+      }
       // Redirect based on role
-      if (data.user.role === 'admin') {
+      if (data.user.role === 'calimingo_admin') {
+        router.push('/atlas');
+      } else if (data.user.role === 'admin') {
         router.push('/admin');
       } else if (data.user.role === 'vendor') {
         router.push('/dashboard/vendor-negotiation');

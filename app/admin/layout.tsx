@@ -5,18 +5,19 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, 
-  Users, 
-  LogOut, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Users,
+  LogOut,
+  Settings,
   FileText,
   FileSearch,
   Database,
   BarChart3,
   Menu,
   X,
-  Repeat
+  ChevronDown,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,7 +53,8 @@ export default function AdminLayout({
       const response = await fetch('/api/auth/session');
       const data = await response.json();
 
-      if (!data.success || !data.user || data.user.role !== 'admin') {
+      const adminRoles = ['admin', 'calimingo_admin'];
+      if (!data.success || !data.user || !adminRoles.includes(data.user.role)) {
         router.push('/login');
         return;
       }
@@ -187,6 +189,7 @@ function SidebarContent({
   user: User;
   handleLogout: () => void;
 }) {
+  const [switchOpen, setSwitchOpen] = useState(false);
   return (
     <div className="flex h-full flex-col">
       <div className="p-6 border-b">
@@ -197,17 +200,46 @@ function SidebarContent({
             <p className="text-sm text-muted-foreground mt-1">System Management</p>
           </div>
         </Link>
-        {/* Toggle to Dashboard View */}
-        <div className="mt-4 flex justify-center">
-          <Link href="/dashboard">
-            <Button
-              variant="outline"
-              className="w-32 justify-center gap-2 border-2 hover:bg-accent"
-            >
-              <Repeat className="h-4 w-4" />
-              <span className="font-medium">Dashboard</span>
-            </Button>
-          </Link>
+        {/* Go to… dropdown */}
+        <div className="mt-4 relative">
+          <Button
+            variant="outline"
+            className="w-full justify-between gap-2 border-2 hover:bg-accent"
+            onClick={() => setSwitchOpen((v) => !v)}
+          >
+            <span className="font-medium">Go to…</span>
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+          {switchOpen && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border bg-card shadow-lg overflow-hidden">
+              <Link
+                href="/dashboard"
+                onClick={() => setSwitchOpen(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Dashboard
+              </Link>
+              <Link
+                href="/atlas"
+                onClick={() => setSwitchOpen(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+              >
+                <Shield className="h-4 w-4" />
+                Atlas
+              </Link>
+              {user.role === 'admin' && (
+                <Link
+                  href="/admin"
+                  onClick={() => setSwitchOpen(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-accent transition-colors"
+                >
+                  <Settings className="h-4 w-4" />
+                  Admin
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
