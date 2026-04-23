@@ -272,6 +272,7 @@ export default function EditUserPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="calimingo_admin">Calimingo Admin</SelectItem>
                   <SelectItem value="contract_manager">Contract Manager</SelectItem>
                   <SelectItem value="sales_rep">Sales Rep</SelectItem>
                   <SelectItem value="accountant">Accountant</SelectItem>
